@@ -295,7 +295,11 @@ function FieldOverlay({
   const label = FIELD_LABELS[kind];
   const w = f.width * pageWidth,
     h = f.height * pageHeight;
-  const [layout, setLayout] = useState<{ size: number; baseline: number }>();
+  const [layout, setLayout] = useState<{
+    size: number;
+    x: number;
+    baseline: number;
+  }>();
   useEffect(() => {
     let active = true;
     setLayout(undefined);
@@ -381,8 +385,8 @@ function FieldOverlay({
       className={cn(
         "absolute",
         onChange &&
-          "touch-none cursor-grab border border-dashed border-amber-600 bg-amber-100/40 active:cursor-grabbing",
-        onChange && own && "border-blue-600 bg-blue-100/40",
+          "touch-none cursor-grab outline outline-1 outline-dashed outline-amber-600 bg-amber-100/40 active:cursor-grabbing",
+        onChange && own && "outline-blue-600 bg-blue-100/40",
         selected && onChange && "ring-2 ring-primary",
       )}
       style={{
@@ -399,7 +403,7 @@ function FieldOverlay({
           aria-label={text}
         >
           <text
-            x={4}
+            x={layout.x}
             y={layout.baseline}
             fontSize={layout.size}
             fill={date ? "#000" : "#1a1f7a"}
@@ -437,6 +441,17 @@ function FieldOverlay({
             Sign here
           </button>
         </span>
+      )}
+      {onChange && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute border-t border-dotted border-current opacity-40"
+          style={{
+            left: `${(4 / w) * 100}%`,
+            right: `${(4 / w) * 100}%`,
+            bottom: `${((f.kind === undefined ? h * 0.25 + 2 : 2) / h) * 100}%`,
+          }}
+        />
       )}
       {onChange && (
         <span

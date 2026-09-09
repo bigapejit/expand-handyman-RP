@@ -193,6 +193,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               selected={selected}
               onSelect={setSelected}
               owner={doc.ownerSignature}
+              name={doc.customer?.name ?? ""}
             />
           ) : (
             <div className="min-h-[500px] p-10 text-center text-sm text-muted-foreground">
@@ -222,7 +223,9 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                 </h2>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                   Drag fields into place. Drag a corner to resize width and
-                  height. Arrow keys move; Shift + arrows resize.
+                  height. Arrow keys move; Shift + arrows resize. Align the
+                  bottom guide with the signature line. The customer name is
+                  shown as a preview.
                 </p>
                 <div className="mt-4 grid gap-2">
                   {(Object.entries(FIELD_LABELS) as [FieldKind, string][]).map(

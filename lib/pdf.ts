@@ -37,6 +37,9 @@ let previewFonts:
       regular: import("pdf-lib").PDFFont;
     }>
   | undefined;
+const handwriting = fontkit.create(
+  Uint8Array.from(atob(handwritingFont), (c) => c.charCodeAt(0)),
+);
 export async function fieldTextLayout(
   text: string,
   width: number,
@@ -55,15 +58,26 @@ export async function fieldTextLayout(
   })();
   const fonts = await previewFonts;
   const face = date ? fonts.regular : fonts.script;
+  // Position visible ink, not the font's line box. Homemade Apple reserves a
+  // very large descender area even in names with no descending letters.
+  const bounds = date ? undefined : handwriting.layout(text).bbox;
+  const units = handwriting.unitsPerEm;
+  const inkTop = bounds
+    ? bounds.maxY / units
+    : face.heightAtSize(1, { descender: false });
+  const inkBottom = bounds ? bounds.minY / units : 0;
+  const inkLeft = bounds ? bounds.minX / units : 0;
+  const inkWidth = bounds
+    ? (bounds.maxX - bounds.minX) / units
+    : face.widthOfTextAtSize(text, 1);
   const size = Math.min(
-    (height - 4) / face.heightAtSize(1),
-    (width - 8) / face.widthOfTextAtSize(text, 1),
+    (height - 4) / (inkTop - inkBottom),
+    (width - 8) / inkWidth,
   );
   return {
     size,
-    baseline:
-      (height - face.heightAtSize(size)) / 2 +
-      face.heightAtSize(size, { descender: false }),
+    x: 4 - inkLeft * size,
+    baseline: height - 2 + inkBottom * size,
   };
 }
 export async function completePdf(
@@ -119,21 +133,16 @@ async function renderPdf(
     const text = date ? signingDate(person.signedAt) : person.name;
     const face = date ? regular : font;
     const inkHeight = field.kind === undefined ? boxH * 0.75 : boxH;
-    const size = Math.min(
-      (inkHeight - 4) / face.heightAtSize(1),
-      (boxW - 8) / face.widthOfTextAtSize(text, 1),
-    );
+    const layout = await fieldTextLayout(text, boxW, inkHeight, date);
     const point = pagePoint(
-      field.x * w + 4,
-      field.y * h +
-        (inkHeight - face.heightAtSize(size)) / 2 +
-        face.heightAtSize(size, { descender: false }),
+      field.x * w + layout.x,
+      field.y * h + layout.baseline,
       crop,
       rot,
     );
     page.drawText(text, {
       ...point,
-      size,
+      size: layout.size,
       font: face,
       rotate: degrees(rot),
       color: date ? rgb(0, 0, 0) : rgb(0.102, 0.122, 0.478),
