@@ -43,7 +43,13 @@ export function PdfViewer({
     void import("pdfjs-dist")
       .then(async (mod) => {
         mod.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-        task = mod.getDocument({ data: bytes.slice() });
+        task = mod.getDocument({
+          data: bytes.slice(),
+          cMapUrl: "/pdfjs/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl: "/pdfjs/standard_fonts/",
+          wasmUrl: "/pdfjs/wasm/",
+        });
         doc = await task.promise;
         if (active) setPdf(doc);
         else void task.destroy();

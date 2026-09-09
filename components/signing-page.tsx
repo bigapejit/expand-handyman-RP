@@ -11,8 +11,7 @@ import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
 import { Download, CheckCircle2, FileX2 } from "lucide-react";
 import { getPdf, downloadPdf, uploadFile } from "@/lib/files";
-import { completePdf } from "@/lib/pdf";
-import { CONSENT } from "@/lib/signing";
+import { CONSENT, signerName } from "@/lib/signing";
 import { dateTime, errorMessage } from "@/lib/utils";
 export function SigningPage({ token }: { token: string }) {
   const doc = useQuery(api.documents.forSigner, { token });
@@ -37,7 +36,9 @@ export function SigningPage({ token }: { token: string }) {
       .then((data) => {
         if (active) {
           setBytes(data);
-          void opened({ token });
+          void opened({ token }).catch(() => {
+            /* Signing remains available if tracking fails. */
+          });
         }
       })
       .catch((e) => {
@@ -153,14 +154,25 @@ export function SigningPage({ token }: { token: string }) {
                 setBusy(true);
                 setError("");
                 try {
-                  attempt.current ??= crypto.randomUUID();
                   setProgress("Preparing your signed PDF…");
+                  const normalizedName = signerName(name);
+                  const { completePdf } = await import("@/lib/pdf");
+                  // Validate the font and PDF before reserving a signing attempt.
+                  // A rejected name remains editable, and no server intent is stranded.
+                  await completePdf(bytes, doc.fields, {
+                    name: normalizedName,
+                    signedAt: 0,
+                    documentId: doc._id,
+                    originalHash: doc.originalHash,
+                  });
+                  const attemptId = attempt.current ?? crypto.randomUUID();
                   const intent = await begin({
                     token,
-                    name,
+                    name: normalizedName,
                     consent,
-                    attemptId: attempt.current,
+                    attemptId,
                   });
+                  attempt.current = attemptId;
                   const completed = await completePdf(bytes, doc.fields, {
                     name: intent.name,
                     signedAt: intent.signedAt,

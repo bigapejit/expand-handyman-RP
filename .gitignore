@@ -7,5 +7,7 @@ node_modules/
 .scratch/
 .convex/
 test-results/
+public/pdfjs/
+public/pdf.worker.min.mjs
 
 .vercel
