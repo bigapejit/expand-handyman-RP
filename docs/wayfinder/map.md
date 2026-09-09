@@ -12,11 +12,12 @@ Use grilling and domain-modeling for unresolved product decisions. Local Markdow
 
 ## Decisions so far
 
-- [Finalize the uploaded-PDF signing MVP](issues/01-finalize-upload-signing.md): confirmed FRSG typed signatures, Convex storage, owner-only Clerk login, and upload-first scope; ready for implementation.
+- [Finalize the uploaded-PDF signing MVP](issues/01-finalize-upload-signing.md): implemented with FRSG-style typed signatures, Convex storage, owner-only Clerk login, and upload-first scope.
+- Production: https://staff.expandhandyman.com on Vercel, with Porkbun DNS. [Deployment and verification](../deployment.md).
 
 ## Not yet specified
 
-Hosting setup, service configuration and production URL remain launch prerequisites to inspect during implementation. Later proposal scope needs its own discussion after uploaded-document signing works; do not delay MVP for it.
+[Plan the proposal builder](issues/02-plan-proposal-builder.md) next: solutions, priced line items, generated proposals and editable handyman terms. The owner must create their production login using the allowlisted email before their first staff session.
 
 ## Out of scope
 

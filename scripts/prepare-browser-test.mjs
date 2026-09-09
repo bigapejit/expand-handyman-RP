@@ -1,0 +1,17 @@
+import { createClerkClient } from '@clerk/backend';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+if(!process.env.CLERK_SECRET_KEY?.startsWith('sk_test_')) throw new Error('This script requires a development Clerk instance.');
+if(!process.env.CONVEX_DEPLOYMENT?.startsWith('dev:')) throw new Error('This script requires a development Convex deployment.');
+const clerk=createClerkClient({secretKey:process.env.CLERK_SECRET_KEY});
+const claims={aud:'convex',email:'{{user.primary_email_address}}',email_verified:'{{user.email_verified}}',name:'{{user.full_name}}'};
+const templates=await clerk.jwtTemplates.list();
+if(!templates.data.some(t=>t.name==='convex'))await clerk.jwtTemplates.create({name:'convex',claims});
+const email='qa+clerk_test@expandhandyman.com';
+const users=await clerk.users.getUserList({emailAddress:[email]});
+const user=users.data[0]??await clerk.users.createUser({emailAddress:[email],firstName:'QA',lastName:'Tester',skipPasswordRequirement:true});
+const result=spawnSync(process.execPath,['node_modules/convex/bin/main.js','env','set','OWNER_CLERK_ID',user.id],{encoding:'utf8',windowsHide:true});
+if(result.status!==0)throw new Error(result.stderr);
+const token=await clerk.signInTokens.createSignInToken({userId:user.id,expiresInSeconds:1800});
+await mkdir('test-results',{recursive:true});await writeFile('test-results/browser-login.json',JSON.stringify({userId:user.id,url:`http://localhost:3210/sign-in?__clerk_ticket=${encodeURIComponent(token.token)}`,tokenId:token.id}));
+console.log('Development test identity and short-lived browser login prepared.');

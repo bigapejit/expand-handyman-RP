@@ -1,6 +1,6 @@
 # Expand Handyman document signing
 
-Status: MVP agreed and ready for implementation. Proposal builder deferred.
+Status: MVP implemented and deployed. Proposal builder deferred. See [deployment and verification](../deployment.md).
 
 ## Agreed MVP
 
@@ -58,4 +58,4 @@ Reuse Next.js, shadcn, Convex persistence/file storage and Clerk admin authentic
 
 ## Launch prerequisites
 
-Inspect available Convex and Clerk configuration and hosting access during implementation. Production service setup, owner identity restriction and a public application URL must be verified before customer use.
+Vercel, production Convex, Clerk owner restrictions and Porkbun DNS are configured. Production URL: https://staff.expandhandyman.com. The owner creates their first production account with andrew@cogtex.ai and verifies their email.

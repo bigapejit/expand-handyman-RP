@@ -37,7 +37,9 @@ export async function completePdf(
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(
     Uint8Array.from(atob(signatureFont), (c) => c.charCodeAt(0)),
-    { subset: true },
+    // Allura's contextual glyphs are lost by pdf-lib/fontkit subsetting.
+    // Embed the full font so every letter survives in downloaded PDFs.
+    { subset: false },
   );
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const unsupported = [...signature.name].some(

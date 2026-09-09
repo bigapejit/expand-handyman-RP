@@ -4,7 +4,7 @@ Staff portal for uploaded PDF signing. Built with Next.js, shadcn/Base UI, Conve
 
 ## Use
 
-1. Sign in at https://staff.expandhandyman.com with the owner account.
+1. Sign in at https://staff.expandhandyman.com with the owner account. On first use, choose **Create your owner account**, use **andrew@cogtex.ai**, and verify your email.
 2. Add a customer and their service address.
 3. Upload an unlocked PDF (up to 20 MB / 100 pages).
 4. Add signature fields to the appropriate pages, drag into position, and save.
@@ -30,3 +30,5 @@ Signature fields are stored in page-relative coordinates. PDF rotation and crop 
 Uploaded PDFs are the MVP. FRSG-style solutions, priced line items, generated proposals and editable terms are deferred. No Cloudflare Workers, document emails, payments or releases are included.
 
 The signature font is Allura, distributed under the SIL Open Font License in `public/fonts/OFL.txt`.
+
+See [deployment and verification](docs/deployment.md) and the [Wayfinder roadmap](docs/wayfinder/map.md).

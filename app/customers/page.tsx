@@ -1,6 +1,8 @@
 import { StaffShell } from "@/components/staff-shell";
 import { Dashboard } from "@/components/dashboard";
-export default function Page() {
+import { auth } from '@clerk/nextjs/server';
+export default async function Page() {
+  await auth.protect();
   return (
     <StaffShell>
       <Dashboard customersOnly />

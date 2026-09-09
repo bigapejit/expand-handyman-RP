@@ -35,6 +35,7 @@
     "@types/react-dom": "^19",
     "convex-test": "^0.0.41",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^3.2.4"
   }
