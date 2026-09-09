@@ -12,6 +12,7 @@ import {
   CONSENT_VERSION,
   signerName,
   validateFields,
+  validateSigningSetup,
 } from "../lib/signing";
 
 export const access = query({
@@ -104,7 +105,7 @@ export const issue = mutation({
     if (!d) throw new Error("Document not found.");
     if (d.status === "signed") throw new Error("Signed documents are locked.");
     if (d.token) return d.token;
-    validateFields(d.fields, d.pageCount);
+    validateSigningSetup(d.fields, d.pageCount, d.ownerSignature);
     if (!/^[a-f0-9]{64}$/.test(a.token))
       throw new Error("Invalid signing link.");
     if (
@@ -135,6 +136,8 @@ export const withdraw = mutation({
       issuedAt: undefined,
       viewedAt: undefined,
       intent: undefined,
+      declinedAt: undefined,
+      declineReason: undefined,
     });
   },
 });
@@ -157,6 +160,10 @@ export const forSigner = query({
       status: d.status,
       signedAt: d.signedAt,
       signerName: d.signerName,
+      signerTitle: d.signerTitle,
+      ownerSignature: d.ownerSignature,
+      declinedAt: d.declinedAt,
+      declineReason: d.declineReason,
       originalHash: d.originalHash,
     };
   },
@@ -176,6 +183,7 @@ export const beginSigning = mutation({
   args: {
     token: v.string(),
     name: v.string(),
+    title: v.optional(v.string()),
     consent: v.boolean(),
     attemptId: v.string(),
   },
@@ -190,18 +198,27 @@ export const beginSigning = mutation({
       throw new Error(
         "This document has already been signed. Refresh to download it.",
       );
+    if (d.status === "declined")
+      throw new Error("This document has been declined.");
     if (!a.consent) throw new Error("Please confirm your consent to sign.");
     const name = signerName(a.name);
+    const title = (a.title ?? "").trim();
+    if (title.length > 100 || /[\x00-\x1f]/.test(title))
+      throw new Error("Use a title under 100 characters.");
     if (a.attemptId.length < 20 || a.attemptId.length > 100)
       throw new Error("Invalid signing attempt.");
     if (d.intent && Date.now() - d.intent.signedAt < 600_000) {
-      if (d.intent.name !== name || d.intent.id !== a.attemptId)
+      if (
+        d.intent.name !== name ||
+        d.intent.id !== a.attemptId ||
+        (d.intent.title ?? "") !== title
+      )
         throw new Error(
           "A signing attempt is already in progress. Retry in this tab or wait 10 minutes.",
         );
       return { ...d.intent, uploadUrl: await ctx.storage.generateUploadUrl() };
     }
-    const intent = { id: a.attemptId, name, signedAt: Date.now() };
+    const intent = { id: a.attemptId, name, title, signedAt: Date.now() };
     await ctx.db.patch(d._id, { intent });
     return { ...intent, uploadUrl: await ctx.storage.generateUploadUrl() };
   },
@@ -265,7 +282,12 @@ export const commitSigned = internalMutation({
   },
   handler: async (ctx, a) => {
     const d = await ctx.db.get(a.id);
-    if (!d || d.token !== a.token || d.status === "draft")
+    if (
+      !d ||
+      d.token !== a.token ||
+      d.status === "draft" ||
+      d.status === "declined"
+    )
       throw new Error("This signing link was withdrawn.");
     if (d.status === "signed") return { duplicate: true };
     if (d.intent?.id !== a.attemptId)
@@ -275,11 +297,49 @@ export const commitSigned = internalMutation({
       signedId: a.signedId,
       signedHash: a.signedHash,
       signerName: d.intent.name,
+      signerTitle: d.intent.title,
       signedAt: d.intent.signedAt,
       consent: CONSENT,
       consentVersion: CONSENT_VERSION,
       userAgent: a.userAgent.slice(0, 500),
     });
     return { duplicate: false };
+  },
+});
+
+export const applyOwnerSignature = mutation({
+  args: { id: v.id("documents"), name: v.string(), consent: v.boolean() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const d = await ctx.db.get(a.id);
+    if (!d || d.status !== "draft")
+      throw new Error("Only drafts can be signed by the owner.");
+    if (!a.consent)
+      throw new Error("Confirm that you are applying your own signature.");
+    const ownerSignature = { name: signerName(a.name), signedAt: Date.now() };
+    await ctx.db.patch(d._id, { ownerSignature });
+    return ownerSignature;
+  },
+});
+
+export const decline = mutation({
+  args: { token: v.string(), reason: v.string() },
+  handler: async (ctx, a) => {
+    const d = await ctx.db
+      .query("documents")
+      .withIndex("by_token", (q) => q.eq("token", a.token))
+      .unique();
+    if (!d || d.status === "draft")
+      throw new Error("This link is no longer live.");
+    if (d.status === "signed") throw new Error("Signed documents are locked.");
+    if (d.status === "declined") return;
+    if (a.reason.length > 1000)
+      throw new Error("Keep your reason under 1,000 characters.");
+    await ctx.db.patch(d._id, {
+      status: "declined",
+      declinedAt: Date.now(),
+      declineReason: a.reason.trim(),
+      intent: undefined,
+    });
   },
 });

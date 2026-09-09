@@ -15,6 +15,9 @@ Status: MVP implemented and deployed. Proposal builder deferred. See [deployment
 - Admin can preview signature placement and see draft, link-ready, viewed and signed states. Live activity viewing is not included in the proposed MVP interpretation.
 - Signed documents are frozen; subsequent changes require a new document copy.
 - Reuse FRSG UI and signing patterns, with shadcn and Expand branding.
+- Customer signing directly reuses FRSG's paper-screen CSS, bottom Sign/Decline bar, opening sheet, yellow Sign here tag and Homemade Apple font. Adapt only branding and uploaded-document wording.
+- Place customer signature/date and owner signature/date fields independently. Resize width and height by corner drag, numeric inputs or Shift + arrows.
+- The owner applies their signature in the draft before link issuance. Each signer's date uses their own server-recorded signing time. Customers may decline with an optional reason, visible to staff.
 - Supplied logo: C:/Users/andyp/Downloads/expand-handyman-favicon.svg. SVG colors: charcoal #2E3337 and amber #E29B0C.
 
 ## Deferred

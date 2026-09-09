@@ -7,6 +7,14 @@ export const field = v.object({
   y: v.number(),
   width: v.number(),
   height: v.number(),
+  kind: v.optional(
+    v.union(
+      v.literal("customerSignature"),
+      v.literal("customerDate"),
+      v.literal("ownerSignature"),
+      v.literal("ownerDate"),
+    ),
+  ),
 });
 export default defineSchema({
   customers: defineTable({
@@ -27,6 +35,7 @@ export default defineSchema({
       v.literal("ready"),
       v.literal("viewed"),
       v.literal("signed"),
+      v.literal("declined"),
     ),
     token: v.optional(v.string()),
     issuedAt: v.optional(v.number()),
@@ -35,11 +44,22 @@ export default defineSchema({
     signedId: v.optional(v.id("_storage")),
     signedHash: v.optional(v.string()),
     signerName: v.optional(v.string()),
+    signerTitle: v.optional(v.string()),
+    ownerSignature: v.optional(
+      v.object({ name: v.string(), signedAt: v.number() }),
+    ),
+    declinedAt: v.optional(v.number()),
+    declineReason: v.optional(v.string()),
     consent: v.optional(v.string()),
     consentVersion: v.optional(v.string()),
     userAgent: v.optional(v.string()),
     intent: v.optional(
-      v.object({ id: v.string(), name: v.string(), signedAt: v.number() }),
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        signedAt: v.number(),
+        title: v.optional(v.string()),
+      }),
     ),
   })
     .index("by_token", ["token"])

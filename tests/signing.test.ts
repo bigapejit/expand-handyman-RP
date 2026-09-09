@@ -4,7 +4,13 @@ import { PDFDocument, degrees } from "pdf-lib";
 import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import { completePdf, pagePoint } from "../lib/pdf";
-import { validateFields, sha256 } from "../lib/signing";
+import {
+  validateFields,
+  sha256,
+  resizeField,
+  signingDate,
+  type SignatureField,
+} from "../lib/signing";
 const modules = import.meta.glob("../convex/**/*.ts");
 const field = {
   id: "signature-1",
@@ -182,6 +188,25 @@ describe("Access and document lifecycle", () => {
   });
 });
 describe("PDF geometry", () => {
+  test("resizing changes both dimensions without moving or overflowing the field", () => {
+    const resized = resizeField(field, 0.5, 0.2);
+    expect(resized).toMatchObject({
+      x: field.x,
+      y: field.y,
+      width: 0.5,
+      height: 0.2,
+    });
+    const clamped = resizeField(field, 2, 2);
+    expect(clamped.x + clamped.width).toBeCloseTo(1);
+    expect(clamped.y + clamped.height).toBeCloseTo(1);
+    expect(resizeField(field, -1, -1)).toMatchObject({
+      width: 0.1,
+      height: 0.025,
+    });
+  });
+  test("dates use the actual signing instant in the business timezone", () => {
+    expect(signingDate(Date.UTC(2026, 8, 10, 1))).toBe("09/09/2026");
+  });
   test("maps displayed coordinates through all page rotations and crop offsets", () => {
     const crop = { x: 10, y: 20, width: 600, height: 800 };
     expect(pagePoint(30, 40, crop, 0)).toEqual({ x: 40, y: 780 });
@@ -194,5 +219,179 @@ describe("PDF geometry", () => {
     expect(() => validateFields([{ ...field, x: 0.99 }], 2)).toThrow();
     expect(() => validateFields([{ ...field, y: NaN }], 2)).toThrow();
     expect(() => validateFields([field, { ...field }], 2)).toThrow();
+  });
+});
+
+describe("Owner signatures and FRSG decisions", () => {
+  test("only the owner can apply their signature, and issuing requires a customer signature", async () => {
+    const { t, owner, id } = await fixture();
+    await owner.mutation(api.documents.withdraw, { id });
+    const ownerField: SignatureField = { ...field, kind: "ownerSignature" };
+    await owner.mutation(api.documents.saveFields, {
+      id,
+      fields: [ownerField],
+    });
+    await expect(
+      owner.mutation(api.documents.issue, { id, token: "b".repeat(64) }),
+    ).rejects.toThrow("customer signature");
+    await owner.mutation(api.documents.saveFields, {
+      id,
+      fields: [
+        ownerField,
+        { ...field, id: "customer", kind: "customerSignature" },
+      ],
+    });
+    await expect(
+      owner.mutation(api.documents.issue, { id, token: "b".repeat(64) }),
+    ).rejects.toThrow("Apply your signature");
+    await expect(
+      t.mutation(api.documents.applyOwnerSignature, {
+        id,
+        name: "Test Owner",
+        consent: true,
+      }),
+    ).rejects.toThrow("Owner access");
+    await expect(
+      owner.mutation(api.documents.applyOwnerSignature, {
+        id,
+        name: "Test Owner",
+        consent: false,
+      }),
+    ).rejects.toThrow("Confirm");
+    const signature = await owner.mutation(api.documents.applyOwnerSignature, {
+      id,
+      name: "Test Owner",
+      consent: true,
+    });
+    await owner.mutation(api.documents.issue, { id, token: "b".repeat(64) });
+    expect(
+      (await t.query(api.documents.forSigner, { token: "b".repeat(64) }))
+        ?.ownerSignature,
+    ).toEqual(signature);
+    await expect(
+      owner.mutation(api.documents.applyOwnerSignature, {
+        id,
+        name: "Changed Owner",
+        consent: true,
+      }),
+    ).rejects.toThrow("Only drafts");
+  });
+  test("both signers and separately placed dates survive verified PDF completion", async () => {
+    const { t, owner, id, original, token } = await fixture();
+    await owner.mutation(api.documents.withdraw, { id });
+    const fields: SignatureField[] = [
+      { ...field, kind: "customerSignature" },
+      {
+        ...field,
+        id: "customer-date",
+        x: 0.6,
+        width: 0.2,
+        height: 0.035,
+        kind: "customerDate",
+      },
+      { ...field, id: "owner-signature", page: 1, kind: "ownerSignature" },
+      {
+        ...field,
+        id: "owner-date",
+        page: 1,
+        x: 0.6,
+        width: 0.2,
+        height: 0.035,
+        kind: "ownerDate",
+      },
+    ];
+    await owner.mutation(api.documents.saveFields, { id, fields });
+    const ownerSignature = await owner.mutation(
+      api.documents.applyOwnerSignature,
+      { id, name: "Test Owner", consent: true },
+    );
+    await owner.mutation(api.documents.issue, { id, token });
+    const attemptId = "two-signatures-attempt-1234";
+    const intent = await t.mutation(api.documents.beginSigning, {
+      token,
+      name: "Test Customer",
+      title: "Homeowner",
+      consent: true,
+      attemptId,
+    });
+    const completed = await completePdf(
+      original,
+      fields,
+      { ...intent, documentId: id, originalHash: await sha256(original) },
+      ownerSignature,
+    );
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob([new Uint8Array(completed)], { type: "application/pdf" }),
+      ),
+    );
+    const forgedOwner = await completePdf(
+      original,
+      fields,
+      { ...intent, documentId: id, originalHash: await sha256(original) },
+      { ...ownerSignature, name: "Someone Else" },
+    );
+    const forgedId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob([new Uint8Array(forgedOwner)], { type: "application/pdf" }),
+      ),
+    );
+    await expect(
+      t.action(api.pdfActions.finish, {
+        token,
+        attemptId,
+        storageId: forgedId,
+        userAgent: "test",
+      }),
+    ).rejects.toThrow("could not be verified");
+    await t.action(api.pdfActions.finish, {
+      token,
+      attemptId,
+      storageId,
+      userAgent: "test",
+    });
+    expect((await owner.query(api.documents.get, { id }))?.signerTitle).toBe(
+      "Homeowner",
+    );
+  });
+  test("declining stops an in-flight completion and records the reason for staff", async () => {
+    const { t, owner, id, token, original } = await fixture();
+    const attemptId = "decline-race-attempt-1234";
+    await t.mutation(api.documents.beginSigning, {
+      token,
+      name: "Test Signer",
+      consent: true,
+      attemptId,
+    });
+    await t.mutation(api.documents.decline, {
+      token,
+      reason: "Please update the scope.",
+    });
+    await expect(
+      t.mutation(api.documents.beginSigning, {
+        token,
+        name: "Test Signer",
+        consent: true,
+        attemptId,
+      }),
+    ).rejects.toThrow("declined");
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array(original)])),
+    );
+    await expect(
+      t.mutation(internal.documents.commitSigned, {
+        id,
+        token,
+        attemptId,
+        signedId: storageId,
+        signedHash: "fake",
+        userAgent: "test",
+      }),
+    ).rejects.toThrow("withdrawn");
+    expect((await owner.query(api.documents.get, { id }))?.declineReason).toBe(
+      "Please update the scope.",
+    );
+    await owner.mutation(api.documents.withdraw, { id });
+    expect(await t.query(api.documents.forSigner, { token })).toBeNull();
   });
 });

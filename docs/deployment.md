@@ -23,3 +23,11 @@ Deploy Convex with `npx convex deploy --yes` when backend or shared PDF code cha
 - Browser automation could not operate Chrome's file chooser because the extension's file URL access was disabled. The upload was verified through the authenticated API; the rest of the flow was exercised in the browser.
 
 Development helpers in `scripts/prepare-browser-test.mjs`, `scripts/create-test-pdf.mjs`, and `scripts/upload-test-document.ts` use a synthetic test identity. The authentication/upload helpers refuse production credentials. Test artifacts and temporary login links live in ignored `test-results/`.
+
+## FRSG customer flow and placement update
+
+The customer screen now ports the original FRSG paper-screen CSS and signing-sheet markup, including the bottom Sign/Decline bar, live name preview, optional title, yellow tag and Homemade Apple font. Only Expand branding and uploaded-document wording replace proposal-specific information. No FRSG business terms or notice text are added to uploaded PDFs.
+
+Eleven tests cover the expanded lifecycle: owner signature authorization and freezing, requirement for a customer signature, independently placed dates, two-signer PDF verification, forged owner-signature rejection, decline/completion races and two-dimensional resize bounds. A browser test confirmed corner resizing changes width and height without moving the field. Desktop and mobile customer screens were inspected, and a synthetic customer completed the FRSG sheet against a document with an owner signature and four fields. The saved PDF was inspected on normal and rotated pages.
+
+`scripts/prepare-signing-preview.ts` prepares that four-field synthetic development fixture. Existing signed files remain stored unchanged. Previously issued unsigned links keep their placed fields; withdraw them to add new fields or an owner signature.

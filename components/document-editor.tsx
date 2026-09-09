@@ -10,6 +10,7 @@ import { Status } from "./dashboard";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Checkbox } from "./ui/checkbox";
 import { Card, CardContent } from "./ui/card";
 import {
   AlertDialog,
@@ -33,12 +34,21 @@ import {
 } from "lucide-react";
 import { getPdf, downloadPdf } from "@/lib/files";
 import { dateTime, errorMessage } from "@/lib/utils";
-import type { SignatureField } from "@/lib/signing";
+import {
+  FIELD_LABELS,
+  fieldKind,
+  isOwnerField,
+  resizeField,
+  signerName,
+  type FieldKind,
+  type SignatureField,
+} from "@/lib/signing";
 export function DocumentEditor({ id }: { id: Id<"documents"> }) {
   const doc = useQuery(api.documents.get, { id });
   const save = useMutation(api.documents.saveFields);
   const issue = useMutation(api.documents.issue);
   const withdraw = useMutation(api.documents.withdraw);
+  const applySignature = useMutation(api.documents.applyOwnerSignature);
   const { getToken } = useAuth();
   const [bytes, setBytes] = useState<Uint8Array>();
   const [page, setPage] = useState(0);
@@ -48,6 +58,8 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [ownerName, setOwnerName] = useState<string | null>(null);
+  const [ownerConsent, setOwnerConsent] = useState(false);
   useEffect(() => {
     if (!doc) return;
     let active = true;
@@ -65,6 +77,19 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
   const current = fields ?? doc?.fields ?? [];
   const field = current.find((f) => f.id === selected);
   const draft = doc?.status === "draft";
+  function addField(kind: FieldKind) {
+    const f: SignatureField = {
+      id: crypto.randomUUID(),
+      kind,
+      page,
+      x: 0.1,
+      y: 0.65,
+      width: kind.endsWith("Date") ? 0.2 : 0.32,
+      height: kind.endsWith("Date") ? 0.035 : 0.075,
+    };
+    setFields([...current, f]);
+    setSelected(f.id);
+  }
   async function act(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -109,11 +134,19 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
             variant="outline"
             disabled={!bytes || busy}
             onClick={() =>
-              bytes &&
-              downloadPdf(
-                bytes,
-                `${doc.title}${doc.status === "signed" ? " - signed" : ""}`,
-              )
+              act(async () => {
+                if (!bytes) return;
+                const data =
+                  doc.status === "signed"
+                    ? bytes
+                    : await (
+                        await import("@/lib/pdf")
+                      ).ownerPdf(bytes, current, doc.ownerSignature);
+                downloadPdf(
+                  data,
+                  `${doc.title}${doc.status === "signed" ? " - signed" : ""}`,
+                );
+              })
             }
           >
             <Download />
@@ -124,6 +157,14 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               disabled={busy || current.length === 0 || !bytes}
               onClick={() =>
                 act(async () => {
+                  if (
+                    current.some(isOwnerField) &&
+                    ownerName !== null &&
+                    ownerName.trim() !== doc.ownerSignature?.name
+                  )
+                    throw new Error(
+                      "Apply your updated signature before creating the customer link.",
+                    );
                   await save({ id, fields: current });
                   const token = Array.from(
                     crypto.getRandomValues(new Uint8Array(32)),
@@ -151,6 +192,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               onChange={draft ? setFields : undefined}
               selected={selected}
               onSelect={setSelected}
+              owner={doc.ownerSignature}
             />
           ) : (
             <div className="min-h-[500px] p-10 text-center text-sm text-muted-foreground">
@@ -175,31 +217,29 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
           {draft ? (
             <>
               <div>
-                <h2 className="text-sm font-semibold">Signature placement</h2>
+                <h2 className="text-sm font-semibold">
+                  Signature & date placement
+                </h2>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Add a field to this page, then drag it onto the signature
-                  line. Arrow keys move a selected field precisely.
+                  Drag fields into place. Drag a corner to resize width and
+                  height. Arrow keys move; Shift + arrows resize.
                 </p>
-                <Button
-                  className="mt-4 w-full"
-                  variant="outline"
-                  disabled={!bytes || busy}
-                  onClick={() => {
-                    const f = {
-                      id: crypto.randomUUID(),
-                      page,
-                      x: 0.1,
-                      y: 0.7,
-                      width: 0.32,
-                      height: 0.075,
-                    };
-                    setFields([...current, f]);
-                    setSelected(f.id);
-                  }}
-                >
-                  <Plus />
-                  Add signature field
-                </Button>
+                <div className="mt-4 grid gap-2">
+                  {(Object.entries(FIELD_LABELS) as [FieldKind, string][]).map(
+                    ([kind, label]) => (
+                      <Button
+                        key={kind}
+                        variant="outline"
+                        className="justify-start"
+                        disabled={!bytes || busy}
+                        onClick={() => addField(kind)}
+                      >
+                        <Plus />
+                        {label}
+                      </Button>
+                    ),
+                  )}
+                </div>
               </div>
               {current.length > 0 && (
                 <div className="space-y-2">
@@ -213,7 +253,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                         setPage(f.page);
                       }}
                     >
-                      Signature {i + 1}
+                      {FIELD_LABELS[fieldKind(f)]} {i + 1}
                       <span className="ml-auto text-xs text-muted-foreground">
                         Page {f.page + 1}
                       </span>
@@ -242,6 +282,28 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                       );
                     }}
                   />
+                  <Label htmlFor="field-height">Field height (%)</Label>
+                  <Input
+                    id="field-height"
+                    type="number"
+                    min={2.5}
+                    step={0.5}
+                    max={Math.floor((1 - field.y) * 100)}
+                    value={Math.round(field.height * 1000) / 10}
+                    onChange={(e) =>
+                      setFields(
+                        current.map((f) =>
+                          f.id === field.id
+                            ? resizeField(
+                                f,
+                                f.width,
+                                Number(e.target.value) / 100,
+                              )
+                            : f,
+                        ),
+                      )
+                    }
+                  />
                   <Button
                     variant="destructive"
                     size="sm"
@@ -252,6 +314,63 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                   >
                     <Trash2 />
                     Remove field
+                  </Button>
+                </div>
+              )}
+              {current.some(isOwnerField) && (
+                <div className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-semibold">Your signature</h3>
+                  <Label htmlFor="owner-name">Your full name</Label>
+                  <Input
+                    id="owner-name"
+                    autoComplete="name"
+                    maxLength={100}
+                    value={ownerName ?? doc.ownerSignature?.name ?? ""}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                  />
+                  {doc.ownerSignature && (
+                    <p className="text-xs text-muted-foreground">
+                      Applied by {doc.ownerSignature.name} ·{" "}
+                      {dateTime(doc.ownerSignature.signedAt)}
+                    </p>
+                  )}
+                  <label className="flex items-start gap-2 text-xs leading-relaxed">
+                    <Checkbox
+                      checked={ownerConsent}
+                      onCheckedChange={(value) =>
+                        setOwnerConsent(value === true)
+                      }
+                    />
+                    I am applying my own electronic signature to this document.
+                  </label>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    disabled={busy || !bytes || !ownerConsent}
+                    onClick={() =>
+                      act(async () => {
+                        if (!bytes) return;
+                        const name = signerName(
+                          ownerName ?? doc.ownerSignature?.name ?? "",
+                        );
+                        await (
+                          await import("@/lib/pdf")
+                        ).ownerPdf(bytes, current, { name, signedAt: 0 });
+                        await save({ id, fields: current });
+                        await applySignature({
+                          id,
+                          name,
+                          consent: ownerConsent,
+                        });
+                        setFields(null);
+                        setOwnerConsent(false);
+                        setNotice(
+                          "Your signature is applied. Its date will use this signing time.",
+                        );
+                      })
+                    }
+                  >
+                    Apply my signature
                   </Button>
                 </div>
               )}
@@ -330,6 +449,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                 ["Link created", doc.issuedAt],
                 ["First viewed", doc.viewedAt],
                 ["Signed", doc.signedAt],
+                ["Declined", doc.declinedAt],
               ].map(([label, value]) => (
                 <div key={String(label)} className="flex gap-2">
                   <Check
@@ -353,6 +473,17 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                     {doc.signerName}
                   </p>
                 </div>
+              )}
+              {doc.ownerSignature && (
+                <p className="text-xs text-muted-foreground">
+                  Owner signed: {doc.ownerSignature.name} ·{" "}
+                  {dateTime(doc.ownerSignature.signedAt)}
+                </p>
+              )}
+              {doc.declineReason && (
+                <p className="text-xs text-muted-foreground">
+                  Decline reason: {doc.declineReason}
+                </p>
               )}
             </CardContent>
           </Card>

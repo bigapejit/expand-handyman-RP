@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./paper-screen.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -142,8 +143,13 @@
   font-display: swap;
 }
 .signature-ink {
-  font-family: "Allura", cursive;
-  color: #202427;
+  font-family: "Homemade Apple", cursive;
+  color: #1a1f7a;
+}
+@font-face {
+  font-family: "Homemade Apple";
+  src: url("/fonts/HomemadeApple-Regular.woff2") format("woff2");
+  font-display: block;
 }
 button,
 a,

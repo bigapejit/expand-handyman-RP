@@ -1,0 +1,476 @@
+/* The chrome a customer reads the **Proposal Document** through (issue #260,
+ * settled on the #241 prototype): the grey backdrop the white sheets sit on,
+ * the sticky top bar, the one strip that says where the Proposal stands, and —
+ * on a Signing Link — the sign bar pinned to the bottom of the screen and the
+ * sheet it rises into.
+ *
+ * Everything here is sans-serif and reads as the browser's, never as the
+ * paper's: the document is the deliverable and nothing around it may look like
+ * part of it. Nothing reads a theme token, for the same reason
+ * proposal-document.css reads none.
+ *
+ * Two rules this file exists to keep:
+ *
+ *  - A letter page narrower than the screen is *scaled*, never reflowed. The
+ *    sheet keeps every dimension it prints at and the whole document is drawn
+ *    at `--paper-scale`, so what a customer signs on a phone is the page that
+ *    will print. The transform takes no room, so the wrapper is given the
+ *    scaled height in pixels by the page that measured it.
+ *
+ *  - Every padding the chrome adds is undone under `@media print` with at
+ *    least the specificity it was set with. On the #241 prototype the screen's
+ *    breathing room above the first sheet and the room kept for the sign bar
+ *    both printed: every sheet shifted down and the job closed with a blank
+ *    one.
+ */
+
+.paper-screen {
+  --paper-scale: 1;
+  min-height: 100dvh;
+  background: #50545a;
+  padding-bottom: 2rem;
+  font: 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Room under the last sheet for the bar that floats over it. */
+.paper-screen-signing {
+  padding-bottom: 5.5rem;
+}
+
+/* ── The sheets, fitted to the screen ─────────────────────────────────────
+   The wrapper carries the scaled size; the document inside keeps the paper's
+   own. Both are needed: without the wrapper's width the scaled sheets would
+   not centre, and without its height the page would scroll past the end of
+   the document by everything the transform gave back. */
+.paper-sheets {
+  padding-top: 0.3in;
+  /* The sheets are laid out at full size and drawn small, so on a phone the
+     document overflows this box by everything the transform gives back. Left
+     to overflow, it would widen the page, and a browser that has been told the
+     viewport is the device width answers a wider page by zooming out — which
+     is the width the scale is measured from, so the two chase each other. */
+  overflow-x: clip;
+}
+
+.paper-sheets-scaled {
+  width: calc(8.5in * var(--paper-scale));
+  margin: 0 auto;
+}
+
+.paper-sheets-scaled > .proposal-document {
+  width: 8.5in;
+  max-width: none;
+  margin: 0;
+  transform: scale(var(--paper-scale));
+  transform-origin: top left;
+}
+
+/* ── The top bar ──────────────────────────────────────────────────────── */
+.paper-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgb(255 255 255 / 0.94);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgb(0 0 0 / 0.14);
+  color: #111;
+}
+
+.paper-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.paper-brand {
+  display: block;
+  height: 30px;
+  width: auto;
+  flex: none;
+}
+
+.paper-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── The strip under the bar ──────────────────────────────────────────── */
+.paper-strip {
+  padding: 8px 16px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.paper-strip-note {
+  background: #f6f2e3;
+  color: #4a4530;
+}
+
+.paper-strip-signed {
+  background: #e3f4e8;
+  color: #14532d;
+}
+
+.paper-strip-declined {
+  background: #ececec;
+  color: #444;
+}
+
+.paper-strip-fault {
+  background: #fdeaea;
+  color: #7f1d1d;
+}
+
+.paper-strip button {
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.paper-btn {
+  display: inline-block;
+  border: 1px solid #c9c9c9;
+  background: #fff;
+  color: #111;
+  border-radius: 8px;
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.paper-btn-primary {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.paper-btn-primary:hover {
+  background: #000;
+}
+
+.paper-btn-quiet {
+  border-color: transparent;
+  color: #444;
+}
+
+.paper-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.paper-link {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  color: #555;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.paper-grow {
+  flex: 1;
+}
+
+.paper-tel {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── The sign bar ─────────────────────────────────────────────────────── */
+.paper-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: rgb(255 255 255 / 0.97);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid rgb(0 0 0 / 0.14);
+  box-shadow: 0 -10px 30px rgb(0 0 0 / 0.25);
+  color: #111;
+  font: 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.paper-bar-row {
+  max-width: 8.5in;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.paper-bar-sum {
+  font-size: 15px;
+}
+
+.paper-bar-struck {
+  text-decoration: line-through;
+  color: #666;
+}
+
+.paper-bar-help {
+  font-size: 15px;
+}
+
+/* The reader's answer to Sign: one sentence above the row, in the strip's
+   own note colours, so it reads as the same voice as the strip under the top
+   bar. */
+.paper-bar-note {
+  margin: 0;
+  padding: 10px 16px;
+  background: #f6f2e3;
+  color: #4a4530;
+  font-size: 13px;
+  text-align: center;
+}
+
+.paper-bar-sheet {
+  max-width: 8.5in;
+  margin: 0 auto;
+  padding: 14px 16px 16px;
+  max-height: 72dvh;
+  overflow: auto;
+}
+
+/* ── The form inside the sheet ────────────────────────────────────────── */
+.paper-form {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.paper-form-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paper-form-sum {
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.paper-fields {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.paper-form label > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.paper-form input[type="text"],
+.paper-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c9c9c9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 15px;
+  background: #fff;
+  color: #111;
+}
+
+.paper-form input[aria-invalid="true"] {
+  border-color: #dc2626;
+}
+
+.paper-tick {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #222;
+}
+
+.paper-tick input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: #111;
+  flex: none;
+}
+
+.paper-notice {
+  border: 1px solid #ddd;
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.paper-notice-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.paper-notice-text {
+  max-height: 130px;
+  overflow: auto;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+  color: #555;
+  padding-right: 6px;
+}
+
+.paper-fault {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 12.5px;
+}
+
+.paper-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.paper-decline {
+  display: grid;
+  gap: 8px;
+}
+
+/* ── Phones ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .paper-top-row {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+
+  .paper-top .paper-btn {
+    padding: 6px 9px;
+    font-size: 13px;
+  }
+
+  .paper-strip {
+    text-align: left;
+  }
+
+  .paper-fields {
+    grid-template-columns: 1fr;
+  }
+
+  /* The sheet may take up to four-fifths of the screen; the paper keeps the
+     rest, so the customer can still see what they are signing. */
+  .paper-bar-sheet {
+    max-height: 80dvh;
+  }
+}
+
+/* ── Print: the paper alone, at full size ─────────────────────────────── */
+@media print {
+  /* `--paper-scale` is not reset here: the page sets it inline on this very
+     element, which no stylesheet can outrank. What the scale drives is undone
+     instead, below. */
+  .paper-screen,
+  .paper-screen-signing {
+    min-height: 0;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* The breathing room above the first sheet would shift every sheet down and
+     spill a blank one at the end of the job. */
+  .paper-sheets {
+    padding-top: 0;
+    overflow: visible;
+  }
+
+  .paper-sheets-scaled,
+  .paper-sheets-scaled > .proposal-document {
+    width: auto;
+    /* Beats the height the page measured and set inline. */
+    height: auto !important;
+    margin: 0;
+    overflow: visible;
+    transform: none;
+  }
+
+  .paper-top,
+  .paper-bar {
+    display: none !important;
+  }
+}
+
+.pd-sign-here {
+  position: absolute;
+  left: -0.6in;
+  bottom: 3pt;
+  display: inline-flex;
+  align-items: center;
+  height: 0.27in;
+  padding: 0 4pt 0 7pt;
+  border: 0;
+  background: #ffd000;
+  color: #111;
+  font: 700 8pt/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  animation: pd-sign-here-nudge 1.8s ease-in-out infinite;
+}
+
+/* The tag's point, into the rule it belongs to. */
+.pd-sign-here::after {
+  content: "";
+  position: absolute;
+  right: -0.11in;
+  top: 0;
+  border-top: 0.135in solid transparent;
+  border-bottom: 0.135in solid transparent;
+  border-left: 0.11in solid #ffd000;
+}
+
+@keyframes pd-sign-here-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3pt);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-sign-here {
+    animation: none;
+  }
+}
+
+
+.paper-pdf-pages { padding: 0 12px; }
+.paper-pdf-page { max-width: 8.5in; margin-bottom: .3in; box-shadow: 0 2px 14px rgb(0 0 0 / .45); scroll-margin-top: 110px; }
+.paper-pdf-loading { width: min(8.5in, 100%); min-height: 70vh; margin: 0 auto; padding: 40px; background: white; color: #666; }
+.paper-bar-sum { min-width: 0; overflow-wrap: anywhere; }
+.paper-form button:disabled { opacity: .6; cursor: default; }
+.pd-sign-here { left: max(-58px, -8vw); }

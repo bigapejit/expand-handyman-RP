@@ -7,9 +7,9 @@ Staff portal for uploaded PDF signing. Built with Next.js, shadcn/Base UI, Conve
 1. Sign in at https://staff.expandhandyman.com with the owner account. On first use, choose **Create your owner account**, use **andrew@cogtex.ai**, and verify your email.
 2. Add a customer and their service address.
 3. Upload an unlocked PDF (up to 20 MB / 100 pages).
-4. Add signature fields to the appropriate pages, drag into position, and save.
+4. Add customer signature/date fields and, if needed, your own signature/date fields. Drag to position; drag a corner to resize both dimensions, or enter width and height. Apply your own signature before sending.
 5. Create a signing link, copy it, and send it yourself.
-6. The customer reviews the PDF and types their name. The completed PDF is saved and available for download from the same link and the staff workspace.
+6. The customer sees the FRSG paper layout, presses the yellow **Sign here** tag or the bottom **Sign document** button, and completes the signing sheet. They may also decline with a reason. The completed PDF is saved and available from the same link and the staff workspace.
 
 Creating a link locks the document and fields. Withdrawing an unsigned link revokes access and makes fields editable again. Signed documents are immutable. Upload a new document for changes. The link is a bearer credential: share it only with the intended customer. No customer login or independent identity verification is performed.
 
@@ -29,6 +29,6 @@ Signature fields are stored in page-relative coordinates. PDF rotation and crop 
 
 Uploaded PDFs are the MVP. FRSG-style solutions, priced line items, generated proposals and editable terms are deferred. No Cloudflare Workers, document emails, payments or releases are included.
 
-The signature font is Allura, distributed under the SIL Open Font License in `public/fonts/OFL.txt`.
+The customer signing screen reuses FRSG's `paper-screen.css`, sign-bar markup and Homemade Apple handwriting font. The font's Apache license is in `public/fonts/HomemadeApple-LICENSE.txt`. Branding and document-specific wording are adapted for Expand. Date fields use each signer's server-recorded signing time, displayed in America/Los_Angeles; the certificate records UTC timestamps.
 
 See [deployment and verification](docs/deployment.md) and the [Wayfinder roadmap](docs/wayfinder/map.md).

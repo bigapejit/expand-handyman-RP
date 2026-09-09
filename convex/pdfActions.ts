@@ -50,7 +50,7 @@ export const finish = action({
     const d = await ctx.runQuery(internal.documents.signingData, {
       token: a.token,
     });
-    if (!d || d.status === "draft")
+    if (!d || d.status === "draft" || d.status === "declined")
       throw new Error("This signing link is no longer available.");
     if (d.status === "signed") return;
     if (!d.intent || d.intent.id !== a.attemptId)
@@ -69,7 +69,9 @@ export const finish = action({
         signedAt: d.intent.signedAt,
         documentId: d._id,
         originalHash: d.originalHash,
+        title: d.intent.title,
       },
+      d.ownerSignature,
     );
     const expectedHash = await sha256(expected);
     if (

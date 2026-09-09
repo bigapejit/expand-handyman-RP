@@ -58,6 +58,7 @@ export function Status({ status }: { status: string }) {
           ready: "Link ready",
           viewed: "Viewed",
           signed: "Signed",
+          declined: "Declined",
         } as Record<string, string>
       )[status] ?? status}
     </Badge>
@@ -168,7 +169,7 @@ export function Dashboard({
         </div>
         {!customersOnly && (
           <div className="flex gap-1">
-            {["all", "draft", "ready", "viewed", "signed"].map((s) => (
+            {["all", "draft", "ready", "viewed", "signed", "declined"].map((s) => (
               <Button
                 key={s}
                 size="sm"
