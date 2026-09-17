@@ -252,6 +252,7 @@ export function Dashboard({
                 <TableHead>Document</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Last viewed</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead />
               </TableRow>
@@ -273,6 +274,9 @@ export function Dashboard({
                   <TableCell>{d.customer?.name}</TableCell>
                   <TableCell>
                     <Status status={d.status} />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {dateTime(d.lastViewedAt)}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {new Date(d._creationTime).toLocaleDateString()}

@@ -17,7 +17,7 @@ const cors = (request: Request) => {
     Vary: "Origin",
     "Cache-Control": "no-store",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 };
 http.route({
@@ -64,6 +64,31 @@ http.route({
         headers: cors(req),
       });
     }
+  }),
+});
+http.route({
+  path: "/seen",
+  method: "OPTIONS",
+  handler: httpAction(
+    async (_ctx, req) =>
+      new Response(null, { status: 204, headers: cors(req) }),
+  ),
+});
+http.route({
+  path: "/seen",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    try {
+      const body = JSON.parse(await req.text());
+      if (typeof body?.viewId === "string" && typeof body?.token === "string")
+        await ctx.runMutation(internal.documents.recordSeen, {
+          viewId: body.viewId as Id<"documentViews">,
+          token: body.token,
+        });
+    } catch {
+      // A beacon has no one to report to; an unreadable body is simply dropped.
+    }
+    return new Response(null, { status: 204, headers: cors(req) });
   }),
 });
 export default http;

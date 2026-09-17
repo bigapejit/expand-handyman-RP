@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PdfPages } from "./pdf-viewer";
 import { SignBar, type SignBarOpen, type SignatureInput } from "./sign-bar";
-import { getPdf, downloadPdf, uploadFile } from "@/lib/files";
+import { getPdf, downloadPdf, uploadFile, sendSeenBeacon } from "@/lib/files";
 import { signerName, signingDate } from "@/lib/signing";
 import { errorMessage } from "@/lib/utils";
 
@@ -34,6 +34,7 @@ function scrollToSignature() {
 export function SigningPage({ token }: { token: string }) {
   const doc = useQuery(api.documents.forSigner, { token });
   const opened = useMutation(api.documents.opened);
+  const seen = useMutation(api.documents.seen);
   const begin = useMutation(api.documents.beginSigning);
   const finish = useAction(api.pdfActions.finish);
   const decline = useMutation(api.documents.decline);
@@ -45,6 +46,8 @@ export function SigningPage({ token }: { token: string }) {
   const [fileError, setFileError] = useState("");
   const [lockedInput, setLockedInput] = useState<SignatureInput>();
   const attempt = useRef<string | undefined>(undefined);
+  const view = useRef<Id<"documentViews"> | null>(null);
+  const logged = useRef(false);
   const [retry, setRetry] = useState(0);
   const signed = doc?.status === "signed";
   useEffect(() => {
@@ -56,7 +59,14 @@ export function SigningPage({ token }: { token: string }) {
       .then((data) => {
         if (active) {
           setBytes(data);
-          void opened({ token }).catch(() => {});
+          if (!logged.current) {
+            logged.current = true;
+            void opened({ token, userAgent: navigator.userAgent })
+              .then((id) => {
+                view.current = id;
+              })
+              .catch(() => {});
+          }
         }
       })
       .catch((e) => {
@@ -66,6 +76,25 @@ export function SigningPage({ token }: { token: string }) {
       active = false;
     };
   }, [doc?._id, signed, token, opened, retry]);
+  useEffect(() => {
+    const beat = () => {
+      if (view.current && document.visibilityState === "visible")
+        void seen({ viewId: view.current, token }).catch(() => {});
+    };
+    const close = () => {
+      if (view.current) sendSeenBeacon(view.current, token);
+    };
+    const onVisibility = () =>
+      document.visibilityState === "visible" ? beat() : close();
+    const timer = setInterval(beat, 20000);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", close);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", close);
+    };
+  }, [seen, token]);
 
   if (doc === null)
     return (

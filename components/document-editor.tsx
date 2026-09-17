@@ -11,6 +11,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
+import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import {
   AlertDialog,
@@ -29,11 +30,12 @@ import {
   Download,
   Trash2,
   Check,
+  Eye,
   LockKeyhole,
   ExternalLink,
 } from "lucide-react";
 import { getPdf, downloadPdf } from "@/lib/files";
-import { dateTime, errorMessage } from "@/lib/utils";
+import { dateTime, duration, errorMessage } from "@/lib/utils";
 import {
   FIELD_LABELS,
   fieldKind,
@@ -45,6 +47,7 @@ import {
 } from "@/lib/signing";
 export function DocumentEditor({ id }: { id: Id<"documents"> }) {
   const doc = useQuery(api.documents.get, { id });
+  const views = useQuery(api.documents.views, { id });
   const save = useMutation(api.documents.saveFields);
   const issue = useMutation(api.documents.issue);
   const withdraw = useMutation(api.documents.withdraw);
@@ -60,6 +63,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
   const [confirm, setConfirm] = useState(false);
   const [ownerName, setOwnerName] = useState<string | null>(null);
   const [ownerConsent, setOwnerConsent] = useState(false);
+  const [allViews, setAllViews] = useState(false);
   useEffect(() => {
     if (!doc) return;
     let active = true;
@@ -450,7 +454,6 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               {[
                 ["Uploaded", doc._creationTime],
                 ["Link created", doc.issuedAt],
-                ["First viewed", doc.viewedAt],
                 ["Signed", doc.signedAt],
                 ["Declined", doc.declinedAt],
               ].map(([label, value]) => (
@@ -469,6 +472,60 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                   </div>
                 </div>
               ))}
+              <div className="space-y-3 border-t pt-3">
+                <h3 className="text-xs font-medium">Opens</h3>
+                {views?.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Not opened yet
+                  </p>
+                )}
+                {(allViews ? views : views?.slice(0, 10))?.map((view) => (
+                  <div key={view._id} className="flex gap-2">
+                    <Eye
+                      size={14}
+                      className="mt-0.5 shrink-0 text-muted-foreground"
+                    />
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                        {dateTime(view.openedAt)}
+                        {view.viewer === "owner" && (
+                          <Badge
+                            variant="secondary"
+                            className="h-4 px-1.5 text-[10px] font-normal"
+                          >
+                            You
+                          </Badge>
+                        )}
+                        {view.previousLink && (
+                          <Badge
+                            variant="outline"
+                            className="h-4 px-1.5 text-[10px] font-normal"
+                          >
+                            Previous link
+                          </Badge>
+                        )}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {duration(view.lastSeenAt - view.openedAt)}
+                        {view.documentStatus === "signed"
+                          ? " · Opened signed copy"
+                          : view.documentStatus === "declined"
+                            ? " · Opened after declining"
+                            : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {(views?.length ?? 0) > 10 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAllViews(!allViews)}
+                  >
+                    {allViews ? "Show fewer" : `Show all ${views!.length}`}
+                  </Button>
+                )}
+              </div>
               {doc.signerName && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-muted-foreground">Signed by</p>

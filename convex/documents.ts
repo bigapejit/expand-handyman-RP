@@ -4,7 +4,9 @@ import {
   query,
   internalQuery,
   internalMutation,
+  type MutationCtx,
 } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireOwner, isOwner } from "./auth";
 import { field } from "./schema";
 import {
@@ -28,6 +30,15 @@ export const list = query({
         async (d) => ({
           ...d,
           customer: await ctx.db.get(d.customerId),
+          lastViewedAt: (
+            await ctx.db
+              .query("documentViews")
+              .withIndex("by_document_viewer", (q) =>
+                q.eq("documentId", d._id).eq("viewer", "customer"),
+              )
+              .order("desc")
+              .first()
+          )?.openedAt,
           originalId: undefined,
           signedId: undefined,
         }),
@@ -169,14 +180,64 @@ export const forSigner = query({
   },
 });
 export const opened = mutation({
-  args: { token: v.string() },
+  args: { token: v.string(), userAgent: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const d = await ctx.db
       .query("documents")
       .withIndex("by_token", (q) => q.eq("token", a.token))
       .unique();
-    if (d?.status === "ready")
-      await ctx.db.patch(d._id, { status: "viewed", viewedAt: Date.now() });
+    if (!d || d.status === "draft" || !a.token) return null;
+    const now = Date.now();
+    const viewer = (await isOwner(ctx)) ? "owner" : "customer";
+    const viewId = await ctx.db.insert("documentViews", {
+      documentId: d._id,
+      token: a.token,
+      viewer,
+      documentStatus: d.status,
+      openedAt: now,
+      lastSeenAt: now,
+      userAgent: a.userAgent?.slice(0, 500),
+    });
+    if (viewer === "customer" && d.status === "ready")
+      await ctx.db.patch(d._id, { status: "viewed", viewedAt: now });
+    return viewId;
+  },
+});
+const seenArgs = { viewId: v.id("documentViews"), token: v.string() };
+// Heartbeats arrive every 20 seconds while the tab is visible, so one update may
+// extend a view by at most this much. Time spent with the tab hidden is not reading.
+export const MAX_SEEN_STEP = 30_000;
+async function touchView(
+  ctx: MutationCtx,
+  a: { viewId: Id<"documentViews">; token: string },
+) {
+  const view = await ctx.db.get(a.viewId);
+  if (!view || view.token !== a.token) return;
+  const next = Math.min(Date.now(), view.lastSeenAt + MAX_SEEN_STEP);
+  if (next > view.lastSeenAt)
+    await ctx.db.patch(view._id, { lastSeenAt: next });
+}
+export const seen = mutation({
+  args: seenArgs,
+  handler: (ctx, a) => touchView(ctx, a),
+});
+export const recordSeen = internalMutation({
+  args: seenArgs,
+  handler: (ctx, a) => touchView(ctx, a),
+});
+export const views = query({
+  args: { id: v.id("documents") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const d = await ctx.db.get(a.id);
+    if (!d) return [];
+    return (
+      await ctx.db
+        .query("documentViews")
+        .withIndex("by_document", (q) => q.eq("documentId", a.id))
+        .order("desc")
+        .take(500)
+    ).map((row) => ({ ...row, previousLink: row.token !== d.token }));
   },
 });
 export const beginSigning = mutation({

@@ -64,4 +64,20 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_customer", ["customerId"]),
+  documentViews: defineTable({
+    documentId: v.id("documents"),
+    token: v.string(),
+    viewer: v.union(v.literal("owner"), v.literal("customer")),
+    documentStatus: v.union(
+      v.literal("ready"),
+      v.literal("viewed"),
+      v.literal("signed"),
+      v.literal("declined"),
+    ),
+    openedAt: v.number(),
+    lastSeenAt: v.number(),
+    userAgent: v.optional(v.string()),
+  })
+    .index("by_document", ["documentId", "openedAt"])
+    .index("by_document_viewer", ["documentId", "viewer", "openedAt"]),
 });
