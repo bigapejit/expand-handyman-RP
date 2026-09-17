@@ -30,15 +30,16 @@ export const list = query({
         async (d) => ({
           ...d,
           customer: await ctx.db.get(d.customerId),
-          lastViewedAt: (
-            await ctx.db
-              .query("documentViews")
-              .withIndex("by_document_viewer", (q) =>
-                q.eq("documentId", d._id).eq("viewer", "customer"),
-              )
-              .order("desc")
-              .first()
-          )?.openedAt,
+          lastViewedAt:
+            (
+              await ctx.db
+                .query("documentViews")
+                .withIndex("by_document_viewer", (q) =>
+                  q.eq("documentId", d._id).eq("viewer", "customer"),
+                )
+                .order("desc")
+                .first()
+            )?.openedAt ?? d.viewedAt,
           originalId: undefined,
           signedId: undefined,
         }),
@@ -196,6 +197,7 @@ export const opened = mutation({
       documentStatus: d.status,
       openedAt: now,
       lastSeenAt: now,
+      viewedMs: 0,
       userAgent: a.userAgent?.slice(0, 500),
     });
     if (viewer === "customer" && d.status === "ready")
@@ -204,8 +206,8 @@ export const opened = mutation({
   },
 });
 const seenArgs = { viewId: v.id("documentViews"), token: v.string() };
-// Heartbeats arrive every 20 seconds while the tab is visible, so one update may
-// extend a view by at most this much. Time spent with the tab hidden is not reading.
+// Heartbeats arrive every 20 seconds while the tab is visible. A longer gap since
+// the last one means the tab was hidden, and that time is not counted as reading.
 export const MAX_SEEN_STEP = 30_000;
 async function touchView(
   ctx: MutationCtx,
@@ -213,9 +215,13 @@ async function touchView(
 ) {
   const view = await ctx.db.get(a.viewId);
   if (!view || view.token !== a.token) return;
-  const next = Math.min(Date.now(), view.lastSeenAt + MAX_SEEN_STEP);
-  if (next > view.lastSeenAt)
-    await ctx.db.patch(view._id, { lastSeenAt: next });
+  const now = Date.now();
+  const gap = now - view.lastSeenAt;
+  if (gap <= 0) return;
+  await ctx.db.patch(view._id, {
+    lastSeenAt: now,
+    viewedMs: view.viewedMs + (gap <= MAX_SEEN_STEP ? gap : 0),
+  });
 }
 export const seen = mutation({
   args: seenArgs,

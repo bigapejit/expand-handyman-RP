@@ -474,11 +474,27 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               ))}
               <div className="space-y-3 border-t pt-3">
                 <h3 className="text-xs font-medium">Opens</h3>
-                {views?.length === 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Not opened yet
-                  </p>
-                )}
+                {views?.length === 0 &&
+                  (doc.viewedAt ? (
+                    <div className="flex gap-2">
+                      <Eye
+                        size={14}
+                        className="mt-0.5 shrink-0 text-muted-foreground"
+                      />
+                      <div>
+                        <p className="text-[11px] font-medium">
+                          {dateTime(doc.viewedAt)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          First viewed, before opens were logged
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Not opened yet
+                    </p>
+                  ))}
                 {(allViews ? views : views?.slice(0, 10))?.map((view) => (
                   <div key={view._id} className="flex gap-2">
                     <Eye
@@ -506,7 +522,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
                         )}
                       </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {duration(view.lastSeenAt - view.openedAt)}
+                        {duration(view.viewedMs)}
                         {view.documentStatus === "signed"
                           ? " · Opened signed copy"
                           : view.documentStatus === "declined"

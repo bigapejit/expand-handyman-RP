@@ -114,6 +114,7 @@ describe("Heartbeat", () => {
       await t.mutation(api.documents.seen, { viewId: viewId!, token });
       const beat = await t.run(async (ctx) => ctx.db.get(viewId!));
       expect(beat?.lastSeenAt).toBe(Date.now());
+      expect(beat?.viewedMs).toBe(20_000);
       expect(beat?.openedAt).toBe(opened?.openedAt);
       vi.setSystemTime(new Date("2026-09-17T10:01:00Z"));
       await t.mutation(api.documents.seen, {
@@ -142,9 +143,17 @@ describe("Heartbeat", () => {
       await t.mutation(api.documents.seen, { viewId: viewId!, token });
       vi.setSystemTime(new Date("2026-09-17T14:00:00Z"));
       await t.mutation(api.documents.seen, { viewId: viewId!, token });
-      expect(
-        (await t.run(async (ctx) => ctx.db.get(viewId!)))?.lastSeenAt,
-      ).toBe(Date.parse("2026-09-17T10:00:20Z") + MAX_SEEN_STEP);
+      const resumed = await t.run(async (ctx) => ctx.db.get(viewId!));
+      expect(resumed?.lastSeenAt).toBe(Date.now());
+      expect(resumed?.viewedMs).toBe(20_000);
+      vi.setSystemTime(new Date("2026-09-17T14:00:20Z"));
+      await t.mutation(api.documents.seen, { viewId: viewId!, token });
+      vi.setSystemTime(new Date("2026-09-17T14:00:40Z"));
+      await t.mutation(api.documents.seen, { viewId: viewId!, token });
+      expect((await t.run(async (ctx) => ctx.db.get(viewId!)))?.viewedMs).toBe(
+        60_000,
+      );
+      expect(MAX_SEEN_STEP).toBeGreaterThan(20_000);
     } finally {
       vi.useRealTimers();
     }
@@ -204,6 +213,22 @@ describe("The view feed", () => {
 });
 
 describe("The dashboard column", () => {
+  test("falls back to the first view recorded before opens were logged", async () => {
+    const { t, owner, id, token } = await fixture();
+    const legacy = Date.parse("2026-09-01T09:00:00Z");
+    await t.run((ctx) =>
+      ctx.db.patch(id, { status: "viewed", viewedAt: legacy }),
+    );
+    expect(
+      (await owner.query(api.documents.list, {})).find((d) => d._id === id)
+        ?.lastViewedAt,
+    ).toBe(legacy);
+    await t.mutation(api.documents.opened, { token });
+    const listed = (await owner.query(api.documents.list, {})).find(
+      (d) => d._id === id,
+    );
+    expect(listed?.lastViewedAt).toBeGreaterThan(legacy);
+  });
   test("lastViewedAt follows the latest customer view and ignores owner previews", async () => {
     vi.useFakeTimers();
     try {
@@ -303,9 +328,9 @@ describe("The close beacon", () => {
         body: JSON.stringify({ viewId, token }),
       });
       expect(res.status).toBe(204);
-      expect(
-        (await t.run(async (ctx) => ctx.db.get(viewId!)))?.lastSeenAt,
-      ).toBe(Date.now());
+      const beaconed = await t.run(async (ctx) => ctx.db.get(viewId!));
+      expect(beaconed?.lastSeenAt).toBe(Date.now());
+      expect(beaconed?.viewedMs).toBe(20_000);
       const seenAt = Date.now();
       vi.setSystemTime(new Date("2026-09-17T10:00:40Z"));
       for (const body of ["not json", JSON.stringify({ token }), ""])

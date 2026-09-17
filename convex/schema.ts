@@ -76,6 +76,7 @@ export default defineSchema({
     ),
     openedAt: v.number(),
     lastSeenAt: v.number(),
+    viewedMs: v.number(),
     userAgent: v.optional(v.string()),
   })
     .index("by_document", ["documentId", "openedAt"])
