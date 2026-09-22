@@ -84,3 +84,27 @@ A sent proposal being turned down, either by the customer through its signing li
 
 **Opened**:
 A sent proposal whose current signing link the customer has viewed at least once. Read from the view log; not a state of the proposal.
+
+**Proposal paper**:
+A proposal laid out as the customer reads it, the same on screen, printed or as a PDF: letterhead, cover details, an opening letter with the total and the two signature lines, one section per solution listing its line items and scope of work with no prices, the grand total with payment terms and tax, and the terms in full.
+_Avoid_: Proposal document (a document is an uploaded PDF), proposal PDF
+
+**Terms**:
+Expand Handyman's one fixed set of contract conditions (scope, payment, changes, warranty, cancellation and the rest), the same on every proposal and printed in full on the proposal paper. Nobody edits them per proposal, and sending fixes the wording the customer signs under.
+_Avoid_: Terms of use (the website's), fine print
+
+**Notes and exclusions**:
+The owner's free text for one proposal: what the job leaves out or depends on. Printed as a paragraph of the opening letter, and absent when empty.
+
+**Estimator**:
+The person the proposal paper names as having prepared the offer and as the one to call with questions: the owner, under the name on their sign-in account when the proposal is sent, with the business's phone and email.
+
+**Notice to Customer**:
+Washington's required contractor disclosure: registration, bond and lien rights. A customer approving a proposal of $1,000 or more also acknowledges receiving it, and the wording they acknowledged is kept with the signed copy.
+
+**Signed copy**:
+The proposal paper of an approved proposal: the customer's typed name on their signature line, followed by the certificate of completion.
+_Avoid_: Signed document (a signed uploaded PDF, a different thing)
+
+**Certificate of completion**:
+The closing pages of a signed copy, recording how it was signed: when it was sent, first viewed and approved, by whom and from where, with a fingerprint of the offer as accepted, and the Notice to Customer on a second page when it was acknowledged.
