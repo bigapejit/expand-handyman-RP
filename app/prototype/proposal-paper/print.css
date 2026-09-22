@@ -1,0 +1,18 @@
+/* PROTOTYPE (issue #22): the part of FRSG's app/report/print.css the
+   Proposal Document needs on its own: the letter sheet and plain block flow. */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.55in 0.6in 0.75in;
+  }
+
+  html,
+  body {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+}

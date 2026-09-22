@@ -1,0 +1,72 @@
+/* The two faces the paper is set in, carried by this repository.
+ *
+ * The printed record has to read the same wherever it is drawn, and that is
+ * now three places: the customer's browser, the staff print dialogue, and the
+ * server renderer that turns this same markup into a PDF on Linux. No Linux
+ * machine has Times New Roman, so a stack that names Times and stops would
+ * set one copy of a contract in Liberation Serif and another in Times — the
+ * same document on different paper. The faces therefore travel with the app:
+ *
+ *   Tinos           Steve Matteson's serif, metric-compatible with Times New
+ *                   Roman — same advance widths, so the sheet breaks its
+ *                   lines and fills its pages identically on a machine that
+ *                   has Times and a machine that has nothing. SIL OFL 1.1.
+ *   Homemade Apple  The signature script the #240 paper settled on, and the
+ *                   only face on the document that is not the serif.
+ *                   Apache 2.0.
+ *
+ * Both are served from this app's own `public/fonts/`: no Google Fonts
+ * request, nothing from a third party at runtime, so a customer reading their
+ * contract fetches every part of it from one origin.
+ *
+ * `font-display: block` rather than `swap`, because this is paper. A swap
+ * would draw the document in the fallback face first, and a print dialogue
+ * opened in that moment prints the wrong typeface. Block has its own failure
+ * — text is invisible, not fallback, until the face lands — which is why
+ * anything that opens a print dialogue asks for the faces and waits first
+ * (`lib/paper-fonts.ts`); a sheet printed cold would otherwise be blank.
+ *
+ * The stacks that name these families live in `lib/paper-fonts.ts`, which
+ * `paper-fonts.test.ts` holds this file and the two stylesheets to. Where the
+ * files came from and how to make them again: `docs/paper-fonts.md`.
+ */
+
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-Italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-BoldItalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Homemade Apple";
+  src: url("/fonts/HomemadeApple-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
