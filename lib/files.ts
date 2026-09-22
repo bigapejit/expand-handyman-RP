@@ -1,12 +1,14 @@
+function convexSite() {
+  return process.env.NEXT_PUBLIC_CONVEX_URL!.replace(
+    ".convex.cloud",
+    ".convex.site",
+  );
+}
 export async function getPdf(
   id: string,
   options: { token?: string; jwt?: string | null; signed?: boolean } = {},
 ) {
-  const base = process.env.NEXT_PUBLIC_CONVEX_URL!.replace(
-    ".convex.cloud",
-    ".convex.site",
-  );
-  const url = new URL("/file", base);
+  const url = new URL("/file", convexSite());
   url.searchParams.set("id", id);
   if (options.token) url.searchParams.set("token", options.token);
   if (options.signed) url.searchParams.set("signed", "1");
@@ -19,6 +21,15 @@ export async function getPdf(
       "The PDF could not be loaded. Check your connection or ask for a new link.",
     );
   return new Uint8Array(await res.arrayBuffer());
+}
+export function sendSeenBeacon(viewId: string, token: string) {
+  const url = new URL("/seen", convexSite()).toString();
+  const body = JSON.stringify({ viewId, token });
+  // A plain string keeps sendBeacon a CORS simple request, so there is no preflight.
+  if (typeof navigator.sendBeacon === "function")
+    navigator.sendBeacon(url, body);
+  else
+    void fetch(url, { method: "POST", body, keepalive: true }).catch(() => {});
 }
 export function downloadPdf(bytes: Uint8Array, title: string) {
   const url = URL.createObjectURL(

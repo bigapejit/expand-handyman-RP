@@ -89,7 +89,7 @@ describe("Access and document lifecycle", () => {
     const first = await t.query(api.documents.forSigner, { token });
     expect(first?.title).toBe("Test agreement");
     expect(first).not.toHaveProperty("originalId");
-    await t.mutation(api.documents.opened, { token });
+    expect(await t.mutation(api.documents.opened, { token })).not.toBeNull();
     const viewed = (await owner.query(api.documents.get, { id }))?.viewedAt;
     await t.mutation(api.documents.opened, { token });
     expect((await owner.query(api.documents.get, { id }))?.viewedAt).toBe(
