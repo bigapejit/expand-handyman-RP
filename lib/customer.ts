@@ -5,18 +5,17 @@ import { z } from "zod";
 // a hand-written payload cannot slip past the rules the dialog enforces.
 export const MAX_CUSTOMER_FIELD = 500;
 
-/** The ten US digits in `input`, tolerating a leading country code of 1. */
+/** The US digits in `input`, dropping a country code of 1 once one is implied. */
 function usDigits(input: string) {
   const digits = input.replace(/\D/g, "");
-  return (digits.length > 10 && digits.startsWith("1")
+  return digits.length > 10 && digits.startsWith("1")
     ? digits.slice(1)
-    : digits
-  ).slice(0, 10);
+    : digits;
 }
 
 /** Progressive `(555) 123-4567` mask, safe to apply on every keystroke. */
 export function formatPhone(input: string) {
-  const digits = usDigits(input);
+  const digits = usDigits(input).slice(0, 10);
   if (!digits) return "";
   if (digits.length <= 3) return `(${digits}`;
   if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
@@ -42,9 +41,8 @@ export function normalizePhone(input: string) {
   // Only spacing and the punctuation a phone number is written with; letters or
   // an extension mean this is not a bare ten-digit number.
   if (!/^[\d\s().+-]+$/.test(trimmed)) return null;
-  const digits = trimmed.replace(/\D/g, "");
-  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  return local.length === 10 ? `+1${local}` : null;
+  const digits = usDigits(trimmed);
+  return digits.length === 10 ? `+1${digits}` : null;
 }
 
 const capped = z.string().max(MAX_CUSTOMER_FIELD, "Keep entries under 500 characters.");
