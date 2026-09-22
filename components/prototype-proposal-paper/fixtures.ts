@@ -32,6 +32,8 @@ export type PaperProposal = {
   recommended: boolean;
   sentAt: number;
   estimatorName: string;
+  // The sending owner's sign-in email, frozen at Send (#22 follow-up).
+  estimatorEmail: string;
   customerName: string;
   customerEmail: string;
   site: { name: string; street: string; city: string };
@@ -107,6 +109,7 @@ const base = {
   recommended: true,
   sentAt,
   estimatorName: "Andrew Putilin",
+  estimatorEmail: "andrew.putilin@example.com",
   customerName: "Dana Whitfield",
   customerEmail: "dana.whitfield@example.com",
   site: { name: "3107KAUFFMAN", street: "3107 Kauffman Ave", city: "Vancouver, WA 98660" },

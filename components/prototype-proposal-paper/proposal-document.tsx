@@ -155,7 +155,7 @@ function CoverBlock({ proposal, code }: { proposal: PaperProposal; code: string 
       trailing: `Business: ${ExpandBusiness.phone}`,
       spaced: true,
     },
-    { label: "Position", values: ["Estimator"], trailing: `E-mail: ${ExpandBusiness.email}` },
+    { label: "Position", values: ["Estimator"], trailing: `E-mail: ${proposal.estimatorEmail}` },
     { label: "Company", values: [ExpandBusiness.company] },
     { label: "Business", values: [ExpandBusiness.serviceArea] },
     { label: "Type of Proposal", values: ["Handyman services"], spaced: true },
@@ -475,7 +475,7 @@ function CertificateOfCompletion({
           </div>
           <div>
             <div>Holder: {estimator}</div>
-            <div className="pc-indent">{ExpandBusiness.email}</div>
+            <div className="pc-indent">{proposal.estimatorEmail}</div>
           </div>
           <div>
             <div>Location: {ExpandBusiness.letterheadName}</div>
