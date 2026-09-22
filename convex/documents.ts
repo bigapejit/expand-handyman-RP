@@ -5,8 +5,9 @@ import {
   internalQuery,
   internalMutation,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireOwner, isOwner } from "./auth";
 import { field } from "./schema";
 import {
@@ -17,6 +18,15 @@ import {
   validateSigningSetup,
 } from "../lib/signing";
 
+// A document that has been issued carries its own copy of the customer's name
+// and site and never reads the customer record again. A draft has no copy yet,
+// so it still shows the live customer.
+export async function customerDetails(ctx: QueryCtx, d: Doc<"documents">) {
+  if (d.customerName !== undefined && d.site !== undefined)
+    return { customerName: d.customerName, site: d.site };
+  const c = await ctx.db.get(d.customerId);
+  return { customerName: c?.name ?? "", site: c?.site ?? "" };
+}
 export const access = query({
   args: {},
   handler: async (ctx) => ({ owner: await isOwner(ctx) }),
@@ -29,7 +39,7 @@ export const list = query({
       (await ctx.db.query("documents").order("desc").take(500)).map(
         async (d) => ({
           ...d,
-          customer: await ctx.db.get(d.customerId),
+          ...(await customerDetails(ctx, d)),
           lastViewedAt:
             (
               await ctx.db
@@ -92,7 +102,7 @@ export const get = query({
     if (!d) return null;
     return {
       ...d,
-      customer: await ctx.db.get(d.customerId),
+      ...(await customerDetails(ctx, d)),
       originalId: undefined,
       signedId: undefined,
     };
@@ -131,6 +141,7 @@ export const issue = mutation({
       status: "ready",
       token: a.token,
       issuedAt: Date.now(),
+      ...(await customerDetails(ctx, d)),
     });
     return a.token;
   },
@@ -144,6 +155,8 @@ export const withdraw = mutation({
       throw new Error("Signed documents are locked.");
     await ctx.db.patch(d._id, {
       status: "draft",
+      customerName: undefined,
+      site: undefined,
       token: undefined,
       issuedAt: undefined,
       viewedAt: undefined,
@@ -161,12 +174,10 @@ export const forSigner = query({
       .withIndex("by_token", (q) => q.eq("token", a.token))
       .unique();
     if (!d || d.status === "draft" || !a.token) return null;
-    const c = await ctx.db.get(d.customerId);
     return {
       _id: d._id,
       title: d.title,
-      customerName: c?.name ?? "",
-      site: c?.site ?? "",
+      ...(await customerDetails(ctx, d)),
       fields: d.fields,
       pageCount: d.pageCount,
       status: d.status,

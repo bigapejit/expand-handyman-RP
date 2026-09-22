@@ -39,3 +39,15 @@ Signature alignment now measures the handwriting's visible glyph bounds instead 
 Every open of a signing link is recorded in the `documentViews` table with who opened it, the link token, the document status at the time, the user agent and a last-seen time. The owner's own opens are recognised from their Clerk session and logged as previews, so they never change document status. Customers' first view still moves a document from "Link ready" to "Viewed". The signing page heartbeats every twenty seconds while visible and beacons `POST /seen` on hide; each update adds only the time since the previous one, and a gap longer than thirty seconds adds nothing. Documents viewed before this change fall back to their first-viewed time in the feed and dashboard. The editor's Activity card lists every open with its duration, a "You" tag and a "Previous link" tag, and the dashboard shows the last customer view. Twelve tests in `tests/views.test.ts` cover the owner/customer split, heartbeat clamping, previous-link tagging, opens after signing or declining, the beacon endpoint and the duration formatter.
 
 This adds a table and two indexes, so run `npx convex deploy --yes` after merging.
+
+## Frozen customer details
+
+A document is a snapshot. Issuing its signing link copies the customer's name and site onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again.
+
+Documents issued before this change carry no copy, and until they are backfilled they still follow a renamed customer. Run the one-off backfill immediately after `npx convex deploy --yes`:
+
+```
+npx convex run --prod migrations:backfillCustomerDetails
+```
+
+It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Three tests in `tests/signing.test.ts` cover the frozen issued document, the live draft and the backfill.

@@ -88,7 +88,7 @@ export function Dashboard({
   const filtered = documents?.filter(
     (d) =>
       (status === "all" || d.status === status) &&
-      `${d.title} ${d.customer?.name}`
+      `${d.title} ${d.customerName}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
@@ -271,7 +271,7 @@ export function Dashboard({
                       {d.title}
                     </Link>
                   </TableCell>
-                  <TableCell>{d.customer?.name}</TableCell>
+                  <TableCell>{d.customerName}</TableCell>
                   <TableCell>
                     <Status status={d.status} />
                   </TableCell>
