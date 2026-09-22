@@ -47,7 +47,7 @@ Reuse Next.js, shadcn, Convex persistence/file storage and Clerk admin authentic
 
 - Typed name displayed in script, matching FRSG; no drawn signature pad for MVP.
 - Convex and Clerk with an owner-only admin account.
-- Link issuance freezes the PDF and fields; replacing an unsigned document invalidates its previous link.
+- Link issuance freezes the PDF, the fields, and the customer's name and site; replacing an unsigned document invalidates its previous link.
 
 ## Implementation acceptance checks
 

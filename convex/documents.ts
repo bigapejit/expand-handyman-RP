@@ -21,14 +21,11 @@ import {
 // A document that has been issued carries its own copy of the customer's name
 // and site and never reads the customer record again. A draft has no copy yet,
 // so it still shows the live customer.
-async function customerDetails(ctx: QueryCtx, d: Doc<"documents">) {
+export async function customerDetails(ctx: QueryCtx, d: Doc<"documents">) {
   if (d.customerName !== undefined && d.site !== undefined)
     return { customerName: d.customerName, site: d.site };
   const c = await ctx.db.get(d.customerId);
-  return {
-    customerName: d.customerName ?? c?.name ?? "",
-    site: d.site ?? c?.site ?? "",
-  };
+  return { customerName: c?.name ?? "", site: c?.site ?? "" };
 }
 export const access = query({
   args: {},
@@ -140,13 +137,11 @@ export const issue = mutation({
         .unique()
     )
       throw new Error("Please generate a new link.");
-    const c = await ctx.db.get(d.customerId);
     await ctx.db.patch(d._id, {
       status: "ready",
       token: a.token,
       issuedAt: Date.now(),
-      customerName: c?.name ?? "",
-      site: c?.site ?? "",
+      ...(await customerDetails(ctx, d)),
     });
     return a.token;
   },

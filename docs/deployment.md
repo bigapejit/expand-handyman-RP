@@ -44,7 +44,7 @@ This adds a table and two indexes, so run `npx convex deploy --yes` after mergin
 
 A document is a snapshot. Issuing its signing link copies the customer's name and site onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again.
 
-Documents issued before this change carry no copy. After deploying, freeze them as they stand with a one-off run:
+Documents issued before this change carry no copy, and until they are backfilled they still follow a renamed customer. Run the one-off backfill immediately after `npx convex deploy --yes`:
 
 ```
 npx convex run --prod migrations:backfillCustomerDetails
