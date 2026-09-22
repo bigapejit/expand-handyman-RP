@@ -21,19 +21,19 @@ A PDF prepared for a customer to review and sign. Belongs to the customer, never
 A designated area on a document page where the customer's signature appears.
 
 **Signing link**:
-A private link that gives a customer access to a document without creating an account.
+A private link that gives a customer access to a document or a proposal without creating an account. A proposal gets a fresh one each time it is sent or re-sent, and the one before stops working. Once the customer approves or declines, the link still shows what they decided but can no longer be used to act.
 
 **Owner**:
 The Expand Handyman staff member who prepares documents and signs in to the staff app.
 
 **View**:
-A customer opening a document through its signing link and seeing the PDF, including reopening it after signing. Only customers view; an owner opening the same link is a preview, not a view.
+A customer opening a document or proposal through its signing link and seeing it, including reopening it after signing. Only customers view; an owner opening the same link is a preview, not a view.
 
 **Owner preview**:
 The owner opening a signing link to check what the customer will see. Recorded separately and never counts as a view.
 
 **View log**:
-The record of every view and owner preview of a document: who opened it, when, and for how long.
+The record of every view and owner preview of a document or proposal: who opened it, when, and for how long. The owner reading a proposal inside the staff app is not an owner preview and is not logged.
 
 **Signed document**:
 The completed PDF containing the customer's signature, retained for later download.
@@ -55,7 +55,8 @@ The memory of line items the owner has typed before, offered as suggestions whil
 _Avoid_: Price book, price list, rate card
 
 **Proposal**:
-A document assembled from solutions and terms for one site, planned for a later phase. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended.
+An offer assembled from solutions and terms for one site, planned for a later phase. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
+_Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
 
 **Deposit**:
 The whole percent of a proposal's total due on signing, with the rest due on completion. 50% unless the owner changes it on that proposal; 0% and 100% are allowed. The proposal only states these payment terms; payments are not recorded.
@@ -63,3 +64,23 @@ _Avoid_: Down payment, retainer
 
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
+
+**Send**:
+Offering a draft proposal to the customer by email. Its solutions, prices, tax, terms, notes, Proposal ID, customer name, site address and the email address it went to are fixed as they stand, so later edits to a solution, the customer or the site change only drafts. Refused while the proposal has no solutions, has an unpriced solution, has no tax rate, or the customer has no email address. An email that fails to go out does not undo the send.
+_Avoid_: Issue, publish
+
+**Withdraw**:
+The owner taking back a sent proposal: its signing link stops working, the fixed offer is discarded and it becomes a draft again. The customer is not told.
+
+**Re-send**:
+Sending the same fixed offer again, to the customer's current email address, with a fresh signing link. Used when the email was lost or went to the wrong address.
+
+**Approve**:
+The customer accepting a sent proposal through its signing link, which forms the agreement. The customer and the owner each get an email with the link to the signed proposal.
+_Avoid_: Accept, sign (on their own, for a proposal)
+
+**Decline**:
+A sent proposal being turned down, either by the customer through its signing link, with an optional reason, or by the owner on the customer's behalf. Only a decline through the link emails the owner.
+
+**Opened**:
+A sent proposal whose current signing link the customer has viewed at least once. Read from the view log; not a state of the proposal.
