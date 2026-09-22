@@ -444,14 +444,18 @@ describe("Customer details frozen onto a document", () => {
         return { customerName: d?.customerName, site: d?.site };
       });
     await strip();
-    await t.mutation(internal.migrations.backfillCustomerDetails, {});
+    expect(
+      await t.mutation(internal.migrations.backfillCustomerDetails, {}),
+    ).toEqual({ frozen: 1, done: true });
     expect(await stored()).toEqual({
       customerName: "Test Customer",
       site: "Test Site",
     });
     await owner.mutation(api.documents.withdraw, { id });
     await t.run((ctx) => ctx.db.patch(customerId, renamed));
-    await t.mutation(internal.migrations.backfillCustomerDetails, {});
+    expect(
+      await t.mutation(internal.migrations.backfillCustomerDetails, {}),
+    ).toEqual({ frozen: 0, done: true });
     expect(await stored()).toEqual({
       customerName: undefined,
       site: undefined,

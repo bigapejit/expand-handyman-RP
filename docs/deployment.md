@@ -50,4 +50,4 @@ Documents issued before this change carry no copy, and until they are backfilled
 npx convex run --prod migrations:backfillCustomerDetails
 ```
 
-It skips drafts and any document already frozen, so it is safe to run twice. Three tests in `tests/signing.test.ts` cover the frozen issued document, the live draft and the backfill.
+It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Three tests in `tests/signing.test.ts` cover the frozen issued document, the live draft and the backfill.
