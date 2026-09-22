@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  // PROTOTYPE (#21): lets a phone reach the dev server through a Cloudflare quick tunnel.
+  allowedDevOrigins: ["*.trycloudflare.com"],
   devIndicators: false, // PROTOTYPE (#21): keeps the badge off the sidebar footer in screenshots
   async headers() {
     return [
