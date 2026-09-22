@@ -12,7 +12,7 @@ One verified street address belonging to a customer where handyman work takes pl
 _Avoid_: Property, address, location, service address (as the name of the record)
 
 **Site name**:
-A short code built from the site's street number and street name (`1600 Amphitheatre Pkwy` becomes `1600AMPHITHEATRE`). Rebuilt when the address is corrected. Not a label the owner chooses.
+A short code built from the site's street number and street name, skipping a direction word between them (`1600 Amphitheatre Pkwy` becomes `1600AMPHITHEATRE`; `4410 NE 94th St` becomes `441094TH`, not `4410NE`). Rebuilt when the address is corrected. Not a label the owner chooses.
 
 **Document**:
 A PDF prepared for a customer to review and sign. Belongs to the customer, never to a site.
