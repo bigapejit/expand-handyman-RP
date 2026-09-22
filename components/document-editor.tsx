@@ -130,7 +130,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
             <Status status={doc.status} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {doc.customer?.name} · {doc.customer?.site}
+            {doc.customerName} · {doc.site}
           </p>
         </div>
         <div className="flex gap-2">
@@ -197,7 +197,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
               selected={selected}
               onSelect={setSelected}
               owner={doc.ownerSignature}
-              name={doc.customer?.name ?? ""}
+              name={doc.customerName}
             />
           ) : (
             <div className="min-h-[500px] p-10 text-center text-sm text-muted-foreground">

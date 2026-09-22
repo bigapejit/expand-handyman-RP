@@ -25,6 +25,10 @@ export default defineSchema({
   }),
   documents: defineTable({
     customerId: v.id("customers"),
+    // Copied from the customer when the signing link is issued, so editing a
+    // customer never rewrites an issued document. Absent on drafts.
+    customerName: v.optional(v.string()),
+    site: v.optional(v.string()),
     title: v.string(),
     originalId: v.id("_storage"),
     originalHash: v.string(),

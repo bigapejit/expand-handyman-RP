@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as documents from "../documents.js";
 import type * as http from "../http.js";
+import type * as migrations from "../migrations.js";
 import type * as pdfActions from "../pdfActions.js";
 
 import type {
@@ -23,6 +24,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   documents: typeof documents;
   http: typeof http;
+  migrations: typeof migrations;
   pdfActions: typeof pdfActions;
 }>;
 
