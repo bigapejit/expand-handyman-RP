@@ -108,3 +108,7 @@ _Avoid_: Signed document (a signed uploaded PDF, a different thing)
 
 **Certificate of completion**:
 The closing pages of a signed copy, recording how it was signed: when it was sent, first viewed and approved, by whom and from where, with a fingerprint of the offer as accepted, and the Notice to Customer on a second page when it was acknowledged.
+
+**PDF copy**:
+The proposal paper of a sent or approved proposal saved as a PDF file, made only when the owner or the customer asks to download it and then kept for as long as the proposal stays in that state. A draft or declined proposal has none. An approved proposal's PDF copy is its signed copy as a file, and it never changes once made.
+_Avoid_: Proposal PDF, proposal document, attachment
