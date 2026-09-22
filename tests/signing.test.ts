@@ -33,8 +33,8 @@ async function fixture() {
   });
   const customerId = await owner.mutation(api.documents.addCustomer, {
     name: "Test Customer",
-    email: "",
-    phone: "",
+    email: "customer@example.com",
+    phone: "(555) 123-4567",
     site: "Test Site",
   });
   const pdf = await PDFDocument.create();

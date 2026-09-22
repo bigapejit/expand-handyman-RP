@@ -9,6 +9,7 @@ import {
 import type { Id } from "./_generated/dataModel";
 import { requireOwner, isOwner } from "./auth";
 import { field } from "./schema";
+import { parseCustomer } from "../lib/customer";
 import {
   CONSENT,
   CONSENT_VERSION,
@@ -63,18 +64,7 @@ export const addCustomer = mutation({
   },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
-    if (
-      !a.name.trim() ||
-      !a.site.trim() ||
-      Object.values(a).some((s) => s.length > 500)
-    )
-      throw new Error("Enter the customer name and site address.");
-    return ctx.db.insert("customers", {
-      name: a.name.trim(),
-      email: a.email.trim(),
-      phone: a.phone.trim(),
-      site: a.site.trim(),
-    });
+    return ctx.db.insert("customers", parseCustomer(a));
   },
 });
 export const uploadUrl = mutation({

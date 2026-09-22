@@ -8,6 +8,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { CustomerFields, blankCustomer } from "./customer-fields";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import {
@@ -37,6 +38,13 @@ import {
 import { dateTime, errorMessage } from "@/lib/utils";
 import { MAX_PDF_BYTES } from "@/lib/signing";
 import { uploadFile } from "@/lib/files";
+import {
+  customerErrors,
+  customerSchema,
+  displayPhone,
+  type CustomerErrors,
+  type CustomerInput,
+} from "@/lib/customer";
 
 export function Status({ status }: { status: string }) {
   return (
@@ -80,9 +88,15 @@ export function Dashboard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [customer, setCustomer] = useState<CustomerInput>(blankCustomer);
+  const [fieldErrors, setFieldErrors] = useState<CustomerErrors>({});
   const router = useRouter();
   const open = (value: "customer" | "upload") => {
     setError("");
+    if (value === "customer") {
+      setCustomer(blankCustomer);
+      setFieldErrors({});
+    }
     setModal(value);
   };
   const filtered = documents?.filter(
@@ -215,7 +229,9 @@ export function Dashboard({
                     </TableCell>
                     <TableCell>
                       <p>{c.email || "—"}</p>
-                      <p className="text-xs text-muted-foreground">{c.phone}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {displayPhone(c.phone)}
+                      </p>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -338,18 +354,17 @@ export function Dashboard({
           {modal === "customer" ? (
             <form
               className="grid gap-4"
+              noValidate
               onSubmit={async (e) => {
                 e.preventDefault();
-                setBusy(true);
                 setError("");
-                const data = new FormData(e.currentTarget);
+                const parsed = customerSchema.safeParse(customer);
+                if (!parsed.success)
+                  return setFieldErrors(customerErrors(parsed.error));
+                setFieldErrors({});
+                setBusy(true);
                 try {
-                  const id = await addCustomer({
-                    name: String(data.get("name")),
-                    email: String(data.get("email")),
-                    phone: String(data.get("phone")),
-                    site: String(data.get("site")),
-                  });
+                  const id = await addCustomer(parsed.data);
                   setCustomerId(id);
                   setModal(customersOnly ? null : "upload");
                 } catch (err) {
@@ -359,23 +374,12 @@ export function Dashboard({
                 }
               }}
             >
-              {[
-                ["name", "Customer name", true],
-                ["site", "Service address", true],
-                ["email", "Email", false],
-                ["phone", "Phone", false],
-              ].map(([key, label, required]) => (
-                <div key={String(key)} className="grid gap-2">
-                  <Label htmlFor={String(key)}>{label}</Label>
-                  <Input
-                    id={String(key)}
-                    name={String(key)}
-                    type={key === "email" ? "email" : "text"}
-                    required={Boolean(required)}
-                    maxLength={500}
-                  />
-                </div>
-              ))}
+              <CustomerFields
+                value={customer}
+                onChange={setCustomer}
+                errors={fieldErrors}
+                disabled={busy}
+              />
               {error && (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
@@ -431,7 +435,9 @@ export function Dashboard({
                   </option>
                   {customers?.map((c) => (
                     <option key={c._id} value={c._id}>
-                      {c.name} · {c.site}
+                      {[c.name, c.site, displayPhone(c.phone)]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </option>
                   ))}
                 </select>
