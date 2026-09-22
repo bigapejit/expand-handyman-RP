@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  devIndicators: false, // PROTOTYPE (#21): keeps the badge off the sidebar footer in screenshots
   async headers() {
     return [
       {
