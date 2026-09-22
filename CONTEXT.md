@@ -66,7 +66,7 @@ _Avoid_: Down payment, retainer
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
 
 **Send**:
-Offering a draft proposal to the customer by email. Its solutions, prices, tax, terms, notes, Proposal ID, customer name, site address and the email address it went to are fixed as they stand, so later edits to a solution, the customer or the site change only drafts. Refused while the proposal has no solutions, has an unpriced solution, has no tax rate, or the customer has no email address. An email that fails to go out does not undo the send.
+Offering a draft proposal to the customer by email. Its solutions, prices, tax, terms, notes, Proposal ID, Estimator, customer name, site address and the email address it went to are fixed as they stand, so later edits to a solution, the customer or the site change only drafts. Refused while the proposal has no solutions, has an unpriced solution, has no tax rate, or the customer has no email address. An email that fails to go out does not undo the send.
 _Avoid_: Issue, publish
 
 **Withdraw**:
@@ -97,7 +97,7 @@ _Avoid_: Terms of use (the website's), fine print
 The owner's free text for one proposal: what the job leaves out or depends on. Printed as a paragraph of the opening letter, and absent when empty.
 
 **Estimator**:
-The person the proposal paper names as having prepared the offer and as the one to call with questions: the owner, under the name on their sign-in account when the proposal is sent, with the business's phone and email.
+The person the proposal paper names as having prepared the offer and as the one to call with questions: the owner who sends the proposal, under the name and email on their sign-in account at that moment, with the business's phone. The letterhead keeps the business's own email.
 
 **Notice to Customer**:
 Washington's required contractor disclosure: registration, bond and lien rights. A customer approving a proposal of $1,000 or more also acknowledges receiving it, and the wording they acknowledged is kept with the signed copy.
