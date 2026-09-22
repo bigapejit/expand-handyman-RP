@@ -5,13 +5,17 @@ Expand Handyman prepares documents for customers to review and sign.
 ## Language
 
 **Customer**:
-A person receiving handyman services, associated with one site for now.
+A person receiving handyman services. Has zero or more sites; a customer can exist with no site until a proposal is needed.
 
 **Site**:
-The customer's property where handyman work takes place.
+One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. A customer may have many. Every proposal is for exactly one site; documents are not.
+_Avoid_: Property, address, location, service address (as the name of the record)
+
+**Site name**:
+A short code built from the site's street number and street name (`1600 Amphitheatre Pkwy` becomes `1600AMPHITHEATRE`). Rebuilt when the address is corrected. Not a label the owner chooses.
 
 **Document**:
-A PDF prepared for a customer to review and sign.
+A PDF prepared for a customer to review and sign. Belongs to the customer, never to a site.
 
 **Signature field**:
 A designated area on a document page where the customer's signature appears.
@@ -38,4 +42,7 @@ The completed PDF containing the customer's signature, retained for later downlo
 A proposed scope of handyman work with priced line items, planned for a later phase.
 
 **Proposal**:
-A document assembled from solutions and terms, planned for a later phase.
+A document assembled from solutions and terms for one site, planned for a later phase.
+
+**Proposal ID**:
+The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
