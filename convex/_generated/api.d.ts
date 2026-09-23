@@ -14,6 +14,7 @@ import type * as customers from "../customers.js";
 import type * as documents from "../documents.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
+import type * as leads from "../leads.js";
 import type * as migrations from "../migrations.js";
 import type * as pdfActions from "../pdfActions.js";
 import type * as pdfCopies from "../pdfCopies.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   documents: typeof documents;
   email: typeof email;
   http: typeof http;
+  leads: typeof leads;
   migrations: typeof migrations;
   pdfActions: typeof pdfActions;
   pdfCopies: typeof pdfCopies;

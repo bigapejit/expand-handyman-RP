@@ -112,12 +112,102 @@ export const signingLinkEndedReason = v.union(
   v.literal("withdrawn"),
   v.literal("resent"),
 );
+// Where a lead stands with the owner (CONTEXT.md, **Stage**; lib/thumbtack.ts).
+export const leadStage = v.union(
+  v.literal("new"),
+  v.literal("talking"),
+  v.literal("quoted"),
+  v.literal("won"),
+  v.literal("lost"),
+);
+// A file on a lead or a message, as Thumbtack describes it. The file stays on
+// Thumbtack; only its link is kept.
+export const leadAttachment = v.object({
+  fileName: v.string(),
+  fileSize: v.number(),
+  mimeType: v.string(),
+  url: v.string(),
+  description: v.optional(v.string()),
+});
 export default defineSchema({
   customers: defineTable({
     name: v.string(),
     email: v.string(),
     phone: v.string(),
+    // The **Thumbtack number** mark: the phone came with a lead and may be a
+    // relay that stops working. Dropped when the owner saves another number.
+    phoneFrom: v.optional(v.literal("thumbtack")),
   }),
+  // A **Lead** (CONTEXT.md): one Thumbtack request for work, under the
+  // customer it made or matched. Thumbtack's negotiation ID is the dedupe key,
+  // because its webhooks may arrive more than once.
+  leads: defineTable({
+    customerId: v.id("customers"),
+    negotiationId: v.string(),
+    thumbtackCustomerId: v.string(),
+    // When Thumbtack made the lead, not when the webhook landed.
+    arrivedAt: v.number(),
+    category: v.string(),
+    description: v.string(),
+    details: v.array(v.object({ question: v.string(), answer: v.string() })),
+    location: v.object({
+      address1: v.optional(v.string()),
+      address2: v.optional(v.string()),
+      city: v.string(),
+      state: v.string(),
+      zipCode: v.string(),
+    }),
+    attachments: v.array(leadAttachment),
+    // Thumbtack's own estimate and what the lead cost, both as it words them.
+    estimate: v.optional(
+      v.object({
+        type: v.string(),
+        total: v.optional(v.string()),
+        pricePerUnit: v.optional(v.string()),
+        unitQuantity: v.optional(v.number()),
+        unitName: v.optional(v.string()),
+      }),
+    ),
+    leadPrice: v.optional(v.string()),
+    stage: leadStage,
+    stageChangedAt: v.number(),
+    lastMessageAt: v.optional(v.number()),
+    lastCustomerMessageAt: v.optional(v.number()),
+    // When the owner last opened the lead in the app. **Unread** is a
+    // customer message after it.
+    openedAt: v.optional(v.number()),
+  })
+    .index("by_negotiation", ["negotiationId"])
+    .index("by_customer", ["customerId"])
+    .index("by_thumbtack_customer", ["thumbtackCustomerId"])
+    .index("by_stage", ["stage", "arrivedAt"]),
+  // One message of a **Thumbtack chat**, from either side. Read-only: the app
+  // never sends one.
+  leadMessages: defineTable({
+    leadId: v.id("leads"),
+    messageId: v.string(),
+    from: v.union(v.literal("customer"), v.literal("business")),
+    text: v.string(),
+    attachments: v.array(leadAttachment),
+    sentAt: v.number(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_lead", ["leadId", "sentAt"]),
+  // Every delivery to the Thumbtack webhook, taken or refused, kept as it came
+  // so the first real payloads can be checked against the research.
+  thumbtackEvents: defineTable({
+    eventType: v.string(),
+    receivedAt: v.number(),
+    outcome: v.union(
+      v.literal("lead"),
+      v.literal("message"),
+      v.literal("duplicate"),
+      v.literal("ignored"),
+      v.literal("rejected"),
+    ),
+    body: v.any(),
+    note: v.optional(v.string()),
+  }).index("by_received", ["receivedAt"]),
   // One verified street address of a customer, as Google's parts. The printed
   // address is built from the parts (lib/sites.ts), never stored.
   sites: defineTable({
