@@ -22,7 +22,7 @@ import { sameUnit } from "../lib/sites";
 const PAGE = 200;
 
 // One-off. Documents issued before customer details were frozen carry no copy of
-// the customer's name and site, so they would still follow a renamed customer.
+// the customer's name, so they would still follow a renamed customer.
 // Freeze them as they stand today. Drafts are left alone: they are meant to read
 // the live customer until their link is issued.
 export const backfillCustomerDetails = internalMutation({
@@ -38,7 +38,9 @@ export const backfillCustomerDetails = internalMutation({
       )
       .take(PAGE);
     for (const d of page)
-      await ctx.db.patch(d._id, await customerDetails(ctx, d));
+      await ctx.db.patch(d._id, {
+        customerName: (await customerDetails(ctx, d)).customerName,
+      });
     return { frozen: page.length, done: page.length < PAGE };
   },
 });

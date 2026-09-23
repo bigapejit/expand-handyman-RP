@@ -42,7 +42,7 @@ This adds a table and two indexes, so run `npx convex deploy --yes` after mergin
 
 ## Frozen customer details
 
-A document is a snapshot. Issuing its signing link copies the customer's name and site onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again.
+A document is a snapshot. Issuing its signing link copies the customer's name onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again. Documents issued before Sites also copied the customer's one free-text address; they keep showing it in the editor header and on the signing page, and a withdrawn one drops it with the rest of the copy.
 
 Documents issued before this change carry no copy, and until they are backfilled they still follow a renamed customer. Run the one-off backfill immediately after `npx convex deploy --yes`:
 
@@ -67,3 +67,15 @@ npx convex env set --prod GOOGLE_MAPS_API_KEY <key>
 ```
 
 Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites keep their old address text until the one-off migration moves it onto sites.
+
+## Moving legacy addresses onto Sites
+
+Customers created before Sites carry one free-text address in `customers.site`. A one-off action looks each non-empty one up through the same Places calls as the address box. When Google suggests exactly one place and that place is a street address, it becomes the customer's site; anything else creates no site and is reported with the original text, so the owner can add it by hand on the customer's Sites tab. Every lookup runs before anything is written, so a Google fault changes nothing and the run can simply be repeated. Each customer's legacy address is cleared as it is reported, which is what lets the schema drop the field.
+
+`GOOGLE_MAPS_API_KEY` must be set on the deployment first (see above). Then:
+
+```
+npx convex run --prod migrations:sitesFromCustomers
+```
+
+It prints `{ migrated: [{ customer, site }], failed: [{ customer, site, reason }] }`, where `site` is the new site's name for a migrated customer and the original text for a failed one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Eight tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
