@@ -103,8 +103,8 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
         <HubLoading label="Loading proposals" />
       ) : tab.proposals.length === 0 ? (
         <HubEmpty>
-          No proposals yet. Assemble one from a site&rsquo;s solutions; several are fine,
-          as options for the same decision.
+          No proposals yet. Assemble one from a site&rsquo;s solutions; a site can have
+          several, each offering a different set.
         </HubEmpty>
       ) : (
         <ol>
@@ -234,11 +234,12 @@ function ProposalPanel({
   };
 
   const atSite = tab.solutions.filter((solution) => solution.siteId === proposal.siteId);
-  const held = new Set(picked);
   const bySolutionId = new Map(atSite.map((solution) => [solution.solutionId, solution] as const));
-  const offered = picked
-    .map((solutionId) => bySolutionId.get(solutionId))
-    .filter((solution) => solution !== undefined);
+  // A solution deleted while the panel is open is dropped here too, so the
+  // next tick never sends an id the server would refuse.
+  const current = picked.filter((solutionId) => bySolutionId.has(solutionId));
+  const held = new Set(current);
+  const offered = current.flatMap((solutionId) => bySolutionId.get(solutionId) ?? []);
   const available = atSite.filter((solution) => !held.has(solution.solutionId));
 
   const alreadyRecommended = tab.proposals.find(
@@ -291,15 +292,15 @@ function ProposalPanel({
             <SolutionPicker
               offered={offered}
               available={available}
-              onReorder={(from, to) => void commitOrder(reorder(picked, from, to))}
+              onReorder={(from, to) => void commitOrder(reorder(current, from, to))}
               onMove={(index, direction) =>
-                void commitOrder(moveInOrder(picked, index, direction))
+                void commitOrder(moveInOrder(current, index, direction))
               }
               onToggle={(solutionId) =>
                 void commitOrder(
                   held.has(solutionId)
-                    ? picked.filter((id) => id !== solutionId)
-                    : [...picked, solutionId],
+                    ? current.filter((id) => id !== solutionId)
+                    : [...current, solutionId],
                 )
               }
             />
@@ -734,7 +735,7 @@ function PercentField({
             className="w-20 bg-white text-right"
           />
         ) : (
-          <span id={id} className="w-20 text-right tabular-nums text-slate-900">
+          <span className="w-20 text-right tabular-nums text-slate-900">
             {value}
           </span>
         )}
@@ -799,8 +800,8 @@ function RecommendedToggle({
         </Button>
       )}
       <p className="text-xs text-slate-500">
-        At most one proposal per site carries the mark, to steer the customer between
-        options.
+        At most one proposal per site carries the mark, to steer the customer toward
+        the one you&rsquo;d choose.
       </p>
     </div>
   );

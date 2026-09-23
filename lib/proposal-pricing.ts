@@ -58,7 +58,7 @@ export function chargedTaxRate(tax: ProposalTax): number | null {
 // which are already whole dollars; an unpriced Solution adds nothing, because
 // a Draft is assembled before it is costed and the readout has to keep
 // answering while it is. Tax is charged on the whole subtotal — labor included
-// (CONTEXT.md, **Sales Tax**) — and rounded once, to the cent.
+// — and rounded once, to the cent.
 export function proposalMoney(
   prices: readonly (SolutionPrice | null)[],
   tax: ProposalTax,
@@ -78,7 +78,7 @@ export function proposalMoney(
 export const DefaultDepositPercent = 50;
 
 // What the customer pays and when. Two payments and no more — there are no
-// progress payments and no retainage (CONTEXT.md, **Payment Terms**).
+// progress payments and no retainage (CONTEXT.md, **Deposit**).
 export type PaymentSplit = {
   depositPercent: number;
   finalPercent: number;

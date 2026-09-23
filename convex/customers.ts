@@ -26,7 +26,10 @@ export const list = query({
     const proposals = new Map<Id<"customers">, Doc<"proposals">[]>();
     for (const proposal of await ctx.db.query("proposals").take(10_000)) {
       const customerId = customerOfSite.get(proposal.siteId);
-      if (customerId) proposals.set(customerId, [...(proposals.get(customerId) ?? []), proposal]);
+      if (!customerId) continue;
+      const held = proposals.get(customerId);
+      if (held) held.push(proposal);
+      else proposals.set(customerId, [proposal]);
     }
     return customers.map((c) => ({
       ...c,

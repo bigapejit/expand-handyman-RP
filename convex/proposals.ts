@@ -105,19 +105,19 @@ export const list = query({
       const customer = customers.get(site.customerId);
       if (!customer) continue;
 
-      const solutions = await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)));
-      const read = proposalForOwner(proposal, site, (id) =>
-        solutions.find((solution) => solution?._id === id) ?? undefined,
-      );
+      const solutions = new Map<Id<"solutions">, Doc<"solutions">>();
+      for (const id of proposal.solutionIds) {
+        const solution = await ctx.db.get(id);
+        if (solution) solutions.set(id, solution);
+      }
+      const read = proposalForOwner(proposal, site, (id) => solutions.get(id));
       rows.push({
         proposalId: read.proposalId,
         customerId: customer._id,
         customerName: customer.name,
-        siteName: site.name,
         code: read.code,
         title: read.title,
         state: read.state,
-        recommended: read.recommended,
         totalCents: read.money.totalCents,
       });
     }
@@ -271,10 +271,10 @@ export const setRecommended = mutation({
 
 // A new draft offering the same work on the same terms: the same solutions in
 // the same order, deposit, tax and notes. It carries neither the name nor the
-// Recommended mark, which are what tell two options apart. Unlike FRSG this
-// works from any state, so trying again after a decline or repricing an
-// approved job starts from what was offered; the copy reads the solutions live
-// like any draft.
+// Recommended mark, which are what tell two proposals apart. Unlike FRSG this
+// works from any state, so trying again after a decline or repricing approved
+// work starts from what was offered; the copy reads the solutions live like
+// any draft.
 export const duplicate = mutation({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a) => {
