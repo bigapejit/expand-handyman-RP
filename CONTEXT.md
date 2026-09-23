@@ -81,6 +81,10 @@ The invoice made and sent by itself when the customer approves a proposal, for e
 The invoice the owner raises by saying the job is done. It starts with one line, the proposal's total less everything already invoiced on it, and the owner may add lines for materials that came in under or over and for approved extras before sending. One per proposal.
 _Avoid_: Balance invoice, closing invoice, progress invoice
 
+**Job done**:
+The owner saying, on an approved proposal, that the work is finished. It raises the final invoice as a draft and opens it; the proposal itself does not change state. Offered only until the final invoice exists.
+_Avoid_: Complete, close out, finish (as app actions)
+
 **Invoice line**:
 One entry on an invoice: a description and an amount, which may be negative for a credit. The deposit invoice has one fixed line, the final invoice starts with its balance line, and any other invoice's lines are all typed by the owner.
 _Avoid_: Line item (a solution's, which carries a cost the customer never sees)
