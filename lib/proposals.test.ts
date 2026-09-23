@@ -4,11 +4,13 @@ import {
   moveInOrder,
   proposalActivity,
   proposalCode,
+  proposalDecidedLine,
   proposalPanelHref,
   proposalStateLabel,
   readPercentField,
   readTaxRateField,
   reorder,
+  sentLine,
   solutionPickLabel,
   splitFieldValue,
   taxRateField,
@@ -37,10 +39,27 @@ describe("Where a Proposal row points", () => {
   });
 });
 
+describe("How a Proposal reads on the Dashboard", () => {
+  const at = Date.parse("2026-09-02T17:05:00Z");
+
+  it("says when a waiting one was sent, to the minute", () => {
+    expect(sentLine(at, "en-US", "America/Los_Angeles")).toBe("Sent Sep 2, 2026, 10:05 AM");
+  });
+
+  it("says how and on what day a decided one was answered", () => {
+    expect(
+      proposalDecidedLine({ state: "approved", decidedAt: at }, "en-US", "America/Los_Angeles"),
+    ).toBe("Approved Sep 2, 2026");
+    expect(
+      proposalDecidedLine({ state: "declined", decidedAt: at }, "en-US", "America/Los_Angeles"),
+    ).toBe("Declined Sep 2, 2026");
+  });
+});
+
 describe("What the Customers list says about a customer's proposals", () => {
-  const at = (state: "draft" | "sent" | "approved" | "declined", updatedAt = 0) => ({
+  const at = (state: "draft" | "sent" | "approved" | "declined", decidedAt = 0) => ({
     state,
-    updatedAt,
+    decidedAt,
   });
 
   it("says so when there are none", () => {

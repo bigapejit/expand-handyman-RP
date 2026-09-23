@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
+import { decidedAt } from "./signingLinks";
 import { insertSite, place } from "./sites";
 import { parseCustomer } from "../lib/customer";
-import { proposalActivity } from "../lib/proposals";
+import { proposalActivity, type ProposalOutcome } from "../lib/proposals";
 
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
 
@@ -23,13 +24,20 @@ export const list = query({
       siteCount.set(site.customerId, (siteCount.get(site.customerId) ?? 0) + 1);
       customerOfSite.set(site._id, site.customerId);
     }
-    const proposals = new Map<Id<"customers">, Doc<"proposals">[]>();
+    const proposals = new Map<Id<"customers">, ProposalOutcome[]>();
     for (const proposal of await ctx.db.query("proposals").take(10_000)) {
       const customerId = customerOfSite.get(proposal.siteId);
       if (!customerId) continue;
+      const outcome = {
+        state: proposal.state,
+        decidedAt:
+          proposal.state === "approved" || proposal.state === "declined"
+            ? await decidedAt(ctx, proposal)
+            : null,
+      };
       const held = proposals.get(customerId);
-      if (held) held.push(proposal);
-      else proposals.set(customerId, [proposal]);
+      if (held) held.push(outcome);
+      else proposals.set(customerId, [outcome]);
     }
     return customers.map((c) => ({
       ...c,

@@ -163,7 +163,11 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_site", ["siteId"]),
+  })
+    .index("by_site", ["siteId"])
+    // The Dashboard reads Sent and decided proposals by state and never scans
+    // the drafts; Sent ones come out oldest send first.
+    .index("by_state_sent", ["state", "sentAt"]),
   // One per Send or Re-send (CONTEXT.md, **Signing link**). A link is never
   // deleted: ending it keeps the row as the record of what went where and how
   // it finished, which is the panel's link history.
