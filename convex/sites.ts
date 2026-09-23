@@ -11,6 +11,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
+import { deleteSiteSolutions } from "./solutions";
 import {
   createSiteName,
   parseSiteDetails,
@@ -161,6 +162,7 @@ export const remove = mutation({
       .first();
     if (proposal)
       throw new Error("This site has proposals, so it can't be deleted.");
+    await deleteSiteSolutions(ctx, site._id);
     await ctx.db.delete(site._id);
   },
 });

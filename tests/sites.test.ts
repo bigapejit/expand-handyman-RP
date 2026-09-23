@@ -350,7 +350,7 @@ describe("sites.remove", () => {
     const { t, owner, customer, addSite } = fixture();
     const customerId = await customer();
     const siteId = await addSite(customerId);
-    await t.run((ctx) => ctx.db.insert("proposals", { siteId }));
+    await t.run((ctx) => ctx.db.insert("proposals", { siteId, state: "draft", solutionIds: [] }));
     await expect(owner.mutation(api.sites.remove, { siteId })).rejects.toThrow(
       "has proposals",
     );

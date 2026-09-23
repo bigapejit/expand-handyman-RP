@@ -120,8 +120,9 @@ export function CustomerSites({ customerId }: { customerId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The site has no proposals. To move it to another customer, delete it
-              here and add it again there.
+              The site has no proposals. Any solutions priced for it are deleted
+              with it. To move it to another customer, delete it here and add it
+              again there.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

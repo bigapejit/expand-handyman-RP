@@ -16,6 +16,15 @@ export const field = v.object({
     ),
   ),
 });
+// One line of a solution's cost buildup. The unit is a plain string so an
+// off-list one reaches lib/solution-pricing.ts's `lineItemFault` and is refused
+// in words rather than by the validator.
+export const solutionLineItem = v.object({
+  name: v.string(),
+  quantity: v.number(),
+  unitCostCents: v.number(),
+  unit: v.optional(v.string()),
+});
 export default defineSchema({
   customers: defineTable({
     name: v.string(),
@@ -46,10 +55,45 @@ export default defineSchema({
     .index("by_customer", ["customerId"])
     .index("by_customer_place", ["customerId", "placeId"])
     .index("by_place", ["placeId"]),
-  // Only the link to its site so far, so a site with proposals can already
-  // refuse to be deleted. Drafting proposals fills in the rest.
+  // One priced piece of handyman work at a site (CONTEXT.md, **Solution**):
+  // FRSG's shape keyed to a site, without the roof-record links. No price is
+  // stored; lib/solution-pricing.ts works it out from the line items and the
+  // markup on every read.
+  solutions: defineTable({
+    siteId: v.id("sites"),
+    title: v.string(),
+    // The Scope of Work, under FRSG's field name.
+    description: v.string(),
+    lineItems: v.optional(v.array(solutionLineItem)),
+    // Whole percent. Absent means the default markup; a stored zero is work
+    // offered at cost.
+    markupPercent: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_site", ["siteId"]),
+  // The Catalog (CONTEXT.md): every line item name the owner has saved, with
+  // what it last cost and was last counted in. Suggestions are a prefix scan
+  // over the normalized name, never a table scan.
+  catalogEntries: defineTable({
+    normalizedName: v.string(),
+    name: v.string(),
+    lastUnitCostCents: v.number(),
+    lastUnit: v.optional(v.string()),
+    useCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_normalized_name", ["normalizedName"]),
+  // The site, and which solutions a proposal offers in which state, so a site
+  // with proposals refuses to be deleted and a solution in a sent or decided
+  // proposal refuses too. Drafting proposals fills in the rest.
   proposals: defineTable({
     siteId: v.id("sites"),
+    state: v.union(
+      v.literal("draft"),
+      v.literal("sent"),
+      v.literal("approved"),
+      v.literal("declined"),
+    ),
+    solutionIds: v.array(v.id("solutions")),
   }).index("by_site", ["siteId"]),
   documents: defineTable({
     customerId: v.id("customers"),
