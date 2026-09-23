@@ -5,6 +5,7 @@ import {
   mutation,
   query,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -185,8 +186,9 @@ export async function insertSite(
   });
 }
 
-async function refuseDuplicate(
-  ctx: MutationCtx,
+/** The customer's site at this place and unit, other than `except`. */
+export async function findSite(
+  ctx: QueryCtx,
   customerId: Id<"customers">,
   placeId: string,
   addressLine2: string,
@@ -198,6 +200,16 @@ async function refuseDuplicate(
       q.eq("customerId", customerId).eq("placeId", placeId),
     )
     .collect();
-  if (same.some((s) => s._id !== except && sameUnit(s.addressLine2, addressLine2)))
+  return same.find((s) => s._id !== except && sameUnit(s.addressLine2, addressLine2));
+}
+
+async function refuseDuplicate(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  placeId: string,
+  addressLine2: string,
+  except?: Id<"sites">,
+) {
+  if (await findSite(ctx, customerId, placeId, addressLine2, except))
     throw new Error("This customer already has that site.");
 }

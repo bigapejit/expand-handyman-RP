@@ -31,14 +31,11 @@ async function fixture() {
     email: "andrew@cogtex.ai",
     emailVerified: true,
   });
-  // A customer from before Sites, still carrying the legacy address text that
-  // issued documents froze alongside the name.
   const customerId = await t.run((ctx) =>
     ctx.db.insert("customers", {
       name: "Test Customer",
       email: "customer@example.com",
       phone: "+15551234567",
-      site: "Test Site",
     }),
   );
   const pdf = await PDFDocument.create();
@@ -401,22 +398,30 @@ describe("Owner signatures and FRSG decisions", () => {
 });
 
 describe("Customer details frozen onto a document", () => {
-  const renamed = { name: "Renamed Customer", site: "Renamed Site" };
-  test("an issued document keeps the name and site it was issued with", async () => {
+  type Fixture = Awaited<ReturnType<typeof fixture>>;
+  const rename = (t: Fixture["t"], customerId: Fixture["customerId"], name: string) =>
+    t.run((ctx) => ctx.db.patch(customerId, { name }));
+  // What the editor header and the signing page show of the customer.
+  const shown = (d: { customerName?: string; site?: string } | null | undefined) => ({
+    customerName: d?.customerName,
+    site: d?.site,
+  });
+  test("an issued document keeps the name it was issued with, and nothing else", async () => {
     const { t, owner, id, token, customerId } = await fixture();
-    await t.run((ctx) => ctx.db.patch(customerId, renamed));
-    expect(await t.query(api.documents.forSigner, { token })).toMatchObject({
-      customerName: "Test Customer",
-      site: "Test Site",
-    });
-    expect(await owner.query(api.documents.get, { id })).toMatchObject({
-      customerName: "Test Customer",
-      site: "Test Site",
-    });
-    expect((await owner.query(api.documents.list, {}))[0]).toMatchObject({
-      customerName: "Test Customer",
-      site: "Test Site",
-    });
+    await rename(t, customerId, "Renamed Customer");
+    const frozen = { customerName: "Test Customer", site: undefined };
+    expect(shown(await t.query(api.documents.forSigner, { token }))).toEqual(frozen);
+    expect(shown(await owner.query(api.documents.get, { id }))).toEqual(frozen);
+    expect(shown((await owner.query(api.documents.list, {}))[0])).toEqual(frozen);
+  });
+  test("a document issued before Sites keeps the site text it was issued with", async () => {
+    const { t, owner, id, token, customerId } = await fixture();
+    await t.run((ctx) => ctx.db.patch(id, { site: "4410 NE 94th St" }));
+    await rename(t, customerId, "Renamed Customer");
+    const frozen = { customerName: "Test Customer", site: "4410 NE 94th St" };
+    expect(shown(await t.query(api.documents.forSigner, { token }))).toEqual(frozen);
+    expect(shown(await owner.query(api.documents.get, { id }))).toEqual(frozen);
+    expect(shown((await owner.query(api.documents.list, {}))[0])).toEqual(frozen);
   });
   test("editing the customer changes only drafts", async () => {
     const { owner, id, token, customerId } = await fixture();
@@ -435,20 +440,20 @@ describe("Customer details frozen onto a document", () => {
   });
   test("a draft reflects the live customer, before issuance and after withdrawal", async () => {
     const { t, owner, id, customerId } = await fixture();
+    // Withdrawing an old document drops its site text with the rest of the
+    // copy; issuing it again freezes only the name.
+    await t.run((ctx) => ctx.db.patch(id, { site: "4410 NE 94th St" }));
     await owner.mutation(api.documents.withdraw, { id });
-    await t.run((ctx) => ctx.db.patch(customerId, renamed));
-    expect(await owner.query(api.documents.get, { id })).toMatchObject({
+    await rename(t, customerId, "Renamed Customer");
+    expect(shown(await owner.query(api.documents.get, { id }))).toEqual({
       customerName: "Renamed Customer",
-      site: "Renamed Site",
+      site: undefined,
     });
-    const token = "b".repeat(64);
-    await owner.mutation(api.documents.issue, { id, token });
-    await t.run((ctx) =>
-      ctx.db.patch(customerId, { name: "Later", site: "Later Site" }),
-    );
-    expect(await owner.query(api.documents.get, { id })).toMatchObject({
+    await owner.mutation(api.documents.issue, { id, token: "b".repeat(64) });
+    await rename(t, customerId, "Later");
+    expect(shown(await owner.query(api.documents.get, { id }))).toEqual({
       customerName: "Renamed Customer",
-      site: "Renamed Site",
+      site: undefined,
     });
   });
   test("the backfill freezes issued documents that predate the copy, and leaves drafts alone", async () => {
@@ -460,24 +465,18 @@ describe("Customer details frozen onto a document", () => {
     const stored = () =>
       t.run(async (ctx) => {
         const d = await ctx.db.get(id);
-        return { customerName: d?.customerName, site: d?.site };
+        return { customerName: d?.customerName ?? null, site: d?.site ?? null };
       });
     await strip();
     expect(
       await t.mutation(internal.migrations.backfillCustomerDetails, {}),
     ).toEqual({ frozen: 1, done: true });
-    expect(await stored()).toEqual({
-      customerName: "Test Customer",
-      site: "Test Site",
-    });
+    expect(await stored()).toEqual({ customerName: "Test Customer", site: null });
     await owner.mutation(api.documents.withdraw, { id });
-    await t.run((ctx) => ctx.db.patch(customerId, renamed));
+    await rename(t, customerId, "Renamed Customer");
     expect(
       await t.mutation(internal.migrations.backfillCustomerDetails, {}),
     ).toEqual({ frozen: 0, done: true });
-    expect(await stored()).toEqual({
-      customerName: undefined,
-      site: undefined,
-    });
+    expect(await stored()).toEqual({ customerName: null, site: null });
   });
 });

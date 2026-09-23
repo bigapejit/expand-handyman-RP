@@ -19,13 +19,16 @@ import {
 } from "../lib/signing";
 
 // A document that has been issued carries its own copy of the customer's name
-// and site and never reads the customer record again. A draft has no copy yet,
-// so it still shows the live customer.
-export async function customerDetails(ctx: QueryCtx, d: Doc<"documents">) {
-  if (d.customerName !== undefined && d.site !== undefined)
+// and never reads the customer record again. A draft has no copy yet, so it
+// still shows the live customer. Documents issued before Sites also froze the
+// customer's one address, and keep showing it.
+export async function customerDetails(
+  ctx: QueryCtx,
+  d: Doc<"documents">,
+): Promise<{ customerName: string; site?: string }> {
+  if (d.customerName !== undefined)
     return { customerName: d.customerName, site: d.site };
-  const c = await ctx.db.get(d.customerId);
-  return { customerName: c?.name ?? "", site: c?.site ?? "" };
+  return { customerName: (await ctx.db.get(d.customerId))?.name ?? "" };
 }
 export const access = query({
   args: {},
@@ -202,7 +205,7 @@ export const issue = mutation({
       status: "ready",
       token: a.token,
       issuedAt: Date.now(),
-      ...(await customerDetails(ctx, d)),
+      customerName: (await customerDetails(ctx, d)).customerName,
     });
     return a.token;
   },
