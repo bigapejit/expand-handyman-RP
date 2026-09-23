@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// The owner types into four free-text boxes; everything below turns that typing
+// The owner types into three free-text boxes; everything below turns that typing
 // into the one shape the customers table stores. Client and server share it, so
 // a hand-written payload cannot slip past the rules the dialog enforces.
 export const MAX_CUSTOMER_FIELD = 500;
@@ -52,7 +52,6 @@ const required = (label: string) =>
 export const customerSchema = z
   .object({
     name: required("customer name"),
-    site: required("service address"),
     email: capped
       .transform(normalizeEmail)
       .refine(
@@ -88,4 +87,27 @@ export function parseCustomer(input: CustomerInput): Customer {
   const result = customerSchema.safeParse(input);
   if (!result.success) throw new Error(result.error.issues[0].message);
   return result.data;
+}
+
+/**
+ * Another customer already using the typed email or phone. A warning, never a
+ * refusal: a couple or a landlord and tenant may share one. Rows saved before
+ * validation are normalized before comparing.
+ */
+export function contactWarnings(
+  typed: CustomerInput,
+  customers: { _id: string; name: string; email: string; phone: string }[],
+  selfId?: string,
+) {
+  const warnings: Partial<Record<"email" | "phone", string>> = {};
+  const email = normalizeEmail(typed.email);
+  const phone = normalizePhone(typed.phone);
+  const others = customers.filter((c) => c._id !== selfId);
+  const byEmail = email && others.find((c) => normalizeEmail(c.email) === email);
+  const byPhone = phone && others.find((c) => normalizePhone(c.phone) === phone);
+  if (byEmail)
+    warnings.email = `Another customer already uses this email: ${byEmail.name}`;
+  if (byPhone)
+    warnings.phone = `Another customer already uses this phone number: ${byPhone.name}`;
+  return warnings;
 }

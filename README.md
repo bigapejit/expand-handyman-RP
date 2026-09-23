@@ -5,7 +5,7 @@ Staff portal for uploaded PDF signing. Built with Next.js, shadcn/Base UI, Conve
 ## Use
 
 1. Sign in at https://staff.expandhandyman.com with the owner account. On first use, choose **Create your owner account**, use **andrew@cogtex.ai**, and verify your email.
-2. Add a customer and their service address.
+2. Add a customer, and their sites on the customer page's **Sites** tab. Every site address is picked from Google's suggestions.
 3. Upload an unlocked PDF (up to 20 MB / 100 pages).
 4. Add customer signature/date fields and, if needed, your own signature/date fields. Drag to position; drag a corner to resize both dimensions, or enter width and height. Apply your own signature before sending.
 5. Create a signing link, copy it, and send it yourself.
@@ -17,7 +17,7 @@ Creating a link locks the document and fields. Withdrawing an unsigned link revo
 
 Run `npm install`, configure `.env.local` using `.env.example`, then `npx convex dev` and `npm run dev`. The app runs at http://localhost:3210.
 
-Configure `CLERK_JWT_ISSUER_DOMAIN` and `OWNER_CLERK_ID` in each Convex deployment. Until the owner's ID is pinned, `OWNER_EMAIL` is an exact verified-email allowlist. Clerk's `convex` JWT template must include `aud: convex`, `email`, and `email_verified`. The deployment setup also restricts Clerk signups to the owner.
+Configure `CLERK_JWT_ISSUER_DOMAIN`, `OWNER_CLERK_ID` and `GOOGLE_MAPS_API_KEY` in each Convex deployment. Until the owner's ID is pinned, `OWNER_EMAIL` is an exact verified-email allowlist. Clerk's `convex` JWT template must include `aud: convex`, `email`, and `email_verified`. The deployment setup also restricts Clerk signups to the owner.
 
 Run `npm test`, `npm run typecheck`, and `npm run build` before deploying. Deploy backend changes with `npx convex deploy --yes`; Vercel deploys the Next.js app from GitHub main. Convex backend deployment is currently a separate command.
 

@@ -1,19 +1,19 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { LoaderCircle, Plus, Search, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { AddCustomerDialog } from "@/components/document-dialogs";
+import { CustomerDialog } from "@/components/customer-dialog";
 import { IndexEmptyState, IndexRow } from "@/components/index-row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/convex/_generated/api";
-import { displayPhone } from "@/lib/customer";
+import { useCustomers } from "@/hooks/use-customers";
 
 // FRSG's Customers index: one row each, alphabetical, searched by name.
 export function CustomersIndex() {
-  const customers = useQuery(api.documents.customers);
+  const customers = useCustomers();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const query = search.trim().toLowerCase();
@@ -55,7 +55,7 @@ export function CustomersIndex() {
         >
           {query
             ? "Search is by customer name."
-            : "Add a customer to keep their documents together."}
+            : "Add a customer to start writing solutions and proposals for them."}
         </IndexEmptyState>
       ) : (
         <ul className="divide-y overflow-hidden rounded-2xl border bg-white">
@@ -64,14 +64,26 @@ export function CustomersIndex() {
               key={customer._id}
               href={`/customers/${customer._id}`}
               title={customer.name}
-              subtitle={[customer.site, customer.email].filter(Boolean).join(" · ")}
-              hint={displayPhone(customer.phone)}
+              subtitle={[
+                customer.siteCount === 1 ? "1 site" : `${customer.siteCount} sites`,
+                customer.email,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              // Proposal activity: "1 awaiting a signature" or the last
+              // outcome once proposals exist.
+              hint={<span className="text-slate-400">No proposals</span>}
             />
           ))}
         </ul>
       )}
 
-      {adding ? <AddCustomerDialog onClose={() => setAdding(false)} /> : null}
+      {adding ? (
+        <CustomerDialog
+          onClose={() => setAdding(false)}
+          onSaved={(id) => router.push(`/customers/${id}`)}
+        />
+      ) : null}
     </div>
   );
 }

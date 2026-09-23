@@ -10,7 +10,6 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOwner, isOwner } from "./auth";
 import { field } from "./schema";
-import { parseCustomer } from "../lib/customer";
 import {
   CONSENT,
   CONSENT_VERSION,
@@ -147,25 +146,6 @@ export const forCustomer = query({
       title: d.title,
       status: d.status,
     }));
-  },
-});
-export const customers = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireOwner(ctx);
-    return ctx.db.query("customers").order("desc").take(1000);
-  },
-});
-export const addCustomer = mutation({
-  args: {
-    name: v.string(),
-    email: v.string(),
-    phone: v.string(),
-    site: v.string(),
-  },
-  handler: async (ctx, a) => {
-    await requireOwner(ctx);
-    return ctx.db.insert("customers", parseCustomer(a));
   },
 });
 export const uploadUrl = mutation({

@@ -9,10 +9,13 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as customers from "../customers.js";
 import type * as documents from "../documents.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as pdfActions from "../pdfActions.js";
+import type * as places from "../places.js";
+import type * as sites from "../sites.js";
 
 import type {
   ApiFromModules,
@@ -22,10 +25,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  customers: typeof customers;
   documents: typeof documents;
   http: typeof http;
   migrations: typeof migrations;
   pdfActions: typeof pdfActions;
+  places: typeof places;
+  sites: typeof sites;
 }>;
 
 /**

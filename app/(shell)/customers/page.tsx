@@ -6,7 +6,7 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Customers"
-        description="The people Expand works for, and their documents."
+        description="The people Expand works for, their sites and their paperwork."
       />
       <CustomersIndex />
     </div>

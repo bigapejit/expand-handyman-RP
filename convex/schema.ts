@@ -21,8 +21,36 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     phone: v.string(),
-    site: v.string(),
+    // Legacy free-text address from before Sites. New customers have none; the
+    // one-off migration moves these onto Sites and drops the field.
+    site: v.optional(v.string()),
   }),
+  // One verified street address of a customer, as Google's parts. The printed
+  // address is built from the parts (lib/sites.ts), never stored.
+  sites: defineTable({
+    customerId: v.id("customers"),
+    name: v.string(),
+    addressLine1: v.string(),
+    addressLine2: v.string(),
+    city: v.string(),
+    region: v.string(),
+    postalCode: v.string(),
+    placeId: v.string(),
+    latitude: v.number(),
+    longitude: v.number(),
+    accessNotes: v.string(),
+    lastProposalNumber: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customer", ["customerId"])
+    .index("by_customer_place", ["customerId", "placeId"])
+    .index("by_place", ["placeId"]),
+  // Only the link to its site so far, so a site with proposals can already
+  // refuse to be deleted. Drafting proposals fills in the rest.
+  proposals: defineTable({
+    siteId: v.id("sites"),
+  }).index("by_site", ["siteId"]),
   documents: defineTable({
     customerId: v.id("customers"),
     // Copied from the customer when the signing link is issued, so editing a

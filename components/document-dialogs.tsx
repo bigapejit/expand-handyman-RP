@@ -1,14 +1,14 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { Upload } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { CustomerFields, blankCustomer } from "./customer-fields";
+import { CustomerForm } from "./customer-dialog";
 import {
   Dialog,
   DialogContent,
@@ -19,34 +19,8 @@ import {
 import { errorMessage } from "@/lib/utils";
 import { MAX_PDF_BYTES } from "@/lib/signing";
 import { uploadFile } from "@/lib/files";
-import {
-  customerErrors,
-  customerSchema,
-  displayPhone,
-  type CustomerErrors,
-  type CustomerInput,
-} from "@/lib/customer";
-
-// Adding a customer on its own, from the Customers list.
-export function AddCustomerDialog({ onClose }: { onClose: () => void }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add customer</DialogTitle>
-          <DialogDescription>Who they are and how to reach them.</DialogDescription>
-        </DialogHeader>
-        <CustomerForm busy={busy} setBusy={setBusy} onSaved={onClose} />
-      </DialogContent>
-    </Dialog>
-  );
-}
+import { displayPhone } from "@/lib/customer";
+import { useCustomers } from "@/hooks/use-customers";
 
 // Upload PDF always asks whose document it is. With no customers yet, the
 // first one is added on the way; `customerId` pre-fills the choice.
@@ -57,7 +31,7 @@ export function UploadPdfDialog({
   customerId?: string;
   onClose: () => void;
 }) {
-  const customers = useQuery(api.documents.customers);
+  const customers = useCustomers();
   const [busy, setBusy] = useState(false);
   const [customerId, setCustomerId] = useState(initialCustomerId);
   const adding = customers?.length === 0 && !customerId;
@@ -93,58 +67,6 @@ export function UploadPdfDialog({
   );
 }
 
-function CustomerForm({
-  busy,
-  setBusy,
-  onSaved,
-}: {
-  busy: boolean;
-  setBusy: (busy: boolean) => void;
-  onSaved: (id: Id<"customers">) => void;
-}) {
-  const addCustomer = useMutation(api.documents.addCustomer);
-  const [customer, setCustomer] = useState<CustomerInput>(blankCustomer);
-  const [fieldErrors, setFieldErrors] = useState<CustomerErrors>({});
-  const [error, setError] = useState("");
-  return (
-    <form
-      className="grid gap-4"
-      noValidate
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setError("");
-        const parsed = customerSchema.safeParse(customer);
-        if (!parsed.success) return setFieldErrors(customerErrors(parsed.error));
-        setFieldErrors({});
-        setBusy(true);
-        try {
-          const id = await addCustomer(parsed.data);
-          setBusy(false);
-          onSaved(id);
-        } catch (err) {
-          setError(errorMessage(err));
-          setBusy(false);
-        }
-      }}
-    >
-      <CustomerFields
-        value={customer}
-        onChange={setCustomer}
-        errors={fieldErrors}
-        disabled={busy}
-      />
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={busy}>
-        {busy ? "Saving…" : "Save customer"}
-      </Button>
-    </form>
-  );
-}
-
 function UploadForm({
   customers,
   customerId,
@@ -152,7 +74,7 @@ function UploadForm({
   busy,
   setBusy,
 }: {
-  customers: { _id: string; name: string; site: string; phone: string }[];
+  customers: { _id: string; name: string; email: string; phone: string }[];
   customerId: string;
   setCustomerId: (id: string) => void;
   busy: boolean;
@@ -206,7 +128,7 @@ function UploadForm({
           </option>
           {customers.map((c) => (
             <option key={c._id} value={c._id}>
-              {[c.name, c.site, displayPhone(c.phone)].filter(Boolean).join(" · ")}
+              {[c.name, c.email || displayPhone(c.phone)].filter(Boolean).join(" · ")}
             </option>
           ))}
         </select>

@@ -27,11 +27,10 @@ function setup() {
 }
 type Fixture = ReturnType<typeof setup>;
 async function customer({ owner }: Fixture, name: string) {
-  return owner.mutation(api.documents.addCustomer, {
+  return owner.action(api.customers.add, {
     name,
     email: "customer@example.com",
     phone: "(555) 123-4567",
-    site: "1 Main St",
   });
 }
 async function document(

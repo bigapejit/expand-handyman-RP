@@ -131,7 +131,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
             <DocumentStatusChip status={doc.status} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {doc.customerName} · {doc.site}
+            {[doc.customerName, doc.site].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="flex gap-2">

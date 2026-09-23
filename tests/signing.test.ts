@@ -31,12 +31,16 @@ async function fixture() {
     email: "andrew@cogtex.ai",
     emailVerified: true,
   });
-  const customerId = await owner.mutation(api.documents.addCustomer, {
-    name: "Test Customer",
-    email: "customer@example.com",
-    phone: "(555) 123-4567",
-    site: "Test Site",
-  });
+  // A customer from before Sites, still carrying the legacy address text that
+  // issued documents froze alongside the name.
+  const customerId = await t.run((ctx) =>
+    ctx.db.insert("customers", {
+      name: "Test Customer",
+      email: "customer@example.com",
+      phone: "+15551234567",
+      site: "Test Site",
+    }),
+  );
   const pdf = await PDFDocument.create();
   pdf.addPage([612, 792]);
   pdf.addPage([400, 600]).setRotation(degrees(90));
@@ -80,7 +84,7 @@ describe("Access and document lifecycle", () => {
           email: "andrew@cogtex.ai",
           emailVerified: false,
         })
-        .query(api.documents.customers, {}),
+        .query(api.customers.list, {}),
     ).rejects.toThrow("Owner access");
   });
   test("link exposes one document, tracks first view, and withdrawal revokes file access", async () => {
@@ -412,6 +416,21 @@ describe("Customer details frozen onto a document", () => {
     expect((await owner.query(api.documents.list, {}))[0]).toMatchObject({
       customerName: "Test Customer",
       site: "Test Site",
+    });
+  });
+  test("editing the customer changes only drafts", async () => {
+    const { owner, id, token, customerId } = await fixture();
+    await owner.mutation(api.customers.update, {
+      customerId,
+      name: "Renamed Customer",
+      email: "renamed@example.com",
+      phone: "",
+    });
+    expect(await owner.query(api.documents.get, { id })).toMatchObject({
+      customerName: "Test Customer",
+    });
+    expect(await owner.query(api.documents.forSigner, { token })).toMatchObject({
+      customerName: "Test Customer",
     });
   });
   test("a draft reflects the live customer, before issuance and after withdrawal", async () => {
