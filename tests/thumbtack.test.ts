@@ -175,10 +175,29 @@ describe("a lead event", () => {
     expect(listed.phoneFrom).toBe("thumbtack");
   });
 
-  test("keeps a number the validator would refuse, as sent", async () => {
-    const { receive, customers } = fixture();
+  test("keeps a number the validator would refuse on the lead, not the customer", async () => {
+    const { owner, receive, customers, leads } = fixture();
     await receive(leadEvent("900", { phone: "555-5555 ext 12" }));
-    expect((await customers())[0]).toMatchObject({ phone: "555-5555 ext 12", phoneFrom: "thumbtack" });
+    expect((await customers())[0]).toMatchObject({ phone: "" });
+    expect((await customers())[0]).not.toHaveProperty("phoneFrom");
+    expect((await leads())[0]).toMatchObject({ phone: "555-5555 ext 12" });
+    const [row] = await owner.query(api.leads.board, {});
+    expect(row.phone).toBe("555-5555 ext 12");
+  });
+
+  test("a late lead for a known Thumbtack customer repoints the placeholder and drops its stand-in", async () => {
+    const { receive, customers, leads } = fixture();
+    await receive(leadEvent("700", { customerID: "c-9", phone: "555-000-9999" }));
+    // The owner's reply arrives before the lead itself: a business message
+    // carries no customer block, so the stand-in is blank.
+    await receive(messageEvent("m-1", "Business", "2026-09-23T16:00:00Z", "777"));
+    expect(await customers()).toHaveLength(2);
+
+    expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
+    const held = await customers();
+    expect(held).toHaveLength(1);
+    expect(await leads()).toHaveLength(2);
+    for (const lead of await leads()) expect(lead.customerId).toBe(held[0]._id);
   });
 
   test("arriving twice is a duplicate with one lead", async () => {
@@ -396,12 +415,12 @@ describe("POST /thumbtack", () => {
     expect(await leads()).toHaveLength(1);
   });
 
-  test("refuses a wrong secret and logs it without the body", async () => {
+  test("refuses a wrong secret without writing anything", async () => {
     const { t, leads, events } = fixture();
     const response = await post(t, JSON.stringify(leadEvent()), { "X-Thumbtack-Secret": "guess" });
     expect(response.status).toBe(401);
     expect(await leads()).toHaveLength(0);
-    expect(await events()).toMatchObject([{ outcome: "rejected", body: null }]);
+    expect(await events()).toEqual([]);
   });
 
   test("is shut, and logs nothing, while no secret is set", async () => {

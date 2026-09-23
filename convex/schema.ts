@@ -145,6 +145,9 @@ export default defineSchema({
     customerId: v.id("customers"),
     negotiationId: v.string(),
     thumbtackCustomerId: v.string(),
+    // The number as Thumbtack sent it. The customer holds it normalized, or
+    // nothing when it is not a number the customer dialog could save again.
+    phone: v.optional(v.string()),
     // When Thumbtack made the lead, not when the webhook landed.
     arrivedAt: v.number(),
     category: v.string(),

@@ -124,14 +124,9 @@ http.route({
     let raw: string | undefined;
     let eventType = "";
     try {
-      if (!webhookAuthorized(req.headers, secret)) {
-        await ctx.runMutation(internal.leads.logRejected, {
-          eventType,
-          body: null,
-          note: "Unauthorized: no Basic password or X-Thumbtack-Secret matched.",
-        });
-        return thumbtackReply(401);
-      }
+      // Nothing is written for a wrong secret: the endpoint is on the open
+      // internet, and a scanner must not be able to fill the event log.
+      if (!webhookAuthorized(req.headers, secret)) return thumbtackReply(401);
       raw = await req.text();
       let body: unknown;
       try {

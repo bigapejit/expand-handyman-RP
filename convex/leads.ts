@@ -79,9 +79,17 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
     return { outcome: "duplicate" };
   if (existing) {
     // A message got here first and made a stand-in; the lead's own details
-    // replace it, and the stage, chat and Unread it has gathered stay.
-    await ctx.db.patch(existing._id, fields);
-    await fillPlaceholderCustomer(ctx, existing.customerId, parsed);
+    // replace it, and the stage, chat and Unread it has gathered stay. The
+    // customer is matched as a fresh lead's would be, so a returning customer
+    // whose reply beat the lead webhook still ends up with one record.
+    await ctx.db.patch(existing._id, { ...fields, phone });
+    const matched =
+      (await customerOfThumbtackCustomer(ctx, fields.thumbtackCustomerId, existing._id)) ??
+      (await customerWithPhone(ctx, phone));
+    if (matched && matched !== existing.customerId) {
+      await ctx.db.patch(existing._id, { customerId: matched });
+      await dropBareStandIn(ctx, existing.customerId);
+    } else await fillPlaceholderCustomer(ctx, existing.customerId, parsed);
     return { outcome: "lead", note: "Filled in a placeholder made by an earlier message." };
   }
 
@@ -91,14 +99,14 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
     (await ctx.db.insert("customers", {
       name: customerName,
       email: "",
-      // Not through parseCustomer: a number its validator would refuse is
-      // still the only way to reach this customer, so it is kept as sent.
-      phone: normalizePhone(phone) ?? phone,
-      ...(phone ? { phoneFrom: "thumbtack" as const } : {}),
+      // Only a number the customer dialog could save again; anything else
+      // stays on the lead, as sent, so the owner can still read it.
+      ...thumbtackPhone(phone),
     }));
   const now = Date.now();
   await ctx.db.insert("leads", {
     ...fields,
+    phone,
     customerId,
     stage: "new",
     stageChangedAt: now,
@@ -186,11 +194,30 @@ async function fillPlaceholderCustomer(
 ) {
   const customer = await ctx.db.get(customerId);
   if (!customer || customer.email || customer.phone) return;
-  await ctx.db.patch(customerId, {
-    name: lead.customerName,
-    phone: normalizePhone(lead.phone) ?? lead.phone,
-    ...(lead.phone ? { phoneFrom: "thumbtack" as const } : {}),
-  });
+  await ctx.db.patch(customerId, { name: lead.customerName, ...thumbtackPhone(lead.phone) });
+}
+
+// The customer's side of a lead's phone: normalized and marked as the
+// **Thumbtack number**, or blank when the validator would refuse it, so the
+// owner can still save the customer's name or email later.
+function thumbtackPhone(raw: string) {
+  const phone = normalizePhone(raw);
+  return phone ? { phone, phoneFrom: "thumbtack" as const } : { phone: "" };
+}
+
+// A placeholder's blank customer, once its lead has been matched to a real
+// one. Deleted only while it is still bare and nothing else hangs off it.
+async function dropBareStandIn(ctx: MutationCtx, customerId: Id<"customers">) {
+  const customer = await ctx.db.get(customerId);
+  if (!customer || customer.email || customer.phone) return;
+  for (const table of ["leads", "sites", "documents"] as const) {
+    const held = await ctx.db
+      .query(table)
+      .withIndex("by_customer", (q) => q.eq("customerId", customerId))
+      .first();
+    if (held) return;
+  }
+  await ctx.db.delete(customerId);
 }
 
 function leadByNegotiation(ctx: QueryCtx, negotiationId: string) {
@@ -202,12 +229,20 @@ function leadByNegotiation(ctx: QueryCtx, negotiationId: string) {
 
 // Thumbtack's customer ID is the surest match: the same person on a second
 // request.
-async function customerOfThumbtackCustomer(ctx: QueryCtx, thumbtackCustomerId: string) {
-  const lead = await ctx.db
+// A placeholder made from a business message has no Thumbtack customer id, so
+// an empty id matches nobody; `except` is the lead being filled in, whose own
+// stand-in customer is not a match.
+async function customerOfThumbtackCustomer(
+  ctx: QueryCtx,
+  thumbtackCustomerId: string,
+  except?: Id<"leads">,
+) {
+  if (!thumbtackCustomerId) return null;
+  const held = await ctx.db
     .query("leads")
     .withIndex("by_thumbtack_customer", (q) => q.eq("thumbtackCustomerId", thumbtackCustomerId))
-    .first();
-  return lead?.customerId ?? null;
+    .take(50);
+  return held.find((lead) => lead._id !== except)?.customerId ?? null;
 }
 
 // A customer the owner added by hand before the lead came, found by number.
@@ -243,7 +278,8 @@ export const board = query({
         return {
           ...lead,
           customerName: customer?.name ?? "",
-          phone: customer?.phone ?? "",
+          // The lead's raw number stands in when the customer holds none.
+          phone: customer?.phone || lead.phone || "",
           phoneFrom: customer?.phoneFrom,
           lastMessage: await lastMessage(ctx, lead._id),
           unread: isUnread(lead),
