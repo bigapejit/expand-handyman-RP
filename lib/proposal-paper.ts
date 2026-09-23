@@ -1,13 +1,13 @@
-import type { OfferedLineItem } from "./solution-pricing";
 import type { ProposalTax } from "./proposal-pricing";
 import type { ProposalState } from "./proposals";
+import type { OfferedLineItem } from "./solution-pricing";
 
 // The **Proposal paper**'s own facts, dates and layout (CONTEXT.md), ported
 // from FRSG's lib/proposal-paper.ts. Pure, so the sheets a test lays out are
 // the sheets the page draws.
 //
 // Every date here is read in UTC, as the paper itself is
-// (components/proposal-document.tsx): a record read years later cannot depend
+// (components/proposal-paper.tsx): a record read years later cannot depend
 // on whichever timezone its reader's browser is in.
 
 // One proposal as the paper prints it: everything already decided, so the
@@ -103,8 +103,7 @@ export function solutionLines(solution: PaperSolution): number {
  * counted there too: where it would not fit after the last solution, that
  * solution moves to a fresh sheet with it, and where the two together would
  * still overrun a sheet the Grand Total takes the next sheet alone, letterhead
- * and all.
- * Either way it never overflows alone onto a sheet with no letterhead.
+ * and all. Either way it never overflows alone onto a sheet with no letterhead.
  *
  * It is an estimate, not a measurement: measuring means a fixed-height box,
  * and a box silently swallows whatever overruns it. A group the estimate got

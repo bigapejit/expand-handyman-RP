@@ -26,7 +26,7 @@
  * (`lib/paper-fonts.ts`); a sheet printed cold would otherwise be blank.
  *
  * The stacks that name these families live in `lib/paper-fonts.ts`, which
- * `paper-fonts.test.ts` holds this file and proposal-document.css to. Where the
+ * `paper-fonts.test.ts` holds this file and proposal-paper.css to. Where the
  * files came from and how to make them again: `docs/paper-fonts.md`.
  */
 

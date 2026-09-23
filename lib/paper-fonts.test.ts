@@ -23,7 +23,7 @@ const web = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 const read = (name: string) => readFileSync(web(name), "utf8");
 
 const fontsCss = read("../app/paper-fonts.css");
-const documentCss = read("../app/proposal-document.css");
+const documentCss = read("../app/proposal-paper.css");
 
 const DECLARED_FILES = [...fontsCss.matchAll(/url\("(\/fonts\/[^"]+)"\)/g)].map(([, url]) => url);
 
@@ -42,11 +42,11 @@ describe("the paper's stacks", () => {
     expect(paperScriptStack).toMatch(/^"Homemade Apple", Tinos,/);
   });
 
-  it("proposal-document.css sets its body copy in the same stack", () => {
+  it("proposal-paper.css sets its body copy in the same stack", () => {
     expect(documentCss).toContain(`font-family: ${paperSerifStack};`);
   });
 
-  it("proposal-document.css signs in the same script stack", () => {
+  it("proposal-paper.css signs in the same script stack", () => {
     expect(documentCss).toContain(`font-family: ${paperScriptStack};`);
   });
 

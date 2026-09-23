@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { OwnerGate } from "@/components/owner-gate";
 
 import "../paper-print.css";
-import "../proposal-document.css";
+import "../proposal-paper.css";
 
 // Staff pages drawn as paper rather than in the staff shell: the proposal
 // paper on its own grey backdrop, with no sidebar or header around it. Signing

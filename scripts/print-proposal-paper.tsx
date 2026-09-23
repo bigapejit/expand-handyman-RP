@@ -24,6 +24,8 @@ import type { PaperProposal, PaperSolution } from "../lib/proposal-paper";
 
 const root = resolve(import.meta.dirname, "..");
 const outDir = resolve(process.argv[2] ?? join(root, "docs", "prints", "proposal-paper"));
+// The site's absolute URLs (`/fonts/…`, `/logo.svg`) as the files in `public/`.
+const publicUrl = pathToFileURL(join(root, "public")).href;
 
 const faucet: PaperSolution = {
   solutionId: "s1",
@@ -124,23 +126,20 @@ const prints: [string, PaperProposal][] = [
   ],
 ];
 
-// The paper's stylesheets as the (paper) layout loads them, with the site's
-// absolute URLs pointed at the files in `public/`.
+// The paper's stylesheets as the (paper) layout loads them.
 function stylesheets(): string {
   const read = (name: string) => readFileSync(join(root, "app", name), "utf8");
-  const publicUrl = pathToFileURL(join(root, "public")).href;
   return [
     read("paper-fonts.css"),
     read("paper-screen.css"),
     read("paper-print.css"),
-    read("proposal-document.css").replace(/@import "\.\/paper-fonts\.css";/, ""),
+    read("proposal-paper.css").replace(/@import "\.\/paper-fonts\.css";/, ""),
   ]
     .join("\n")
     .replaceAll('url("/fonts/', `url("${publicUrl}/fonts/`);
 }
 
 function page(paper: PaperProposal): string {
-  const publicUrl = pathToFileURL(join(root, "public")).href;
   const body = renderToStaticMarkup(
     <PaperScreen paper={paper} strip={{ tone: "note", body: "Preview of a Draft" }} />,
   ).replaceAll('src="/logo.svg"', `src="${publicUrl}/logo.svg"`);

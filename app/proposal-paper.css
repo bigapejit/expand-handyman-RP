@@ -24,7 +24,7 @@
  *
  * The sheets' page name and their footer are not here: each document names its
  * own sheets after its proposal number and foots them with its own Proposal ID
- * (components/proposal-document.tsx, ProposalPageRules).
+ * (components/proposal-paper.tsx, ProposalPageRules).
  */
 
 /* Tinos and Homemade Apple, so this sheet sets the same glyphs in a browser,

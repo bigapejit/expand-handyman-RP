@@ -134,9 +134,15 @@ export const list = query({
 // with the signed-in owner as the Estimator Send would name. A query, so
 // reading the paper here never lands in a view log. Past Draft the paper is
 // the offer Send froze, which this does not lay out yet, so it answers null.
+//
+// A draft has no sent date, and "now" is the page's to say: a query's result
+// is cached until what it read changes, so a date taken here would go stale.
 export const paper = query({
   args: { proposalId: v.id("proposals") },
-  handler: async (ctx, a): Promise<PaperProposal | null> => {
+  handler: async (
+    ctx,
+    a,
+  ): Promise<(Omit<PaperProposal, "sentAt"> & { sentAt: number | null }) | null> => {
     await requireOwner(ctx);
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal || proposal.state !== "draft") return null;
@@ -160,7 +166,7 @@ export const paper = query({
       ),
       state: proposal.state,
       recommended: proposal.recommended,
-      sentAt: Date.now(),
+      sentAt: null,
       estimator: {
         name: identity?.name?.trim() || Unknown,
         email: identity?.email?.trim() || Unknown,

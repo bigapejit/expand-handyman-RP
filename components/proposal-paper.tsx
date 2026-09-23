@@ -30,7 +30,7 @@ import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
 //
 // Every moment on the paper is read in UTC (lib/proposal-paper.ts), so the day
 // beside a signature is the same day wherever the paper is read.
-export function ProposalDocument({ proposal }: { proposal: PaperProposal }) {
+export function ProposalPaper({ proposal }: { proposal: PaperProposal }) {
   const sheets = solutionSheets(proposal.solutions);
 
   return (
@@ -115,7 +115,7 @@ type CoverRow = { label: string; values: string[]; trailing?: string; spaced?: b
 function CoverBlock({ proposal }: { proposal: PaperProposal }) {
   const rows: CoverRow[] = [
     { label: "Client", values: [proposal.customerName] },
-    { label: "Property", values: propertyLines(proposal) },
+    { label: "Property", values: siteLines(proposal) },
     {
       label: "Estimator",
       values: [proposal.estimator.name],
@@ -197,7 +197,7 @@ function AgreeAndSign({ proposal }: { proposal: PaperProposal }) {
         Conditions page.
       </p>
       <div className="pd-signatures">
-        <SignatureLine label="Owner/Authorized Signature" rule="pd-customer-rule" />
+        <SignatureLine label="Owner/Authorized Signature" />
         <SignatureLine
           label="Expand Handyman Representative"
           name={proposal.estimator.name}
@@ -210,20 +210,17 @@ function AgreeAndSign({ proposal }: { proposal: PaperProposal }) {
 
 function SignatureLine({
   label,
-  rule,
   name = null,
   date = null,
 }: {
   label: string;
-  // The customer's line is named, so the sign bar can find it.
-  rule?: string;
   name?: string | null;
   date?: string | null;
 }) {
   return (
     <div className="pd-signature">
       <div className="pd-signature-row">
-        <span className={rule ? `pd-signature-rule ${rule}` : "pd-signature-rule"}>
+        <span className="pd-signature-rule">
           {name ? <span className="pd-script">{name}</span> : null}
         </span>
         <span className="pd-signature-date">
@@ -329,7 +326,7 @@ function GrandTotal({ proposal }: { proposal: PaperProposal }) {
 // scrolls to.
 function TermsPage() {
   return (
-    <section className="pd-page pd-terms" id="terms">
+    <section className="pd-page" id="terms">
       <Letterhead />
       <div className="pd-terms-head">Terms and Conditions</div>
       <ol className="pd-terms-list">
@@ -354,7 +351,7 @@ function quantityLabel(quantity: number, unit: string): string {
   return `${figure} ${unit}`;
 }
 
-function propertyLines(proposal: PaperProposal): string[] {
+function siteLines(proposal: PaperProposal): string[] {
   const { street, city } = proposal.site;
   return city ? [street, city] : [street];
 }

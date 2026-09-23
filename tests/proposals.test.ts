@@ -704,7 +704,7 @@ describe("proposals.paper", () => {
       emailVerified: true,
     });
 
-  test("lays a draft out from its live solutions as if sent now, with the owner as Estimator", async () => {
+  test("lays a draft out from its live solutions, unsent, with the owner as Estimator", async () => {
     const { t, owner, customer, site, create } = fixture();
     const customerId = await customer("Dana Whitfield");
     const siteId = await site(customerId, "1300FRANKLIN");
@@ -729,44 +729,38 @@ describe("proposals.paper", () => {
       depositPercent: 30,
     });
 
-    const now = Date.UTC(2026, 8, 22, 17, 42, 10);
-    vi.useFakeTimers({ toFake: ["Date"], now });
-    try {
-      const paper = await signedInOwner(t).query(api.proposals.paper, { proposalId });
-      expect(paper).toEqual({
-        proposalId,
-        number: 1,
-        code: "1300FRANKLIN-P1",
-        name: "Replace kitchen faucet",
-        state: "draft",
-        recommended: false,
-        sentAt: now,
-        estimator: { name: "Andrew Putilin", email: "andrew@cogtex.ai" },
-        customerName: "Dana Whitfield",
-        site: { street: "1300 Franklin St, Apt 2", city: "Vancouver, WA 98660" },
-        // The line items as the customer reads them: no unit cost.
-        solutions: [
-          {
-            solutionId: faucet,
-            title: "Replace kitchen faucet",
-            scopeOfWork: "Shut off the water.\nFit the new faucet.",
-            lineItems: [
-              { name: "Pull-down faucet", quantity: 1, unit: "EA" },
-              { name: "Plumbing labor", quantity: 3, unit: "HR" },
-            ],
-          },
-        ],
-        notes: "Excludes the dishwasher.",
-        tax: { source: "lookup", rate: 0.089, locationCode: "0605", period: "Q32026" },
-        // $470 cost at 10% is $517; 8.9% of it is $46.013.
-        subtotalCents: 51_700,
-        taxCents: 4_601,
-        totalCents: 56_301,
-        depositPercent: 30,
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    const paper = await signedInOwner(t).query(api.proposals.paper, { proposalId });
+    expect(paper).toEqual({
+      proposalId,
+      number: 1,
+      code: "1300FRANKLIN-P1",
+      name: "Replace kitchen faucet",
+      state: "draft",
+      recommended: false,
+      sentAt: null,
+      estimator: { name: "Andrew Putilin", email: "andrew@cogtex.ai" },
+      customerName: "Dana Whitfield",
+      site: { street: "1300 Franklin St, Apt 2", city: "Vancouver, WA 98660" },
+      // The line items as the customer reads them: no unit cost.
+      solutions: [
+        {
+          solutionId: faucet,
+          title: "Replace kitchen faucet",
+          scopeOfWork: "Shut off the water.\nFit the new faucet.",
+          lineItems: [
+            { name: "Pull-down faucet", quantity: 1, unit: "EA" },
+            { name: "Plumbing labor", quantity: 3, unit: "HR" },
+          ],
+        },
+      ],
+      notes: "Excludes the dishwasher.",
+      tax: { source: "lookup", rate: 0.089, locationCode: "0605", period: "Q32026" },
+      // $470 cost at 10% is $517; 8.9% of it is $46.013.
+      subtotalCents: 51_700,
+      taxCents: 4_601,
+      totalCents: 56_301,
+      depositPercent: 30,
+    });
   });
 
   test("reads the solutions and the customer live, so an edit shows at once", async () => {

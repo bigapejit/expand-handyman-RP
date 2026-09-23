@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { ProposalDocument } from "@/components/proposal-document";
+import { ProposalPaper } from "@/components/proposal-paper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
@@ -24,7 +24,7 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 
 // The one sentence under the top bar, and the colour it is said in.
 export type PaperStrip = {
-  tone: "note" | "signed" | "declined";
+  tone: "note";
   body: ReactNode;
 };
 
@@ -60,7 +60,7 @@ export function PaperScreen({
           // one frame of a slightly long page and never a short one.
           style={scaled && naturalHeight !== null ? { height: naturalHeight * scale } : undefined}
         >
-          <ProposalDocument proposal={paper} />
+          <ProposalPaper proposal={paper} />
         </div>
       </div>
     </div>
