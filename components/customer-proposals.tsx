@@ -357,19 +357,21 @@ function ProposalPanel({
           >
             <Copy data-icon="inline-start" aria-hidden /> Duplicate
           </Button>
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={
-              <a
-                href={proposalPaperHref(proposal.proposalId)}
-                target="_blank"
-                rel="noreferrer"
-              />
-            }
-          >
-            <Eye data-icon="inline-start" aria-hidden /> View paper
-          </Button>
+          {isDraft ? (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={
+                <a
+                  href={proposalPaperHref(proposal.proposalId)}
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
+            >
+              <Eye data-icon="inline-start" aria-hidden /> View paper
+            </Button>
+          ) : null}
           <span className="flex-1" />
           {isDraft ? (
             <Button variant="destructive" size="lg" onClick={() => setConfirmingDelete(true)}>

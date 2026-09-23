@@ -33,7 +33,20 @@ export function StaffPaper({ proposalId }: { proposalId: Id<"proposals"> }) {
   return (
     <PaperScreen
       paper={{ ...paper, sentAt: paper.sentAt ?? openedAt }}
-      strip={paper.state === "draft" ? { tone: "note", body: "Preview of a Draft" } : undefined}
+      strip={
+        paper.state === "draft"
+          ? { tone: "note", body: draftStrip(paper.unpricedSolutions) }
+          : undefined
+      }
     />
   );
+}
+
+// A draft may hold solutions not yet priced, and its total leaves them out.
+// The paper can't say so without saying it to the customer, so the strip does.
+function draftStrip(unpricedSolutions: number): string {
+  if (unpricedSolutions === 0) return "Preview of a Draft";
+  return unpricedSolutions === 1
+    ? "Preview of a Draft. 1 solution has no price yet and isn't in the total."
+    : `Preview of a Draft. ${unpricedSolutions} solutions have no price yet and aren't in the total.`;
 }

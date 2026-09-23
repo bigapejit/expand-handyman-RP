@@ -760,6 +760,21 @@ describe("proposals.paper", () => {
       taxCents: 4_601,
       totalCents: 56_301,
       depositPercent: 30,
+      unpricedSolutions: 0,
+    });
+  });
+
+  test("counts the solutions its total leaves out for want of a price", async () => {
+    const { t, owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const deck = await solution(siteId, "Deck repair", 100_000);
+    const gutters = await solution(siteId, "Gutters");
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck, gutters] });
+    expect(await signedInOwner(t).query(api.proposals.paper, { proposalId })).toMatchObject({
+      solutions: [{ title: "Deck repair" }, { title: "Gutters" }],
+      subtotalCents: 110_000,
+      unpricedSolutions: 1,
     });
   });
 

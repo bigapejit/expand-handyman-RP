@@ -137,12 +137,17 @@ export const list = query({
 //
 // A draft has no sent date, and "now" is the page's to say: a query's result
 // is cached until what it read changes, so a date taken here would go stale.
+// It may also hold solutions nobody has priced, which its total leaves out;
+// the count is for the page to say so, never for the paper.
 export const paper = query({
   args: { proposalId: v.id("proposals") },
   handler: async (
     ctx,
     a,
-  ): Promise<(Omit<PaperProposal, "sentAt"> & { sentAt: number | null }) | null> => {
+  ): Promise<
+    | (Omit<PaperProposal, "sentAt"> & { sentAt: number | null; unpricedSolutions: number })
+    | null
+  > => {
     await requireOwner(ctx);
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal || proposal.state !== "draft") return null;
@@ -154,7 +159,8 @@ export const paper = query({
     const solutions = (
       await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))
     ).flatMap((solution) => (solution ? [solution] : []));
-    const money = proposalMoney(solutions.map(priceStoredSolution), proposal.tax);
+    const prices = solutions.map(priceStoredSolution);
+    const money = proposalMoney(prices, proposal.tax);
 
     return {
       proposalId: proposal._id,
@@ -183,6 +189,7 @@ export const paper = query({
       tax: proposal.tax,
       ...money,
       depositPercent: proposal.depositPercent,
+      unpricedSolutions: prices.filter((price) => price === null).length,
     };
   },
 });
