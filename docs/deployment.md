@@ -66,7 +66,7 @@ npx convex env set GOOGLE_MAPS_API_KEY <key>
 npx convex env set --prod GOOGLE_MAPS_API_KEY <key>
 ```
 
-Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites keep their old address text until the one-off migration moves it onto sites.
+Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites kept their old address text until the one-off migration below moved it onto sites.
 
 ## Moving legacy addresses onto Sites
 
@@ -78,4 +78,6 @@ Customers created before Sites carry one free-text address in `customers.site`. 
 npx convex run --prod migrations:sitesFromCustomers
 ```
 
-It prints `{ migrated: [{ customer, site }], failed: [{ customer, address, reason }] }`: the site name each migrated customer now has, and the original text of each address that failed. A customer who already had that site, added by hand, is listed as migrated to it and gets no second one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Nine tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
+It prints `{ migrated: [{ customer, site }], failed: [{ customer, address, reason }] }`: the site name each migrated customer now has, and the original text of each address that failed. A customer who already had that site, added by hand, is listed as migrated to it and gets no second one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do.
+
+Once it has run on a deployment, that deployment holds no legacy addresses and the schema no longer declares `customers.site`. Convex refuses a schema that existing rows break, so a deployment the migration has not run on cannot take the schema without the field: run the migration there first. Nine tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
