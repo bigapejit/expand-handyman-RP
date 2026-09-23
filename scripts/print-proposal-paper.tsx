@@ -20,8 +20,13 @@ import { pathToFileURL } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { PaperScreen } from "../components/paper-screen";
-import { proposalTerms } from "../lib/expand-business";
-import type { PaperProposal, PaperSolution } from "../lib/proposal-paper";
+import { WashingtonNoticeToCustomer, proposalTerms } from "../lib/expand-business";
+import {
+  approvedBanner,
+  type PaperProposal,
+  type PaperSolution,
+} from "../lib/proposal-paper";
+import { SigningConsent, fingerprintOf } from "../lib/proposal-signing";
 
 const root = resolve(import.meta.dirname, "..");
 const outDir = resolve(process.argv[2] ?? join(root, "docs", "prints", "proposal-paper"));
@@ -128,6 +133,32 @@ const prints: [string, PaperProposal][] = [
   ],
 ];
 
+// The prototype's approved state: the two-solution proposal signed from an
+// iPhone, whose long user agent is what the certificate has to fit on one
+// sheet with, and over $1,000, so the Notice to Customer was acknowledged.
+const twoSolutions = prints[0][1];
+const signedAt = Date.UTC(2026, 8, 23, 2, 14, 51);
+const approved: PaperProposal = {
+  ...twoSolutions,
+  state: "approved",
+  signature: {
+    signerName: "Dana Whitfield",
+    signedAt,
+    firstOpenedAt: Date.UTC(2026, 8, 22, 19, 3, 27),
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Mobile/15E148 Safari/604.1",
+    consentWording: SigningConsent.wording(twoSolutions.number),
+    consentWordingVersion: SigningConsent.version,
+    noticeShown: true,
+    notice: {
+      wording: WashingtonNoticeToCustomer.text,
+      version: WashingtonNoticeToCustomer.version,
+    },
+    fingerprint: fingerprintOf("print-proposal-paper"),
+  },
+};
+prints.push(["approved-notice-acknowledged", approved]);
+
 // The paper's stylesheets as the (paper) layout loads them.
 function stylesheets(): string {
   const read = (name: string) => readFileSync(join(root, "app", name), "utf8");
@@ -142,9 +173,11 @@ function stylesheets(): string {
 }
 
 function page(paper: PaperProposal): string {
-  const body = renderToStaticMarkup(
-    <PaperScreen paper={paper} strip={{ tone: "note", body: "Preview of a Draft" }} />,
-  ).replaceAll('src="/logo.svg"', `src="${publicUrl}/logo.svg"`);
+  const strip =
+    paper.state === "approved" && paper.signature
+      ? { tone: "signed" as const, body: approvedBanner(paper.signature.signedAt) }
+      : { tone: "note" as const, body: "Preview of a Draft" };
+  const body = renderToStaticMarkup(<PaperScreen paper={paper} strip={strip} />).replaceAll('src="/logo.svg"', `src="${publicUrl}/logo.svg"`);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>body{margin:0}${stylesheets()}</style></head><body>${body}</body></html>`;
 }
 

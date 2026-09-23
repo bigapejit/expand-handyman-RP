@@ -55,20 +55,35 @@ export type ProposalActivity =
   | { kind: "quiet"; label: string };
 
 export function proposalActivity(
-  proposals: readonly { state: ProposalState; updatedAt: number }[],
+  proposals: readonly {
+    state: ProposalState;
+    updatedAt: number;
+    approvedAt?: number;
+    declinedAt?: number;
+  }[],
 ): ProposalActivity {
   const sent = proposals.filter((proposal) => proposal.state === "sent").length;
   if (sent > 0) return { kind: "awaiting", label: `${sent} awaiting a signature` };
 
+  // By when the decision was made: a later edit to a decided proposal, such as
+  // its Recommended mark, touches `updatedAt` and says nothing about the answer.
+  const decidedAt = (proposal: (typeof proposals)[number]) =>
+    proposal.approvedAt ?? proposal.declinedAt ?? proposal.updatedAt;
   const decided = proposals
     .filter((proposal) => proposal.state === "approved" || proposal.state === "declined")
-    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+    .sort((left, right) => decidedAt(right) - decidedAt(left))[0];
   if (decided?.state === "approved" || decided?.state === "declined")
     return { kind: "decided", state: decided.state };
 
   const drafts = proposals.length;
   if (drafts === 0) return { kind: "quiet", label: "No proposals" };
   return { kind: "quiet", label: drafts === 1 ? "1 draft" : `${drafts} drafts` };
+}
+
+// Beside an Approved proposal in its panel: approving one leaves the site's
+// other offers standing, and these are the ones to retire by hand.
+export function otherSentLabel(count: number): string {
+  return `${count} other Sent ${count === 1 ? "proposal" : "proposals"} at this Site`;
 }
 
 // What a Solution costs, beside its tick box. A Solution nobody has costed is

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   moveInOrder,
+  otherSentLabel,
   proposalActivity,
   proposalCode,
   proposalPanelHref,
@@ -75,6 +76,17 @@ describe("What the Customers list says about a customer's proposals", () => {
       kind: "decided",
       state: "declined",
     });
+  });
+
+  // Marking an old, approved proposal Recommended touches its row long after
+  // the decision; the latest decision is still the one made last.
+  it("orders decisions by when they were made, not when the row last changed", () => {
+    expect(
+      proposalActivity([
+        { state: "approved", approvedAt: 1, updatedAt: 9 },
+        { state: "declined", declinedAt: 5, updatedAt: 5 },
+      ]),
+    ).toEqual({ kind: "decided", state: "declined" });
   });
 });
 
@@ -184,5 +196,12 @@ describe("Ordering the Solutions a Proposal offers", () => {
     expect(moveInOrder(["a", "b", "c"], 1, "down")).toEqual(["a", "c", "b"]);
     expect(moveInOrder(["a", "b", "c"], 0, "up")).toEqual(["a", "b", "c"]);
     expect(moveInOrder(["a", "b", "c"], 2, "down")).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("What the panel says after an approval", () => {
+  it("counts the site's other Sent proposals", () => {
+    expect(otherSentLabel(1)).toBe("1 other Sent proposal at this Site");
+    expect(otherSentLabel(3)).toBe("3 other Sent proposals at this Site");
   });
 });

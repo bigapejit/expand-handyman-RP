@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { internalAction } from "./_generated/server";
-import { appOrigin, emailReplyTo, sendEmail, sendsEmail } from "./email";
+import type { Id } from "./_generated/dataModel";
+import { internalAction, type ActionCtx } from "./_generated/server";
+import { appOrigin, emailReplyTo, sendEmail, sendsEmail, type EmailResult } from "./email";
 import { formatCents } from "../lib/money";
 import { signingPath, signingUrl } from "../lib/signing-link";
 
@@ -95,4 +96,115 @@ function signingLinkBody(letter: {
     "",
     "This link is yours alone. Reply to this email with any questions.",
   ].join("\n");
+}
+
+// Where a decision's email says what became of it: the proposal's own list of
+// the letters its decision sent, by the place each was given when scheduled.
+async function recordDecision(
+  ctx: ActionCtx,
+  letter: { proposalId: Id<"proposals">; index: number },
+  result: EmailResult | { outcome: "fault"; fault: string },
+) {
+  await ctx.runMutation(internal.proposals.recordDecisionEmail, {
+    proposalId: letter.proposalId,
+    index: letter.index,
+    email:
+      result.outcome === "sent"
+        ? { outcome: "sent", ...(result.id === null ? {} : { id: result.id }) }
+        : result,
+  });
+}
+
+export const approvalLetter = {
+  proposalId: v.id("proposals"),
+  // Its place among the decision's emails, and where it goes: the customer's
+  // and Expand's copies are the same letter, sent on their own.
+  index: v.number(),
+  to: v.string(),
+  token: v.string(),
+  signerName: v.string(),
+  code: v.string(),
+  siteStreet: v.string(),
+  siteAddress: v.string(),
+  signedAt: v.number(),
+  proposalTitle: v.string(),
+  totalCents: v.number(),
+};
+
+// The approval notice, pointing at the signing link, which shows the signed
+// copy from now on.
+export const sendApproval = internalAction({
+  args: approvalLetter,
+  handler: async (ctx, a) => {
+    const url = signingUrl(appOrigin(), a.token);
+    if (!url && sendsEmail()) {
+      console.error(`Approval notice for ${a.to} not emailed: no app origin is configured (APP_ORIGIN).`);
+      await recordDecision(ctx, a, { outcome: "fault", fault: MissingOriginFault });
+      return;
+    }
+
+    const result = await sendEmail({
+      to: a.to,
+      subject: `Signed: Expand Handyman proposal for ${a.siteStreet}`,
+      text: [
+        `${a.signerName} accepted Proposal ${a.code} for ${a.siteAddress} on ${pacificDate(a.signedAt)}: ${a.proposalTitle}, ${formatCents(a.totalCents, "en-US")}.`,
+        "",
+        "The signed copy, with the terms as accepted, is here:",
+        url ?? signingPath(a.token),
+        "",
+        "Keep this email as your record of the agreement. Expand Handyman will be in touch about the next steps.",
+      ].join("\n"),
+      replyTo: emailReplyTo(),
+      idempotencyKey: `approval/${a.proposalId}/${a.index}`,
+      tags: { letter: "approval" },
+    });
+    if (result.outcome === "fault")
+      console.error(`Approval notice for ${a.to} was not emailed (${result.fault}).`);
+    await recordDecision(ctx, a, result);
+  },
+});
+
+export const declineLetter = {
+  proposalId: v.id("proposals"),
+  index: v.number(),
+  to: v.string(),
+  customerName: v.string(),
+  code: v.string(),
+  siteStreet: v.string(),
+  siteAddress: v.string(),
+  proposalTitle: v.string(),
+  reason: v.optional(v.string()),
+};
+
+// The decline notice, to Expand only: the customer gets no confirmation.
+export const sendDeclineNotice = internalAction({
+  args: declineLetter,
+  handler: async (ctx, a) => {
+    const result = await sendEmail({
+      to: a.to,
+      subject: `Declined: Proposal ${a.code} for ${a.siteStreet}`,
+      text: [
+        `${a.customerName} declined Proposal ${a.code} for ${a.siteAddress}: ${a.proposalTitle}.`,
+        "",
+        a.reason === undefined ? "They gave no reason." : `Their reason: ${a.reason}`,
+      ].join("\n"),
+      replyTo: emailReplyTo(),
+      idempotencyKey: `decline/${a.proposalId}/${a.index}`,
+      tags: { letter: "decline_notice" },
+    });
+    if (result.outcome === "fault")
+      console.error(`Decline notice for ${a.to} was not emailed (${result.fault}).`);
+    await recordDecision(ctx, a, result);
+  },
+});
+
+// A day as the emails date one: in Pacific time, where Expand and its
+// customers are, written out so it cannot be read month-first or day-first.
+function pacificDate(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(ms);
 }

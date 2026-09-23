@@ -1,4 +1,5 @@
 import type { ProposalTerm } from "./expand-business";
+import { formatCentsExact } from "./money";
 import type { ProposalTax } from "./proposal-pricing";
 import type { ProposalState } from "./proposals";
 import type { OfferedLineItem } from "./solution-pricing";
@@ -36,6 +37,25 @@ export type PaperProposal = {
   taxCents: number;
   totalCents: number;
   depositPercent: number;
+  // The customer's answer, once given: an approved proposal carries its
+  // signature, which the signed copy prints, and a declined one the day.
+  signature?: PaperSignature;
+  declinedAt?: number;
+};
+
+// A **Signature** as the signed copy prints it: on the customer's line, and in
+// the certificate of completion with the notice they acknowledged.
+export type PaperSignature = {
+  signerName: string;
+  signedAt: number;
+  firstOpenedAt?: number;
+  userAgent?: string;
+  consentWording: string;
+  consentWordingVersion: string;
+  noticeShown: boolean;
+  // The notice wording acknowledged, where it was.
+  notice?: { wording: string; version: string };
+  fingerprint: string;
 };
 
 export type PaperSolution = {
@@ -53,6 +73,12 @@ export function validUntil(sentAt: number): number {
   return sentAt + ValidityDays * 24 * 60 * 60 * 1000;
 }
 
+// The one clock the paper is read by, and the way the certificate of
+// completion declares it: a timestamp whose zone is not written down is not
+// evidence of anything.
+const PaperTimeZone = "UTC";
+export const PaperTimeZoneLabel = "(UTC+00:00) Coordinated Universal Time";
+
 // A calendar day on the paper, in the short numeric form a commercial estimate
 // dates itself by.
 export function paperDate(ms: number): string {
@@ -60,13 +86,67 @@ export function paperDate(ms: number): string {
     year: "numeric",
     month: "numeric",
     day: "numeric",
-    timeZone: "UTC",
+    timeZone: PaperTimeZone,
+  }).format(new Date(ms));
+}
+
+// A moment, to the second, in the same clock: what the certificate stamps its
+// events in.
+export function paperStamp(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: PaperTimeZone,
   }).format(new Date(ms));
 }
 
 // The top bar's one line: which proposal this paper is.
 export function paperTitle(number: number, name: string): string {
   return `Proposal ${number} · ${name}`;
+}
+
+// The sign bar's left-hand line, closed and open alike: what the customer is
+// being asked for, and how long the offer stands.
+export function totalAndValidity(totalCents: number, sentAt: number): string {
+  return `${formatCentsExact(totalCents)} · valid until ${paperDate(validUntil(sentAt))}`;
+}
+
+// The banner under the top bar once the customer has answered, in the words
+// settled on "Decide the proposal lifecycle, signing link and email texts for
+// one recipient" (#17). Dated as the paper is, so the banner and the date on
+// the signature line are the same day.
+export function approvedBanner(approvedAt: number): string {
+  return `You approved this proposal on ${paperDate(approvedAt)}. A copy has been emailed to you.`;
+}
+
+export function declinedBanner(declinedAt: number): string {
+  return `You declined this proposal on ${paperDate(declinedAt)}.`;
+}
+
+// What the bar offers instead of its buttons once the customer has declined:
+// a sentence, and a number that rings.
+export const HelpBeforeNumber = "Have any questions or need help? Call Expand Handyman at";
+
+// A phone number as a phone dials it: the digits, and the leading `+` of an
+// international number.
+export function telHref(phone: string): string {
+  return `tel:${phone.replace(/[^\d+]/g, "")}`;
+}
+
+// The certificate's count of the sheets it certifies: the cover, every
+// solution sheet and the Terms.
+export function documentPages(solutions: readonly PaperSolution[]): number {
+  return 1 + solutionSheets(solutions).length + 1;
+}
+
+// The certificate's own sheets: one, and a second carrying the Notice to
+// Customer where it was acknowledged.
+export function certificatePages(noticeAcknowledged: boolean): number {
+  return noticeAcknowledged ? 2 : 1;
 }
 
 // The paper's width, in CSS inches at 96 per inch.

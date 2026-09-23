@@ -12,6 +12,7 @@ import { isOwner } from "./auth";
 import { seenUpdate } from "./documents";
 import { emailOutcome } from "./schema";
 import { proposalDisplayName } from "../lib/proposal-pricing";
+import { noticeToCustomerApplies } from "../lib/proposal-signing";
 import type { PaperProposal } from "../lib/proposal-paper";
 import { offeredLineItems } from "../lib/solution-pricing";
 
@@ -80,8 +81,9 @@ async function linkForToken(ctx: QueryCtx, token: string) {
 // Sent proposal. After the customer decides, the link that decided stays
 // readable, so the tab they signed in and the email they kept still show the
 // paper; it can no longer act, which Approve and Decline ask for themselves.
-// A link ended any other way — withdrawn, or replaced by a re-send — opens
-// nothing, so an old link can never show the offer that took its place.
+// A link ended any other way — withdrawn, replaced by a re-send, or declined
+// by the owner after a phone call, which the customer never did through it —
+// opens nothing, so an old link can never show the offer that took its place.
 export async function paperStillOpenedBy(
   ctx: QueryCtx,
   token: string,
@@ -91,10 +93,50 @@ export async function paperStillOpenedBy(
   const proposal = await ctx.db.get(link.proposalId);
   if (!proposal?.frozen) return null;
 
-  const decided = link.endedReason === "approved" || link.endedReason === "declined";
+  const decided =
+    link.endedReason === "approved" ||
+    (link.endedReason === "declined" && proposal.declinedBy === "customer");
   if (link.endedAt !== undefined && !decided) return null;
   if (!decided && proposal.state !== "sent") return null;
   return { link, proposal };
+}
+
+export type LiveSigningLink = {
+  link: Doc<"signingLinks">;
+  proposal: Doc<"proposals"> & { frozen: NonNullable<Doc<"proposals">["frozen"]> };
+  site: Doc<"sites">;
+};
+
+// The link a customer may still act through: not ended, on a proposal still
+// Sent. Approve and Decline ask this for themselves and never read it off
+// what the page is showing, which stays readable after a decision.
+export async function liveLinkForToken(
+  ctx: QueryCtx,
+  token: string,
+): Promise<LiveSigningLink | null> {
+  const link = await linkForToken(ctx, token);
+  if (!link || link.endedAt !== undefined) return null;
+  const proposal = await ctx.db.get(link.proposalId);
+  if (!proposal || proposal.state !== "sent" || !proposal.frozen) return null;
+  const site = await ctx.db.get(proposal.siteId);
+  if (!site) return null;
+  return { link, proposal: { ...proposal, frozen: proposal.frozen }, site };
+}
+
+// Whether the sign bar has to show Washington's Notice to Customer: read from
+// the frozen total, so the page and Approve always agree.
+export function noticeRequiredFor(site: Doc<"sites">, frozen: { totalCents: number }): boolean {
+  return noticeToCustomerApplies(site.region, frozen.totalCents);
+}
+
+// When the customer first looked at this link: the earliest customer view the
+// log holds for it. Owner previews never count.
+export async function firstCustomerView(ctx: QueryCtx, token: string): Promise<number | null> {
+  const view = await ctx.db
+    .query("proposalViews")
+    .withIndex("by_token_viewer", (q) => q.eq("token", token).eq("viewer", "customer"))
+    .first();
+  return view?.openedAt ?? null;
 }
 
 // A proposal past Draft as its paper, read wholly from what Send froze.
@@ -128,7 +170,40 @@ export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
     taxCents: frozen.taxCents,
     totalCents: frozen.totalCents,
     depositPercent: frozen.depositPercent,
+    ...decision(proposal),
   };
+}
+
+// What the paper prints of the customer's answer: the signature and its
+// certificate once approved, the day of a decline once declined.
+function decision(proposal: Doc<"proposals">): Pick<PaperProposal, "signature" | "declinedAt"> {
+  const signature = proposal.signature;
+  if (proposal.state === "approved" && signature)
+    return {
+      signature: {
+        signerName: signature.signerName,
+        signedAt: signature.signedAt,
+        ...(signature.firstOpenedAt === undefined ? {} : { firstOpenedAt: signature.firstOpenedAt }),
+        ...(signature.userAgent === undefined ? {} : { userAgent: signature.userAgent }),
+        consentWording: signature.consentWording,
+        consentWordingVersion: signature.consentWordingVersion,
+        noticeShown: signature.noticeShown,
+        ...(signature.noticeTicked &&
+        signature.noticeWording !== undefined &&
+        signature.noticeWordingVersion !== undefined
+          ? {
+              notice: {
+                wording: signature.noticeWording,
+                version: signature.noticeWordingVersion,
+              },
+            }
+          : {}),
+        fingerprint: signature.sealed.fingerprint,
+      },
+    };
+  if (proposal.state === "declined" && proposal.declinedAt !== undefined)
+    return { declinedAt: proposal.declinedAt };
+  return {};
 }
 
 // What the `/sign/<token>` page is looking at. Documents and proposals share
@@ -150,13 +225,22 @@ export const resolve = query({
   },
 });
 
-// The paper the customer reads through their link. A query, so reading it
-// writes nothing; the page reports the open itself through `opened`.
-export const paper = query({
+// What the customer's link shows: the paper, stamped with their answer once
+// they have given one, and whether the sign bar must show Washington's Notice
+// to Customer. A query, so reading it writes nothing; the page reports the
+// open itself through `opened`.
+export const page = query({
   args: { token: v.string() },
   handler: async (ctx, a) => {
     const opened = await paperStillOpenedBy(ctx, a.token);
-    return opened ? sentPaper(opened.proposal) : null;
+    const paper = opened ? sentPaper(opened.proposal) : null;
+    if (!opened || !paper) return null;
+    const site = await ctx.db.get(opened.proposal.siteId);
+    return {
+      paper,
+      noticeRequired:
+        paper.state === "sent" && site !== null && noticeRequiredFor(site, paper),
+    };
   },
 });
 

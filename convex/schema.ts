@@ -75,6 +75,27 @@ export const emailOutcome = v.union(
   v.object({ outcome: v.literal("notSent"), reason: v.literal("noApiKey") }),
   v.object({ outcome: v.literal("fault"), fault: v.string() }),
 );
+// The customer's **Signature** on an approved proposal (CONTEXT.md), FRSG's
+// electronic signature for one recipient: no contact, no title, no network
+// address (ADR 0001 keeps none), and no paper path. Everything a certificate
+// of completion prints is here, with the proposal as signed sealed into one
+// canonical string and its SHA-256 fingerprint (lib/proposal-signing.ts).
+export const proposalSignature = v.object({
+  signerName: v.string(),
+  signingLinkId: v.id("signingLinks"),
+  signedAt: v.number(),
+  userAgent: v.optional(v.string()),
+  // The earliest customer view of the link that signed; absent when the view
+  // log has none, as when the page's own report of the open never landed.
+  firstOpenedAt: v.optional(v.number()),
+  consentWording: v.string(),
+  consentWordingVersion: v.string(),
+  noticeShown: v.boolean(),
+  noticeTicked: v.boolean(),
+  noticeWording: v.optional(v.string()),
+  noticeWordingVersion: v.optional(v.string()),
+  sealed: v.object({ document: v.string(), fingerprint: v.string() }),
+});
 export const signingLinkEndedReason = v.union(
   v.literal("approved"),
   v.literal("declined"),
@@ -161,6 +182,20 @@ export default defineSchema({
     // offer and the date it was made are unchanged, only where it went moves.
     frozen: v.optional(frozenProposal),
     sentAt: v.optional(v.number()),
+    // The decision, final either way. Approve writes the signature; a decline
+    // says who made it, because only the customer's own keeps their link
+    // readable and emails the owner.
+    approvedAt: v.optional(v.number()),
+    signature: v.optional(proposalSignature),
+    declinedAt: v.optional(v.number()),
+    declinedBy: v.optional(v.union(v.literal("customer"), v.literal("owner"))),
+    declineReason: v.optional(v.string()),
+    // The emails the decision sent, in the order they were scheduled, each
+    // with what became of it once its send has written back. Recorded, never
+    // read by the lifecycle: the decision stands whatever the mail did.
+    decisionEmails: v.optional(
+      v.array(v.object({ to: v.string(), email: v.optional(emailOutcome) })),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_site", ["siteId"]),

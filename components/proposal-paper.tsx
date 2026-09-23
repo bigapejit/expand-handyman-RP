@@ -1,16 +1,24 @@
+import type { ReactNode } from "react";
+
 import {
   ExpandBusiness,
+  WashingtonNoticeToCustomer,
   letterheadContactLines,
 } from "@/lib/expand-business";
 import { formatCentsExact } from "@/lib/money";
 import { paperSerifStack } from "@/lib/paper-fonts";
 import {
+  PaperTimeZoneLabel,
   ValidityDays,
+  certificatePages,
+  documentPages,
   paperDate,
+  paperStamp,
   scopeLines,
   solutionSheets,
   validUntil,
   type PaperProposal,
+  type PaperSignature,
   type PaperSolution,
 } from "@/lib/proposal-paper";
 import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
@@ -24,19 +32,34 @@ import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
 //
 // Page order: the cover (letterhead, cover block, the opening letter, the
 // accept line and the two signature lines), the solution sheets with the Grand
-// Total closing the last, then the Terms. The only money on the paper is the
-// Grand Total block: a solution carries no price of its own.
+// Total closing the last, then the Terms, and on an approved proposal the
+// Certificate of Completion. The only money on the paper is the Grand Total
+// block: a solution carries no price of its own.
 //
 // Every moment on the paper is read in UTC (lib/proposal-paper.ts), so the day
 // beside a signature is the same day wherever the paper is read.
-export function ProposalPaper({ proposal }: { proposal: PaperProposal }) {
+
+// The customer's line while they are signing: the name as it is being typed,
+// in pencil, and the Sign here tag that opens the sign bar.
+export type PendingSignature = { pendingName: string; onSignHere?: () => void };
+
+export function ProposalPaper({
+  proposal,
+  pending,
+}: {
+  proposal: PaperProposal;
+  pending?: PendingSignature;
+}) {
   const sheets = solutionSheets(proposal.solutions);
+  const signature = proposal.state === "approved" ? proposal.signature : undefined;
 
   return (
     <article
       className="proposal-document"
       data-proposal={proposal.number}
-      aria-label={`Proposal ${proposal.number}`}
+      aria-label={
+        signature ? `Signed copy of Proposal ${proposal.number}` : `Proposal ${proposal.number}`
+      }
     >
       <ProposalPageRules number={proposal.number} code={proposal.code} />
 
@@ -44,7 +67,7 @@ export function ProposalPaper({ proposal }: { proposal: PaperProposal }) {
         <Letterhead />
         <CoverBlock proposal={proposal} />
         <Letter proposal={proposal} />
-        <AgreeAndSign proposal={proposal} />
+        <AgreeAndSign proposal={proposal} signature={signature} pending={pending} />
       </section>
 
       {sheets.map((group, index) => (
@@ -58,6 +81,8 @@ export function ProposalPaper({ proposal }: { proposal: PaperProposal }) {
       ))}
 
       <TermsPage terms={proposal.terms} />
+
+      {signature ? <CertificateOfCompletion proposal={proposal} signature={signature} /> : null}
     </article>
   );
 }
@@ -187,8 +212,19 @@ function Letter({ proposal }: { proposal: PaperProposal }) {
 // The two signature lines. Send is Expand's offer and nobody at Expand
 // countersigns, so the Expand Handyman Representative line is filled the
 // moment the proposal is sent: the Estimator's name in the script face, with
-// the sent date. The customer's line is blank until they sign.
-function AgreeAndSign({ proposal }: { proposal: PaperProposal }) {
+// the sent date. The customer's line is blank until they sign: while they
+// type it carries their name in pencil, and once approved their name in
+// script with the day they signed.
+function AgreeAndSign({
+  proposal,
+  signature,
+  pending,
+}: {
+  proposal: PaperProposal;
+  signature: PaperSignature | undefined;
+  pending: PendingSignature | undefined;
+}) {
+  const typed = pending?.pendingName.trim() ?? "";
   return (
     <div className="pd-agree">
       <p>
@@ -196,7 +232,14 @@ function AgreeAndSign({ proposal }: { proposal: PaperProposal }) {
         Conditions page.
       </p>
       <div className="pd-signatures">
-        <SignatureLine label="Owner/Authorized Signature" />
+        <SignatureLine
+          label="Owner/Authorized Signature"
+          rule="pd-customer-rule"
+          name={signature?.signerName ?? null}
+          date={signature ? paperDate(signature.signedAt) : null}
+          pencil={signature || typed === "" ? null : typed}
+          onSignHere={signature || typed !== "" ? undefined : pending?.onSignHere}
+        />
         <SignatureLine
           label="Expand Handyman Representative"
           name={proposal.estimator.name}
@@ -209,18 +252,33 @@ function AgreeAndSign({ proposal }: { proposal: PaperProposal }) {
 
 function SignatureLine({
   label,
+  rule,
   name = null,
   date = null,
+  pencil = null,
+  onSignHere,
 }: {
   label: string;
+  rule?: string;
   name?: string | null;
   date?: string | null;
+  pencil?: string | null;
+  onSignHere?: () => void;
 }) {
   return (
     <div className="pd-signature">
       <div className="pd-signature-row">
-        <span className="pd-signature-rule">
-          {name ? <span className="pd-script">{name}</span> : null}
+        <span className={rule ? `pd-signature-rule ${rule}` : "pd-signature-rule"}>
+          {name ? (
+            <span className="pd-script">{name}</span>
+          ) : pencil ? (
+            <span className="pd-script pd-pencil">{pencil}</span>
+          ) : null}
+          {onSignHere ? (
+            <button type="button" className="pd-sign-here" onClick={onSignHere}>
+              Sign here
+            </button>
+          ) : null}
         </span>
         <span className="pd-signature-date">
           Date<span className="pd-date-rule">{date}</span>
@@ -341,6 +399,204 @@ function TermsPage({ terms }: { terms: PaperProposal["terms"] }) {
       </ol>
     </section>
   );
+}
+
+// The record of how the proposal was signed, closing the signed copy: FRSG's
+// electronic Certificate of Completion with Expand's names in it. It prints in
+// UTC and says so, carries the fingerprint of the offer as sealed at Approve,
+// and has a second sheet with Washington's Notice to Customer where the
+// customer acknowledged it. No network address is kept (ADR 0001), so there is
+// no line for one; the browser line is clamped so a phone's long user agent
+// never pushes the first sheet onto a second.
+function CertificateOfCompletion({
+  proposal,
+  signature,
+}: {
+  proposal: PaperProposal;
+  signature: PaperSignature;
+}) {
+  const estimator = proposal.estimator.name;
+  const customer = proposal.customerName;
+  const signedFor = customer === signature.signerName ? null : customer;
+  const notice = signature.notice;
+
+  return (
+    <>
+      <section className="pd-page pd-certificate">
+        <Band left="Certificate of Completion" right="Status: Completed" />
+        <div className="pc-grid">
+          <div>
+            <div>Proposal Id: {proposal.code}</div>
+            <div>
+              Subject: Proposal {proposal.number} · {proposal.name}
+            </div>
+            <div>Property: {proposal.site.street}</div>
+            <div>Client: {customer}</div>
+            <div className="pc-gap">Document Pages: {documentPages(proposal.solutions)}</div>
+            <div>Certificate Pages: {certificatePages(notice !== undefined)}</div>
+            <div>Time Zone: {PaperTimeZoneLabel}</div>
+          </div>
+          <div>
+            <div className="pc-gap-head">Signatures: 1</div>
+            <div>Initials: 0</div>
+            <div>Notice to Customer: {noticeStanding(signature)}</div>
+          </div>
+          <div>
+            <div>Proposal Originator:</div>
+            <div>{estimator}</div>
+            <div>{ExpandBusiness.letterheadName}</div>
+            {letterheadContactLines().map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
+        </div>
+
+        <Band left="Record Tracking" />
+        <div className="pc-grid">
+          <div>
+            <div>Status: Original</div>
+            <div className="pc-indent">{paperStamp(proposal.sentAt)}</div>
+          </div>
+          <div>
+            <div>Holder: {estimator}</div>
+            <div className="pc-indent">{proposal.estimator.email}</div>
+          </div>
+          <div>
+            <div>Location: {ExpandBusiness.letterheadName}</div>
+            <div className="pc-gap">Sent to:</div>
+            <div className="pc-indent">{customer}</div>
+          </div>
+        </div>
+
+        <Band left="Signer Events" middle="Signature" right="Timestamp" />
+        <div className="pc-grid">
+          <div>
+            <div>{signature.signerName}</div>
+            {signedFor ? <div>{signedFor}</div> : null}
+            <div>Security Level: Emailed private link</div>
+          </div>
+          <div>
+            <SignatureBox label="Signed on Expand Handyman:" fingerprint={signature.fingerprint}>
+              <div className="pc-sig">{signature.signerName}</div>
+            </SignatureBox>
+            <div className="pc-gap">Signature Adoption: Typed name</div>
+            <div className="pc-browser">Browser: {signature.userAgent ?? NotRecorded}</div>
+          </div>
+          <div>
+            <div>Sent: {paperStamp(proposal.sentAt)}</div>
+            <div>Viewed: {openedStamp(signature.firstOpenedAt)}</div>
+            <div>Signed: {paperStamp(signature.signedAt)}</div>
+          </div>
+        </div>
+        <div className="pc-disclosure">
+          <b>Electronic Record and Signature Disclosure:</b>
+          <div className="pc-indent">
+            {signature.consentWording} (wording {signature.consentWordingVersion})
+          </div>
+        </div>
+
+        <Band left="Expand Handyman Representative Events" middle="Signature" right="Timestamp" />
+        <div className="pc-grid">
+          <div>
+            <div>{estimator}</div>
+            <div>{ExpandBusiness.letterheadName}</div>
+          </div>
+          <div>
+            <div className="pc-sigbox">
+              <div className="pc-sigbox-label">Sent by Expand Handyman:</div>
+              <div className="pc-sig">{estimator}</div>
+            </div>
+          </div>
+          <div>
+            <div>Sent: {paperStamp(proposal.sentAt)}</div>
+          </div>
+        </div>
+
+        <Band left="Proposal Summary Events" middle="Status" right="Timestamps" />
+        <div className="pc-grid">
+          <div>
+            <div>Proposal Sent</div>
+            <div>Signing Link Opened</div>
+            <div>Signing Complete</div>
+            <div>Completed</div>
+          </div>
+          <div>
+            <div>Hashed/Encrypted</div>
+            <div>Security Checked</div>
+            <div>Security Checked</div>
+            <div>Security Checked</div>
+          </div>
+          <div>
+            <div>{paperStamp(proposal.sentAt)}</div>
+            <div>{openedStamp(signature.firstOpenedAt)}</div>
+            <div>{paperStamp(signature.signedAt)}</div>
+            <div>{paperStamp(signature.signedAt)}</div>
+          </div>
+        </div>
+
+        <Band left="Sealed Copy" middle="Fingerprint (SHA-256)" />
+        <div className="pc-grid">
+          <div>Proposal as accepted</div>
+          <div className="pc-mono pc-span2">{signature.fingerprint}</div>
+        </div>
+      </section>
+
+      {notice ? (
+        <section className="pd-page pd-certificate">
+          <Band
+            left="Certificate of Completion"
+            right={`${WashingtonNoticeToCustomer.title} (Washington)`}
+          />
+          <div className="pc-notice">
+            <p className="pc-prose">{notice.wording}</p>
+            <p>
+              {WashingtonNoticeToCustomer.acknowledgement} — acknowledged by{" "}
+              {signature.signerName}, {paperStamp(signature.signedAt)} (wording {notice.version}).
+            </p>
+          </div>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+function SignatureBox({
+  label,
+  fingerprint,
+  children,
+}: {
+  label: string;
+  fingerprint: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="pc-sigbox">
+      <div className="pc-sigbox-label">{label}</div>
+      {children}
+      <div className="pc-sigbox-id">{`${fingerprint.slice(0, 16).toUpperCase()}…`}</div>
+    </div>
+  );
+}
+
+function Band({ left, middle = "", right = "" }: { left: string; middle?: string; right?: string }) {
+  return (
+    <div className="pc-band">
+      <span>{left}</span>
+      <span>{middle}</span>
+      <span>{right}</span>
+    </div>
+  );
+}
+
+const NotRecorded = "Not recorded";
+
+function openedStamp(firstOpenedAt: number | undefined): string {
+  return firstOpenedAt === undefined ? NotRecorded : paperStamp(firstOpenedAt);
+}
+
+function noticeStanding(signature: PaperSignature): string {
+  if (!signature.noticeShown) return "Not required";
+  return signature.notice ? "Shown and acknowledged" : "Shown; not acknowledged";
 }
 
 function quantityLabel(quantity: number, unit: string): string {

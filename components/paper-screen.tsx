@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { ProposalPaper } from "@/components/proposal-paper";
+import { ProposalPaper, type PendingSignature } from "@/components/proposal-paper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
@@ -11,8 +11,8 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 // The screen a **Proposal paper** is read on: white letter pages on a grey
 // backdrop, under a sticky bar carrying Expand's mark and which proposal this
 // is (app/paper-screen.css). Ported from FRSG's paper-screen.tsx. The staff
-// paper draws it today; the signing link draws the same screen with a sign bar
-// over it.
+// paper draws it; the signing link draws the same screen with a sign bar over
+// it.
 //
 // On a screen narrower than the paper the whole document is scaled down rather
 // than reflowed, so the page a customer reads on a phone is the page that
@@ -24,17 +24,23 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 
 // The one sentence under the top bar, and the colour it is said in.
 export type PaperStrip = {
-  tone: "note";
+  tone: "note" | "signed" | "declined" | "fault";
   body: ReactNode;
 };
 
 export function PaperScreen({
   paper,
   strip,
+  pending,
+  bar,
 }: {
   paper: PaperProposal;
   // What the page has to say about where the proposal stands, if anything.
   strip?: PaperStrip;
+  // The customer's signature line while they sign (proposal-paper.tsx).
+  pending?: PendingSignature;
+  // The sign bar, pinned to the bottom of the screen over the paper.
+  bar?: ReactNode;
 }) {
   const { scale, sheetsRef, naturalHeight } = usePaperFit();
   const ready = usePaperReady();
@@ -42,7 +48,7 @@ export function PaperScreen({
 
   return (
     <div
-      className="paper-screen"
+      className={bar ? "paper-screen paper-screen-signing" : "paper-screen"}
       data-paper={ready ? "ready" : "loading"}
       style={{ ["--paper-scale" as string]: String(scale) }}
     >
@@ -60,11 +66,34 @@ export function PaperScreen({
           // one frame of a slightly long page and never a short one.
           style={scaled && naturalHeight !== null ? { height: naturalHeight * scale } : undefined}
         >
-          <ProposalPaper proposal={paper} />
+          <ProposalPaper proposal={paper} pending={pending} />
         </div>
       </div>
+
+      {bar}
     </div>
   );
+}
+
+// The Terms page, brought into view: what "Read the Terms" scrolls to, from
+// the closed sign bar and from beside the consent tick.
+export function scrollToTerms(): void {
+  document.getElementById("terms")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// The customer's own signature line, brought into view: what the Sign here tag
+// and the sign bar both scroll to, so the line is on the screen while the name
+// is typed.
+export function scrollToSignatureLine(): void {
+  document
+    .querySelector(".pd-customer-rule")
+    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// The last sheets, where the Certificate of Completion records how the
+// proposal was signed.
+export function scrollToCertificate(): void {
+  document.querySelector(".pd-certificate")?.scrollIntoView({ behavior: "smooth" });
 }
 
 // The page's shape before its proposal arrives: the backdrop and one sheet's
