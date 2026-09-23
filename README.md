@@ -31,4 +31,4 @@ Uploaded PDFs are the MVP. FRSG-style solutions, priced line items, generated pr
 
 The customer signing screen reuses FRSG's `paper-screen.css`, sign-bar markup and Homemade Apple handwriting font. The font's Apache license is in `public/fonts/HomemadeApple-LICENSE.txt`. Branding and document-specific wording are adapted for Expand. Date fields use each signer's server-recorded signing time, displayed in America/Los_Angeles; the certificate records UTC timestamps.
 
-See [deployment and verification](docs/deployment.md) and the [Wayfinder roadmap](docs/wayfinder/map.md).
+See [deployment and verification](docs/deployment.md).

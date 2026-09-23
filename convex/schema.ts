@@ -67,7 +67,10 @@ export default defineSchema({
     ),
   })
     .index("by_token", ["token"])
-    .index("by_customer", ["customerId"]),
+    .index("by_customer", ["customerId"])
+    .index("by_status", ["status"])
+    .index("by_status_signed", ["status", "signedAt"])
+    .index("by_status_declined", ["status", "declinedAt"]),
   documentViews: defineTable({
     documentId: v.id("documents"),
     token: v.string(),

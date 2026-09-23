@@ -58,6 +58,97 @@ export const list = query({
     );
   },
 });
+// The Dashboard's Documents card: what is out with a customer, the one waiting
+// longest first, then the few most recently answered. Opens are counted on the
+// current link only, so a withdrawn and reissued document starts unopened.
+export const dashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    const byStatus = (status: Doc<"documents">["status"]) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_status", (q) => q.eq("status", status));
+    // Everything out for signature, however old: those are the ones to chase.
+    const waiting = [
+      ...(await byStatus("ready").collect()),
+      ...(await byStatus("viewed").collect()),
+    ];
+    // The latest eight of each by when they were answered, not when uploaded.
+    const answered = [
+      ...(await ctx.db
+        .query("documents")
+        .withIndex("by_status_signed", (q) => q.eq("status", "signed"))
+        .order("desc")
+        .take(8)),
+      ...(await ctx.db
+        .query("documents")
+        .withIndex("by_status_declined", (q) => q.eq("status", "declined"))
+        .order("desc")
+        .take(8)),
+    ];
+    const out = await Promise.all(
+      waiting
+        .sort((a, b) => (a.issuedAt ?? 0) - (b.issuedAt ?? 0))
+        .map(async (d) => {
+          const views = (
+            await ctx.db
+              .query("documentViews")
+              .withIndex("by_document_viewer", (q) =>
+                q.eq("documentId", d._id).eq("viewer", "customer"),
+              )
+              .collect()
+          ).filter((view) => view.token === d.token);
+          return {
+            _id: d._id,
+            title: d.title,
+            customerName: (await customerDetails(ctx, d)).customerName,
+            issuedAt: d.issuedAt,
+            // A first view from before the view log existed is one open.
+            customerViews: views.length || (d.viewedAt ? 1 : 0),
+            lastViewedAt: views.at(-1)?.openedAt ?? d.viewedAt,
+          };
+        }),
+    );
+    const decided = await Promise.all(
+      answered
+        .map((d) => ({
+          d,
+          decidedAt: d.signedAt ?? d.declinedAt ?? d._creationTime,
+        }))
+        .sort((a, b) => b.decidedAt - a.decidedAt)
+        .slice(0, 8)
+        .map(async ({ d, decidedAt }) => ({
+          _id: d._id,
+          title: d.title,
+          customerName: (await customerDetails(ctx, d)).customerName,
+          status: d.status as "signed" | "declined",
+          decidedAt,
+          signerName: d.signerName,
+          declineReason: d.declineReason,
+        })),
+    );
+    return { out, decided };
+  },
+});
+export const forCustomer = query({
+  args: { customerId: v.id("customers") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    return (
+      await ctx.db
+        .query("documents")
+        .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
+        .order("desc")
+        .collect()
+    ).map((d) => ({
+      _id: d._id,
+      _creationTime: d._creationTime,
+      title: d.title,
+      status: d.status,
+    }));
+  },
+});
 export const customers = query({
   args: {},
   handler: async (ctx) => {

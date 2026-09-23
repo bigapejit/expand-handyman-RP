@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  // The default bottom-left badge sits on the sidebar's account card.
+  devIndicators: { position: "bottom-right" },
   async headers() {
     return [
       {
