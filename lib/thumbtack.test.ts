@@ -3,14 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   OPEN_STAGES,
   STAGE_LABELS,
+  addressLine,
   conversationUrl,
+  estimateLine,
   eventKind,
   isUnread,
   nextStageOnBusinessReply,
   parseLeadEvent,
   parseMessageEvent,
+  placeOf,
   stageOnProposalApproved,
   stageOnProposalSent,
+  timeAgo,
   webhookAuthorized,
 } from "./thumbtack";
 
@@ -249,5 +253,63 @@ describe("webhookAuthorized", () => {
     expect(webhookAuthorized(new Headers(basic("u:")), "")).toBe(false);
     expect(webhookAuthorized(new Headers({ "X-Thumbtack-Secret": "" }), "")).toBe(false);
     expect(webhookAuthorized(new Headers(), undefined)).toBe(false);
+  });
+});
+
+describe("timeAgo", () => {
+  const now = Date.UTC(2026, 8, 23, 18, 30);
+  const minutes = (n: number) => now - n * 60_000;
+
+  it("says just now under a minute, and for a clock slightly ahead", () => {
+    expect(timeAgo(now, now)).toBe("just now");
+    expect(timeAgo(now - 59_000, now)).toBe("just now");
+    expect(timeAgo(now + 30_000, now)).toBe("just now");
+  });
+
+  it("counts whole minutes, hours, then days", () => {
+    expect(timeAgo(minutes(1), now)).toBe("1m ago");
+    expect(timeAgo(minutes(59), now)).toBe("59m ago");
+    expect(timeAgo(minutes(60), now)).toBe("1h ago");
+    expect(timeAgo(minutes(23 * 60 + 59), now)).toBe("23h ago");
+    expect(timeAgo(minutes(24 * 60), now)).toBe("1d ago");
+    expect(timeAgo(minutes(40 * 24 * 60), now)).toBe("40d ago");
+  });
+});
+
+describe("placeOf and addressLine", () => {
+  it("reads a full address as one line", () => {
+    const location = {
+      address1: "1408 NE 139th St",
+      address2: "Unit 2",
+      city: "Vancouver",
+      state: "WA",
+      zipCode: "98685",
+    };
+    expect(placeOf(location)).toBe("Vancouver, WA");
+    expect(addressLine(location)).toBe("1408 NE 139th St, Unit 2, Vancouver, WA 98685");
+  });
+
+  it("leaves out whatever Thumbtack did not send", () => {
+    expect(addressLine({ city: "Portland", state: "OR", zipCode: "97217" })).toBe("Portland, OR 97217");
+    expect(placeOf({ city: "", state: "", zipCode: "98607" })).toBe("");
+    expect(addressLine({ city: "", state: "", zipCode: "98607" })).toBe("98607");
+    expect(addressLine({ city: "", state: "", zipCode: "" })).toBe("");
+  });
+});
+
+describe("estimateLine", () => {
+  it("words each of Thumbtack's estimate types", () => {
+    expect(estimateLine({ type: "Fixed", total: "$225.00" })).toBe("Estimate: $225 fixed");
+    expect(estimateLine({ type: "Hourly", pricePerUnit: "$85.50" })).toBe("Estimate: $85.50/hr");
+    expect(estimateLine({ type: "Hourly", total: "$85.00" })).toBe("Estimate: $85/hr");
+    expect(
+      estimateLine({ type: "PerUnit", pricePerUnit: "$4.00", unitName: "sq ft", total: "$800.00" }),
+    ).toBe("Estimate: $4 per sq ft, $800 total");
+    expect(estimateLine({ type: "OnSite" })).toBe("Estimate: after a site visit");
+    expect(estimateLine({ type: "MoreInfo" })).toBe("Estimate: needs more info");
+  });
+
+  it("is nothing when the lead has no estimate", () => {
+    expect(estimateLine(undefined)).toBeNull();
   });
 });

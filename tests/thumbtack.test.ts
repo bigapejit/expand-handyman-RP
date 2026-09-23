@@ -290,6 +290,24 @@ describe("a message event", () => {
   });
 });
 
+test("a lead's thread is its chat oldest first, and null once the lead is gone", async () => {
+  const { t, owner, receive, leads } = fixture();
+  await receive(leadEvent());
+  // Out of order, as deliveries may come.
+  await receive(messageEvent("m-2", "Business", "2026-09-23T17:10:00Z"));
+  await receive(messageEvent("m-1", "Customer", "2026-09-23T17:05:00Z"));
+  const [lead] = await leads();
+
+  const messages = await owner.query(api.leads.thread, { leadId: lead._id });
+  expect(messages?.map((m) => [m.messageId, m.from])).toEqual([
+    ["m-1", "customer"],
+    ["m-2", "business"],
+  ]);
+
+  await t.run((ctx) => ctx.db.delete(lead._id));
+  expect(await owner.query(api.leads.thread, { leadId: lead._id })).toBeNull();
+});
+
 test("an unknown event type is ignored and logged", async () => {
   const { receive, leads, events } = fixture();
   const body = { event: { eventType: "ReviewCreatedV4" }, data: { stars: 5 } };
@@ -335,6 +353,7 @@ describe("owner only", () => {
     const stranger = t.withIdentity({ subject: "someone", email: "someone@example.com", emailVerified: true });
     await expect(stranger.query(api.leads.board, {})).rejects.toThrow(/Owner access/);
     await expect(stranger.query(api.leads.unreadCount, {})).rejects.toThrow(/Owner access/);
+    await expect(stranger.query(api.leads.thread, { leadId: lead._id })).rejects.toThrow(/Owner access/);
     await expect(stranger.mutation(api.leads.open, { leadId: lead._id })).rejects.toThrow(/Owner access/);
     await expect(
       stranger.mutation(api.leads.setStage, { leadId: lead._id, stage: "lost" }),

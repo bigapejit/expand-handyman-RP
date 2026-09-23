@@ -1,10 +1,11 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
-import { FileSignature, FileText, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { useConvexAuth, useQuery } from "convex/react";
+import { FileSignature, FileText, Inbox, LayoutDashboard, LogOut, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { Component, useState, type ReactNode } from "react";
 
 import { Brand } from "@/components/brand";
 import { Monogram } from "@/components/monogram";
@@ -18,14 +19,17 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { api } from "@/convex/_generated/api";
 
 const navigation = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Customers", href: "/customers", icon: Users },
+  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Documents", href: "/documents", icon: FileText },
 ] as const;
@@ -62,6 +66,11 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
+                  {item.href === "/thumbtack" ? (
+                    <Quiet>
+                      <UnreadBadge />
+                    </Quiet>
+                  ) : null}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -73,6 +82,37 @@ export function AppSidebar() {
       </SidebarFooter>
     </Sidebar>
   );
+}
+
+// Unread Thumbtack leads on the nav item. The sidebar renders outside the
+// owner gate and `unreadCount` throws for anyone but the owner, so it asks only
+// once Convex knows the owner is signed in (the gate's own query, shared), and
+// shows nothing until it hears back or while there are none.
+function UnreadBadge() {
+  const auth = useConvexAuth();
+  const access = useQuery(api.documents.access, auth.isAuthenticated ? {} : "skip");
+  const unread = useQuery(api.leads.unreadCount, access?.owner ? {} : "skip");
+  if (!unread) return null;
+  return (
+    <SidebarMenuBadge
+      aria-label={`${unread} unread`}
+      className="rounded-full bg-sky-500 text-white peer-hover/menu-button:text-white peer-data-active/menu-button:text-white"
+    >
+      {unread}
+    </SidebarMenuBadge>
+  );
+}
+
+// A badge is never worth the page: if its query fails (a deployment behind
+// the app, say), the badge goes and the shell stays.
+class Quiet extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 // FRSG's sidebar card, keeping only the account door: the owner's initials and

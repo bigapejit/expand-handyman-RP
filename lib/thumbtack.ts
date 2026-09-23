@@ -283,6 +283,43 @@ export function conversationUrl(negotiationId: string) {
   return `https://www.thumbtack.com/pro-inbox/messages/${negotiationId}`;
 }
 
+/** "5m ago", "3h ago", "2d ago": how long before `now` something happened. */
+export function timeAgo(at: number, now: number): string {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/** "Vancouver, WA", or whichever half of it Thumbtack sent. */
+export function placeOf(location: LeadLocation): string {
+  return [location.city, location.state].filter(Boolean).join(", ");
+}
+
+/** The street, then the place and zip, as one line. */
+export function addressLine(location: LeadLocation): string {
+  const place = [placeOf(location), location.zipCode].filter(Boolean).join(" ");
+  return [location.address1, location.address2, place].filter(Boolean).join(", ");
+}
+
+// Thumbtack words prices "$225.00"; the cents say nothing on a round figure.
+const dollars = (price: string) => price.replace(/\.00$/, "");
+
+/** Thumbtack's own estimate in a line, or null when the lead carries none. */
+export function estimateLine(estimate: LeadEstimate | undefined): string | null {
+  if (!estimate) return null;
+  const { type, total, pricePerUnit, unitName } = estimate;
+  if (type === "Fixed" && total) return `Estimate: ${dollars(total)} fixed`;
+  if (type === "Hourly" && (pricePerUnit || total))
+    return `Estimate: ${dollars(pricePerUnit || total || "")}/hr`;
+  if (type === "PerUnit" && pricePerUnit)
+    return `Estimate: ${dollars(pricePerUnit)} per ${unitName || "unit"}${total ? `, ${dollars(total)} total` : ""}`;
+  if (type === "OnSite") return "Estimate: after a site visit";
+  return "Estimate: needs more info";
+}
+
 // Compares every character whatever the first difference, so the time taken
 // says little about how much of a guess was right.
 function sameSecret(a: string, b: string) {

@@ -278,6 +278,21 @@ export const forCustomer = query({
   },
 });
 
+// One lead's **Thumbtack chat**, oldest first, for the board's panel: `board`
+// carries only the last message. Null when there is no such lead.
+export const thread = query({
+  args: { leadId: v.id("leads") },
+  handler: async (ctx, { leadId }) => {
+    await requireOwner(ctx);
+    if (!(await ctx.db.get(leadId))) return null;
+    return await ctx.db
+      .query("leadMessages")
+      .withIndex("by_lead", (q) => q.eq("leadId", leadId))
+      .order("asc")
+      .collect();
+  },
+});
+
 // Opening a lead clears **Unread**; nothing on Thumbtack does.
 export const open = mutation({
   args: { leadId: v.id("leads") },
