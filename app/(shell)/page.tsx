@@ -1,4 +1,5 @@
 import { DashboardDocuments } from "@/components/dashboard-documents";
+import { DashboardProposals } from "@/components/dashboard-proposals";
 import { PageHeader } from "@/components/page-header";
 
 export default function DashboardPage() {
@@ -8,7 +9,10 @@ export default function DashboardPage() {
         title="Dashboard"
         description="What is waiting on a customer, and what they decided."
       />
-      <DashboardDocuments />
+      <div className="space-y-8">
+        <DashboardProposals />
+        <DashboardDocuments />
+      </div>
     </div>
   );
 }
