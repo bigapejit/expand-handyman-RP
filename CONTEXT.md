@@ -113,12 +113,20 @@ The record that a sent invoice's money arrived: the day it arrived and who recor
 _Avoid_: Transaction, receipt, paid tick (it is a record, not a flag on the invoice)
 
 **Mark paid**:
-The owner recording a payment on a sent invoice, with the day the money arrived, today unless changed. Mark unpaid removes it. An invoice for a credit is marked paid once the owner has refunded it by hand.
+The owner recording a payment on a sent invoice, with the day the money arrived, today unless changed. The customer's link then shows the paper stamped PAID with that day. Mark unpaid removes it, stamp and all. An invoice for a credit is marked paid once the owner has refunded it by hand.
 _Avoid_: Settle, close, reconcile
 
 **Standing**:
 What an invoice reads about its money: Unpaid, Paid, or Overdue when still unpaid more than seven days after the day it was sent. Read from its payment each time, never stored. A void invoice has none, and an invoice for $0 reads Paid from the moment it is sent.
 _Avoid_: Status (which is draft, sent or void), state, paid flag
+
+**Invoice paper**:
+An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines and the amount due, how to pay, and one line placing it under the Terms of the proposal as signed. It prints nothing about other invoices on the proposal and no Terms page. Stamped VOID once voided and PAID once marked paid.
+_Avoid_: Invoice document, invoice PDF, bill
+
+**Invoice link**:
+A private link that shows one invoice's paper to the customer, sent in the invoice's email. Nothing is signed through it. It never expires by itself: only a re-send ends it, and a paid or void invoice's link keeps showing the stamped paper.
+_Avoid_: Signing link (for an invoice; the customer signs nothing), payment link
 
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
@@ -168,7 +176,7 @@ _Avoid_: Signed document (a signed uploaded PDF, a different thing)
 The closing pages of a signed copy, recording how it was signed: when it was sent, first viewed and approved, by whom and from where, with a fingerprint of the offer as accepted, and the Notice to Customer on a second page when it was acknowledged.
 
 **PDF copy**:
-The proposal paper of a sent or approved proposal saved as a PDF file, made only when the owner or the customer asks to download it and then kept for as long as the proposal stays in that state. A draft or declined proposal has none. An approved proposal's PDF copy is its signed copy as a file, and it never changes once made.
+The proposal paper of a sent or approved proposal, or the invoice paper of a sent or void invoice, saved as a PDF file, made only when the owner or the customer asks to download it and then kept for as long as the proposal or invoice stays in that state. A draft or declined proposal has none, and neither does a draft invoice. An approved proposal's PDF copy is its signed copy as a file, and it never changes once made.
 _Avoid_: Proposal PDF, proposal document, attachment
 
 **Render pass**:
