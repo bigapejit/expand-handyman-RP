@@ -33,11 +33,25 @@ function normalizeToken(value: string) {
 
 /** `4410 NE 94th St, Apt 2, Vancouver, WA 98665`, skipping any empty part. */
 export function siteAddress(site: SiteAddress) {
-  const regionLine = [site.region, site.postalCode].filter(Boolean).join(" ");
-  return [site.addressLine1, site.addressLine2, site.city, regionLine]
+  return joinParts([site.addressLine1, site.addressLine2, siteCityLine(site)]);
+}
+
+/** The address as the paper prints it over two lines: `4410 NE 94th St, Apt 2`. */
+export function siteStreetLine(site: SiteAddress) {
+  return joinParts([site.addressLine1, site.addressLine2]);
+}
+
+/** …and `Vancouver, WA 98665`. */
+export function siteCityLine(site: SiteAddress) {
+  const regionLine = joinParts([site.region, site.postalCode], " ");
+  return joinParts([site.city, regionLine]);
+}
+
+function joinParts(parts: string[], separator = ", ") {
+  return parts
     .map((part) => part.trim())
     .filter(Boolean)
-    .join(", ");
+    .join(separator);
 }
 
 // What the owner types beside the picked address, and the unit rule the

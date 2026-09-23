@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createSiteName, siteAddress } from "./sites";
+import { createSiteName, siteAddress, siteCityLine, siteStreetLine } from "./sites";
 
 describe("createSiteName", () => {
   // FRSG's cases, verbatim.
@@ -64,5 +64,25 @@ describe("siteAddress", () => {
         postalCode: "",
       }),
     ).toBe("4410 NE 94th St, Vancouver, WA");
+  });
+});
+
+describe("the paper's two address lines", () => {
+  const site = {
+    addressLine1: "4410 NE 94th St",
+    addressLine2: "Apt 2",
+    city: "Vancouver",
+    region: "WA",
+    postalCode: "98665",
+  };
+
+  it("puts the unit on the street line and the ZIP on the city line", () => {
+    expect(siteStreetLine(site)).toBe("4410 NE 94th St, Apt 2");
+    expect(siteCityLine(site)).toBe("Vancouver, WA 98665");
+  });
+
+  it("leaves out the parts a site does not have", () => {
+    expect(siteStreetLine({ ...site, addressLine2: "" })).toBe("4410 NE 94th St");
+    expect(siteCityLine({ ...site, postalCode: "" })).toBe("Vancouver, WA");
   });
 });
