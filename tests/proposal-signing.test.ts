@@ -157,7 +157,7 @@ describe("Approve", () => {
     await open(token);
     vi.advanceTimersByTime(60_000);
 
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
 
     const proposal = await t.run((ctx) => ctx.db.get(proposalId));
     expect(proposal?.state).toBe("approved");
@@ -186,7 +186,7 @@ describe("Approve", () => {
   test("seals what Send froze, and the seal never moves with later edits", async () => {
     const { t, owner, sent, approval } = fixture();
     const { customerId, siteId, solutionId, proposalId, token } = await sent();
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
     const proposal = await t.run((ctx) => ctx.db.get(proposalId));
     const sealed = proposal!.signature!.sealed;
     const frozen = proposal!.frozen!;
@@ -226,7 +226,7 @@ describe("Approve", () => {
     const { t, sent, approval } = fixture();
     const { token } = await sent();
     expect((await t.query(api.signingLinks.page, { token }))?.noticeRequired).toBe(false);
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
   });
 
   test("at $1,000 or more, with no upper limit, the notice is required and its wording kept", async () => {
@@ -235,12 +235,12 @@ describe("Approve", () => {
     const { proposalId, token } = await sent(5_000_000);
     expect((await t.query(api.signingLinks.page, { token }))?.noticeRequired).toBe(true);
 
-    expect(await refusal(t.mutation(api.proposals.approve, approval(token)))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, approval(token)))).toMatchObject({
       code: "notice_required",
     });
     expect((await t.run((ctx) => ctx.db.get(proposalId)))?.state).toBe("sent");
 
-    await t.mutation(api.proposals.approve, approval(token, true));
+    await t.action(api.proposals.approve, approval(token, true));
     expect((await t.run((ctx) => ctx.db.get(proposalId)))?.signature).toMatchObject({
       noticeShown: true,
       noticeTicked: true,
@@ -274,10 +274,10 @@ describe("Approve", () => {
     const { siteId, proposalId, token } = await sent(5_000_000);
     await t.run((ctx) => ctx.db.patch(siteId, { region: "OR" }));
     expect((await t.query(api.signingLinks.page, { token }))?.noticeRequired).toBe(true);
-    expect(await refusal(t.mutation(api.proposals.approve, approval(token)))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, approval(token)))).toMatchObject({
       code: "notice_required",
     });
-    await t.mutation(api.proposals.approve, approval(token, true));
+    await t.action(api.proposals.approve, approval(token, true));
     expect((await t.run((ctx) => ctx.db.get(proposalId)))?.signature?.noticeShown).toBe(true);
   });
 
@@ -285,7 +285,7 @@ describe("Approve", () => {
     const { t, sent, approval } = fixture();
     const { proposalId, token } = await sent(5_000_000);
     const { noticeWordingVersion: _notice, ...withoutNotice } = approval(token, true);
-    expect(await refusal(t.mutation(api.proposals.approve, withoutNotice))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, withoutNotice))).toMatchObject({
       code: "wording_stale",
     });
     expect((await t.run((ctx) => ctx.db.get(proposalId)))?.state).toBe("sent");
@@ -296,12 +296,12 @@ describe("Approve", () => {
     const { proposalId, token } = await sent();
     expect(
       await refusal(
-        t.mutation(api.proposals.approve, { ...approval(token), signerName: "  ", consentTicked: false }),
+        t.action(api.proposals.approve, { ...approval(token), signerName: "  ", consentTicked: false }),
       ),
     ).toMatchObject({ code: "signer_name_required" });
     expect(
       await refusal(
-        t.mutation(api.proposals.approve, { ...approval(token), consentWordingVersion: "2020-01-01" }),
+        t.action(api.proposals.approve, { ...approval(token), consentWordingVersion: "2020-01-01" }),
       ),
     ).toMatchObject({ code: "wording_stale" });
     expect((await t.run((ctx) => ctx.db.get(proposalId)))?.state).toBe("sent");
@@ -310,9 +310,9 @@ describe("Approve", () => {
   test("a second Approve or Decline through the same link is refused, and the link stays readable", async () => {
     const { t, sent, approval, open } = fixture();
     const { proposalId, token } = await sent();
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
 
-    expect(await refusal(t.mutation(api.proposals.approve, approval(token)))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, approval(token)))).toMatchObject({
       code: "link_ended",
     });
     expect(
@@ -330,17 +330,17 @@ describe("Approve", () => {
 
   test("an unknown, withdrawn or replaced link cannot approve", async () => {
     const { t, owner, sent, read, approval } = fixture();
-    expect(await refusal(t.mutation(api.proposals.approve, approval("x".repeat(43))))).toMatchObject(
+    expect(await refusal(t.action(api.proposals.approve, approval("x".repeat(43))))).toMatchObject(
       { code: "link_ended" },
     );
     const { customerId, proposalId, token } = await sent();
     await owner.action(api.proposals.resend, { proposalId });
-    expect(await refusal(t.mutation(api.proposals.approve, approval(token)))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, approval(token)))).toMatchObject({
       code: "link_ended",
     });
     const fresh = (await read(customerId, proposalId)).liveToken!;
     await owner.mutation(api.proposals.withdraw, { proposalId });
-    expect(await refusal(t.mutation(api.proposals.approve, approval(fresh)))).toMatchObject({
+    expect(await refusal(t.action(api.proposals.approve, approval(fresh)))).toMatchObject({
       code: "link_ended",
     });
   });
@@ -348,7 +348,7 @@ describe("Approve", () => {
   test("an approved proposal can't be withdrawn, re-sent or declined by the owner", async () => {
     const { t, owner, sent, approval } = fixture();
     const { proposalId, token } = await sent();
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
     await expect(owner.mutation(api.proposals.withdraw, { proposalId })).rejects.toThrow(
       /Only a sent proposal/,
     );
@@ -366,7 +366,7 @@ describe("Approve", () => {
     const at = { customerId: first.customerId, siteId: first.siteId };
     await sent(30_000, at);
     await sent(35_000, at);
-    await t.mutation(api.proposals.approve, approval(first.token));
+    await t.action(api.proposals.approve, approval(first.token));
     expect((await read(first.customerId, first.proposalId)).otherSentAtSite).toBe(2);
   });
 });
@@ -375,7 +375,7 @@ describe("The approval emails", () => {
   test("go separately to the customer and to contact@expandhandyman.com, dated in Pacific time", async () => {
     const { t, sent, read, approval, deliver } = fixture();
     const { customerId, proposalId, token } = await sent();
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
     expect((await read(customerId, proposalId)).decisionEmails).toEqual([
       { to: "maria@example.com", email: null },
       { to: "contact@expandhandyman.com", email: null },
@@ -390,7 +390,12 @@ describe("The approval emails", () => {
       "",
       "Keep this email as your record of the agreement. Expand Handyman will be in touch about the next steps.",
     ].join("\n");
-    expect(resendCalls.map((call) => call.body)).toEqual([
+    // The deposit invoice's letter goes out beside them
+    // (tests/deposit-invoice.test.ts); these are the two approval notices.
+    const approvals = resendCalls.filter((call) =>
+      (call.body.tags as { value: string }[]).some((tag) => tag.value === "approval"),
+    );
+    expect(approvals.map((call) => call.body)).toEqual([
       {
         from: "Expand Handyman <proposals@expandhandyman.com>",
         to: ["maria@example.com"],
@@ -408,7 +413,7 @@ describe("The approval emails", () => {
         tags: [{ name: "letter", value: "approval" }],
       },
     ]);
-    expect(new Set(resendCalls.map((call) => call.headers["idempotency-key"])).size).toBe(2);
+    expect(new Set(approvals.map((call) => call.headers["idempotency-key"])).size).toBe(2);
     expect((await read(customerId, proposalId)).decisionEmails).toEqual([
       { to: "maria@example.com", email: { outcome: "sent", id: "resend-message-1" } },
       { to: "contact@expandhandyman.com", email: { outcome: "sent", id: "resend-message-1" } },
@@ -420,7 +425,7 @@ describe("The approval emails", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { customerId, proposalId, token } = await sent();
     resend.mockImplementation(async () => new Response("down", { status: 503 }));
-    await t.mutation(api.proposals.approve, approval(token));
+    await t.action(api.proposals.approve, approval(token));
     await deliver();
     const row = await read(customerId, proposalId);
     expect(row.state).toBe("approved");
@@ -483,7 +488,7 @@ describe("Decline through the link", () => {
     });
     expect(
       await refusal(
-        t.mutation(api.proposals.approve, {
+        t.action(api.proposals.approve, {
           token,
           signerName: "Maria Delgado",
           consentTicked: true,
@@ -534,7 +539,7 @@ describe("The customers list after a decision", () => {
     const { t, owner, sent, approval } = fixture();
     const first = await sent();
     const at = { customerId: first.customerId, siteId: first.siteId };
-    await t.mutation(api.proposals.approve, approval(first.token));
+    await t.action(api.proposals.approve, approval(first.token));
     vi.advanceTimersByTime(60_000);
     const second = await sent(30_000, at);
     await owner.mutation(api.proposals.decline, { proposalId: second.proposalId });

@@ -117,7 +117,7 @@ function fixture() {
     return token;
   };
   const approve = (token: string) =>
-    t.mutation(api.proposals.approve, {
+    t.action(api.proposals.approve, {
       token,
       signerName: "Maria Delgado",
       consentTicked: true,
