@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import schema from "../convex/schema";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { proposalTerms } from "../lib/expand-business";
 
 const modules = import.meta.glob("../convex/**/*.ts");
 
@@ -754,6 +755,8 @@ describe("proposals.paper", () => {
         },
       ],
       notes: "Excludes the dishwasher.",
+      // In full, as Send would freeze them.
+      terms: proposalTerms(),
       tax: { source: "lookup", rate: 0.089, locationCode: "0605", period: "Q32026" },
       // $470 cost at 10% is $517; 8.9% of it is $46.013.
       subtotalCents: 51_700,

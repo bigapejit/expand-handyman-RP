@@ -10,3 +10,4 @@ The owner is identified by their signed-in Clerk session inside the same Convex 
 - Views on withdrawn links are kept and shown as belonging to a previous link.
 - Opens after signing or declining are logged but do not change status or the first-viewed time.
 - Only the user agent is stored per view. No IP address.
+- Proposals keep their own log, `proposalViews`, keyed by proposal and signing link token, under the same rules. A proposal's views never change its state: Opened is read from the log, and counts only customer views of the current link.

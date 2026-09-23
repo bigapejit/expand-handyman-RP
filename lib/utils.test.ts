@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { describe, expect, it } from "vitest";
 
 import { errorMessage } from "./utils";
@@ -18,6 +19,13 @@ describe("errorMessage", () => {
         ),
       ),
     ).toBe("This site has proposals, so it can't be deleted.");
+  });
+
+  it("says the message a refusal carries as its data", () => {
+    const data = { code: "no_email", message: "The customer has no email address to send it to." };
+    expect(errorMessage(new ConvexError(data))).toBe(data.message);
+    // Handed on through an action, the data can arrive still as JSON.
+    expect(errorMessage(new ConvexError(JSON.stringify(data)))).toBe(data.message);
   });
 
   it("leaves a plain message alone", () => {

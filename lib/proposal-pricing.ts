@@ -151,7 +151,8 @@ export function proposalFaultMessage(fault: ProposalFault): string {
 export type SendBlocker =
   | "no_solutions"
   | "unpriced_solution"
-  | "no_tax_rate";
+  | "no_tax_rate"
+  | "no_email";
 
 // Every reason at once, in the order they read: what the Proposal is missing,
 // then what is wrong with what it holds. A Draft may hold zero Solutions and
@@ -174,6 +175,14 @@ export function sendBlockers(
   return blockers;
 }
 
+// FRSG asked this of each chosen Contact. Expand's one recipient is the
+// customer, so the question is whether their record holds an address to send
+// to (lib/customer.ts, `sendableEmail`). Kept apart from `sendBlockers`
+// because a Re-send asks it again and nothing else.
+export function recipientBlockers(email: string | null): SendBlocker[] {
+  return email === null ? ["no_email"] : [];
+}
+
 export function sendBlockerMessage(blocker: SendBlocker): string {
   switch (blocker) {
     case "no_solutions":
@@ -182,6 +191,8 @@ export function sendBlockerMessage(blocker: SendBlocker): string {
       return "A Solution in this Proposal has no price.";
     case "no_tax_rate":
       return "This Washington Site has no sales tax rate yet.";
+    case "no_email":
+      return "The customer has no email address to send it to.";
   }
 }
 

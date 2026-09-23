@@ -1,3 +1,5 @@
+import { Eye } from "lucide-react";
+
 import { proposalStateLabel, type ProposalState } from "@/lib/proposals";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +21,16 @@ export function ProposalStateChip({ state }: { state: ProposalState }) {
       )}
     >
       {proposalStateLabel(state)}
+    </span>
+  );
+}
+
+// **Opened** (CONTEXT.md): the customer has viewed the current signing link.
+// Not a state, so it sits beside the Sent chip rather than replacing it.
+export function OpenedChip() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900">
+      <Eye aria-hidden className="size-3" /> Opened
     </span>
   );
 }

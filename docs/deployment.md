@@ -81,3 +81,18 @@ npx convex run --prod migrations:sitesFromCustomers
 It prints `{ migrated: [{ customer, site }], failed: [{ customer, address, reason }] }`: the site name each migrated customer now has, and the original text of each address that failed. A customer who already had that site, added by hand, is listed as migrated to it and gets no second one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Nine tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
 
 Once it has run on a deployment, that deployment holds no legacy addresses and the schema no longer declares `customers.site`. Convex refuses a schema that existing rows break, so a deployment the migration has not run on cannot take the schema without the field. Run the migration there first, from a build that still declares the field: pushing the schema drop before it would fail, and on production that fails the Vercel build, which runs `convex deploy`.
+
+## Sending proposals
+
+Send, Re-send and Withdraw live in the proposal panel. Send freezes the offer and mints a signing link at `/sign/<token>`, the same address documents use; the page asks Convex which of the two a token belongs to. Each Send or Re-send is one row in `signingLinks`, and Withdraw or Re-send ends the previous row rather than deleting it, which is the panel's link history. Opens of a proposal's link are logged in `proposalViews`, with the same owner-preview rule, heartbeat and `POST /seen` beacon as documents (the beacon body carries `kind: "proposal"`).
+
+The signing-link email goes through Resend from a scheduled Convex action (`convex/email.ts`), plain text and with no attachment. Its outcome, `sent` with Resend's message id, `notSent` or `fault` with its code, is written onto the link, and a failed email never undoes the Send: the panel says "Email not sent" and offers the link to copy. These Convex variables drive it:
+
+| Variable | Production | Development and previews |
+| --- | --- | --- |
+| `RESEND_API_KEY` | the sending-only key for `expandhandyman.com` | unset: the letter is written to the Convex log and the link records `notSent` |
+| `APP_ORIGIN` | `https://staff.expandhandyman.com` | the dev origin, or unset |
+| `EMAIL_FROM` | optional; defaults to `Expand Handyman <proposals@expandhandyman.com>` | optional |
+| `EMAIL_REPLY_TO` | optional; defaults to `contact@expandhandyman.com` | optional |
+
+A deployment with a key but no `APP_ORIGIN` records the fault `MISSING_APP_ORIGIN` instead of sending a letter with no link. This adds the `signingLinks` and `proposalViews` tables, so run `npx convex deploy --yes` after merging. Then send one proposal to the owner's own address and check that it arrives From `proposals@expandhandyman.com` with Reply-To `contact@expandhandyman.com`. `tests/proposal-sending.test.ts` covers every blocker, what Send freezes, Withdraw, Re-send, each email outcome with Resend stubbed at `fetch`, token resolution for documents and proposals, and views versus owner previews.

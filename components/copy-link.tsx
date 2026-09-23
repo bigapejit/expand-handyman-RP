@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -60,4 +60,19 @@ export function CopyLinkButton({
       </span>
     </>
   );
+}
+
+// The origin the staff app is being served from, for building a link to hand
+// over. Empty during the server render, where there is no browser to ask; the
+// link appears as soon as the page hydrates.
+export function useAppOrigin(): string {
+  return useSyncExternalStore(
+    subscribeToNothing,
+    () => window.location.origin,
+    () => "",
+  );
+}
+
+function subscribeToNothing() {
+  return () => {};
 }

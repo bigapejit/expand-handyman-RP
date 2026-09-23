@@ -34,6 +34,15 @@ export function normalizeEmail(input: string) {
   return input.trim().toLowerCase();
 }
 
+/**
+ * The address a proposal can be emailed to, or null. Customers saved before
+ * validation may still hold something that is not an email at all.
+ */
+export function sendableEmail(stored: string): string | null {
+  const email = normalizeEmail(stored);
+  return email && z.email().safeParse(email).success ? email : null;
+}
+
 /** `+15551234567`, `""` when blank, or null when it is not a US number. */
 export function normalizePhone(input: string) {
   const trimmed = input.trim();

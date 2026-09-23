@@ -7,7 +7,8 @@ import { useState } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
-import { ProposalStateChip } from "@/components/proposal-chips";
+import { OpenedChip, ProposalStateChip } from "@/components/proposal-chips";
+import { ProposalSending } from "@/components/proposal-sending";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
 import {
   AlertDialog,
@@ -145,6 +146,7 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
               <span className="text-slate-500">{proposal.code}</span> · {proposal.title}
             </span>
             <ProposalStateChip state={proposal.state} />
+            {proposal.state === "sent" && proposal.opened ? <OpenedChip /> : null}
             {proposal.recommended ? <RecommendedMark /> : null}
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
@@ -171,10 +173,10 @@ function RecommendedMark() {
   );
 }
 
-// Where a draft is assembled. Text commits when the field is left, so a
-// half-typed name never becomes the proposal; a tick or a move commits at
+// Where a draft is assembled and sent. Text commits when the field is left, so
+// a half-typed name never becomes the proposal; a tick or a move commits at
 // once, because there is nothing partial about either. Past Draft the panel
-// only reads, until Send gives it acts of its own.
+// reads the offer Send froze, and acts only on its signing link.
 function ProposalPanel({
   tab,
   proposal,
@@ -346,6 +348,8 @@ function ProposalPanel({
           }
         />
 
+        <ProposalSending proposal={proposal} customerEmail={tab.customerEmail} />
+
         <div className="flex items-center gap-1 border-t pt-4">
           <Button
             variant="outline"
@@ -357,21 +361,19 @@ function ProposalPanel({
           >
             <Copy data-icon="inline-start" aria-hidden /> Duplicate
           </Button>
-          {isDraft ? (
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={
-                <a
-                  href={proposalPaperHref(proposal.proposalId)}
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              <Eye data-icon="inline-start" aria-hidden /> View paper
-            </Button>
-          ) : null}
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <a
+                href={proposalPaperHref(proposal.proposalId)}
+                target="_blank"
+                rel="noreferrer"
+              />
+            }
+          >
+            <Eye data-icon="inline-start" aria-hidden /> View paper
+          </Button>
           <span className="flex-1" />
           {isDraft ? (
             <Button variant="destructive" size="lg" onClick={() => setConfirmingDelete(true)}>

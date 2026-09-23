@@ -5,7 +5,9 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PdfPages } from "./pdf-viewer";
 import { SignBar, type SignBarOpen, type SignatureInput } from "./sign-bar";
-import { getPdf, downloadPdf, uploadFile, sendSeenBeacon } from "@/lib/files";
+import { LinkNotLive } from "./link-not-live";
+import { useViewHeartbeat } from "./view-heartbeat";
+import { getPdf, downloadPdf, uploadFile } from "@/lib/files";
 import { signerName, signingDate } from "@/lib/signing";
 import { errorMessage } from "@/lib/utils";
 
@@ -76,41 +78,9 @@ export function SigningPage({ token }: { token: string }) {
       active = false;
     };
   }, [doc?._id, signed, token, opened, retry]);
-  useEffect(() => {
-    const beat = () => {
-      if (view.current && document.visibilityState === "visible")
-        void seen({ viewId: view.current, token }).catch(() => {});
-    };
-    const close = () => {
-      if (view.current) sendSeenBeacon(view.current, token);
-    };
-    const onVisibility = () =>
-      document.visibilityState === "visible" ? beat() : close();
-    const timer = setInterval(beat, 20000);
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", close);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", close);
-    };
-  }, [seen, token]);
+  useViewHeartbeat(view, token, seen);
 
-  if (doc === null)
-    return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center gap-3 px-6 py-16">
-        <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">
-          Expand Handyman
-        </p>
-        <h1 className="text-2xl font-semibold text-stone-950">
-          This link is no longer live
-        </h1>
-        <p className="text-sm leading-relaxed text-stone-600">
-          The document it opened is no longer waiting on your answer. Contact
-          Expand Handyman for a current link.
-        </p>
-      </main>
-    );
+  if (doc === null) return <LinkNotLive what="document" />;
   const download = (primary = false) => (
     <button
       type="button"

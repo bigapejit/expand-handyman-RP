@@ -20,6 +20,7 @@ import { pathToFileURL } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { PaperScreen } from "../components/paper-screen";
+import { proposalTerms } from "../lib/expand-business";
 import type { PaperProposal, PaperSolution } from "../lib/proposal-paper";
 
 const root = resolve(import.meta.dirname, "..");
@@ -102,6 +103,7 @@ function draft(
     taxCents,
     totalCents: subtotalCents + taxCents,
     depositPercent: 50,
+    terms: proposalTerms(),
     ...fields,
   };
 }

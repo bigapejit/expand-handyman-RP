@@ -1,3 +1,4 @@
+import type { ProposalTerm } from "./expand-business";
 import type { ProposalTax } from "./proposal-pricing";
 import type { ProposalState } from "./proposals";
 import type { OfferedLineItem } from "./solution-pricing";
@@ -29,6 +30,7 @@ export type PaperProposal = {
   site: { street: string; city: string };
   solutions: PaperSolution[];
   notes?: string;
+  terms: ProposalTerm[];
   tax: ProposalTax;
   subtotalCents: number;
   taxCents: number;

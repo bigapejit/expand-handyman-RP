@@ -80,11 +80,22 @@ http.route({
   handler: httpAction(async (ctx, req) => {
     try {
       const body = JSON.parse(await req.text());
-      if (typeof body?.viewId === "string" && typeof body?.token === "string")
-        await ctx.runMutation(internal.documents.recordSeen, {
-          viewId: body.viewId as Id<"documentViews">,
-          token: body.token,
-        });
+      // Documents and proposals keep separate view logs; a beacon from a
+      // proposal's signing page says so, and one that says nothing is a
+      // document's, as every beacon was before proposals had links.
+      if (typeof body?.viewId === "string" && typeof body?.token === "string") {
+        if (body.kind === "proposal") {
+          await ctx.runMutation(internal.signingLinks.recordSeen, {
+            viewId: body.viewId as Id<"proposalViews">,
+            token: body.token,
+          });
+        } else {
+          await ctx.runMutation(internal.documents.recordSeen, {
+            viewId: body.viewId as Id<"documentViews">,
+            token: body.token,
+          });
+        }
+      }
     } catch {
       // A beacon has no one to report to; an unreadable body is simply dropped.
     }

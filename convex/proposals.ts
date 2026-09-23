@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -12,10 +12,21 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireOwner } from "./auth";
+import { appOrigin } from "./email";
 import { lookUpSiteTax } from "./salesTax";
-import { Unknown } from "../lib/expand-business";
+import {
+  customerViewedLink,
+  endSigningLinks,
+  mintLinkToken,
+  mintSigningLink,
+  sentPaper,
+  signingLinksForProposal,
+} from "./signingLinks";
+import { sendableEmail } from "../lib/customer";
+import { proposalTerms, Unknown } from "../lib/expand-business";
 import type { PaperProposal } from "../lib/proposal-paper";
 import { proposalCode } from "../lib/proposals";
+import { signingUrl } from "../lib/signing-link";
 import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
@@ -23,9 +34,13 @@ import {
   proposalDisplayName,
   proposalFaultMessage,
   proposalMoney,
+  recipientBlockers,
+  sendBlockerMessage,
+  sendBlockers,
   splitPayment,
   taxRateFault,
   type ProposalFault,
+  type SendBlocker,
 } from "../lib/proposal-pricing";
 import { offeredLineItems, priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
@@ -33,11 +48,14 @@ import { isWashingtonRegion } from "../lib/wa-sales-tax";
 // Proposals, ported from FRSG's convex/proposals.ts: the offers the owner
 // assembles from a site's solutions (CONTEXT.md, **Proposal**). This holds the
 // drafting half — which solutions a draft offers and in what order, which of
-// the site's proposals is Recommended, the deposit, the notes and the tax.
+// the site's proposals is Recommended, the deposit, the notes and the tax —
+// and Send, Withdraw and Re-send.
 //
 // A draft reads its solutions live: it stores their ids and nothing about
 // them, so a solution repriced once is repriced in every draft holding it, and
 // a solution deleted drops out of every draft holding it (solutions.remove).
+// Send freezes the offer, and from then on every reader uses the frozen copy
+// and never the live solutions, customer or site.
 
 // The customer page's Proposals tab, and everything the panel over it edits:
 // every proposal across the customer's sites, and every solution there is to
@@ -46,6 +64,9 @@ export const forCustomer = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
+    const customer = await ctx.db.get(a.customerId);
+    // Where Send would go, or null when the customer has no address to send to.
+    const customerEmail = customer ? sendableEmail(customer.email) : null;
     const sites = await ctx.db
       .query("sites")
       .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
@@ -73,16 +94,37 @@ export const forCustomer = query({
           })),
           // In number order, so an edit never reshuffles the list under the
           // cursor.
-          proposals: proposals
-            .sort((x, y) => x.number - y.number)
-            .map((proposal) =>
-              proposalForOwner(proposal, site, (id) => bySolutionId.get(id)),
-            ),
+          proposals: await Promise.all(
+            proposals
+              .sort((x, y) => x.number - y.number)
+              .map(async (proposal) => {
+                const read = proposalForOwner(proposal, site, (id) => bySolutionId.get(id));
+                return {
+                  ...read,
+                  // What Send would refuse, asked the way `sendWithLink` asks
+                  // it, so the button names the same reasons.
+                  sendBlockers:
+                    proposal.state === "draft"
+                      ? [
+                          ...sendBlockers(
+                            read.solutions.map((solution) => solution.priceCents),
+                            proposal.tax,
+                          ),
+                          ...recipientBlockers(customerEmail),
+                        ]
+                      : [],
+                  sentAt: proposal.sentAt ?? null,
+                  sentTo: proposal.frozen?.sentTo ?? null,
+                  ...(await linkHistory(ctx, proposal._id)),
+                };
+              }),
+          ),
         };
       }),
     );
 
     return {
+      customerEmail,
       solutions: perSite.flatMap((site) => site.solutions),
       proposals: perSite.flatMap((site) => site.proposals),
     };
@@ -130,10 +172,10 @@ export const list = query({
 });
 
 // The staff paper: a proposal as its **Proposal paper**, for the owner to read
-// before sending. A draft is laid out from its live solutions as if sent now,
-// with the signed-in owner as the Estimator Send would name. A query, so
-// reading the paper here never lands in a view log. Past Draft the paper is
-// the offer Send froze, which this does not lay out yet, so it answers null.
+// before sending or after. A draft is laid out from its live solutions as if
+// sent now, with the signed-in owner as the Estimator Send would name; past
+// Draft the paper is the offer Send froze, exactly as the customer's link
+// shows it. A query, so reading the paper here never lands in a view log.
 //
 // A draft has no sent date, and "now" is the page's to say: a query's result
 // is cached until what it read changes, so a date taken here would go stale.
@@ -150,15 +192,17 @@ export const paper = query({
   > => {
     await requireOwner(ctx);
     const proposal = await ctx.db.get(a.proposalId);
-    if (!proposal || proposal.state !== "draft") return null;
+    if (!proposal) return null;
+    if (proposal.state !== "draft") {
+      const sent = sentPaper(proposal);
+      return sent ? { ...sent, unpricedSolutions: 0 } : null;
+    }
     const site = await ctx.db.get(proposal.siteId);
     if (!site) return null;
     const customer = await ctx.db.get(site.customerId);
     const identity = await ctx.auth.getUserIdentity();
 
-    const solutions = (
-      await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))
-    ).flatMap((solution) => (solution ? [solution] : []));
+    const solutions = await liveSolutions(ctx, proposal);
     const prices = solutions.map(priceStoredSolution);
     const money = proposalMoney(prices, proposal.tax);
 
@@ -186,6 +230,7 @@ export const paper = query({
         lineItems: offeredLineItems(solution.lineItems),
       })),
       ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
+      terms: proposalTerms(),
       tax: proposal.tax,
       ...money,
       depositPercent: proposal.depositPercent,
@@ -415,8 +460,40 @@ export const remove = mutation({
 
 // A proposal as the tab lists it and the panel edits it: its solutions in the
 // order it offers them, and every figure derived from them in one place, so no
-// reader works out money of its own.
+// reader works out money of its own. Past Draft every figure is the one Send
+// froze, and the Proposal ID with them.
 function proposalForOwner(
+  proposal: Doc<"proposals">,
+  site: Doc<"sites">,
+  solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
+) {
+  const offer = proposal.frozen
+    ? frozenOffer(proposal.frozen)
+    : liveOffer(proposal, site, solutionById);
+  return {
+    proposalId: proposal._id,
+    siteId: site._id,
+    siteName: site.name,
+    code: offer.code,
+    // The name as stored, for the field to show, and the name as read, for
+    // everything that has to call the proposal something.
+    name: proposal.name ?? null,
+    title: proposalDisplayName(
+      proposal.name,
+      offer.solutions.map((solution) => solution.title),
+    ),
+    state: proposal.state,
+    recommended: proposal.recommended,
+    solutions: offer.solutions,
+    notes: offer.notes ?? null,
+    tax: offer.tax,
+    money: offer.money,
+    depositPercent: offer.depositPercent,
+    payment: splitPayment(offer.money.totalCents, offer.depositPercent),
+  };
+}
+
+function liveOffer(
   proposal: Doc<"proposals">,
   site: Doc<"sites">,
   solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
@@ -426,36 +503,271 @@ function proposalForOwner(
     const solution = solutionById(id);
     return solution ? [{ solution, price: priceStoredSolution(solution) }] : [];
   });
-  const money = proposalMoney(
-    priced.map(({ price }) => price),
-    proposal.tax,
-  );
   return {
-    proposalId: proposal._id,
-    siteId: site._id,
-    siteName: site.name,
     code: proposalCode(site.name, proposal.number),
-    // The name as stored, for the field to show, and the name as read, for
-    // everything that has to call the proposal something.
-    name: proposal.name ?? null,
-    title: proposalDisplayName(
-      proposal.name,
-      priced.map(({ solution }) => solution.title),
-    ),
-    state: proposal.state,
-    recommended: proposal.recommended,
     solutions: priced.map(({ solution, price }) => ({
       solutionId: solution._id,
       title: solution.title,
       priceCents: price?.priceCents ?? null,
     })),
-    notes: proposal.notes ?? null,
+    notes: proposal.notes,
     tax: proposal.tax,
-    money,
+    money: proposalMoney(
+      priced.map(({ price }) => price),
+      proposal.tax,
+    ),
     depositPercent: proposal.depositPercent,
-    payment: splitPayment(money.totalCents, proposal.depositPercent),
   };
 }
+
+function frozenOffer(frozen: FrozenProposal) {
+  return {
+    code: frozen.code,
+    solutions: frozen.solutions.map((solution) => ({
+      solutionId: solution.solutionId,
+      title: solution.title,
+      priceCents: solution.priceCents as number | null,
+    })),
+    notes: frozen.notes,
+    tax: frozen.tax,
+    money: {
+      subtotalCents: frozen.subtotalCents,
+      taxCents: frozen.taxCents,
+      totalCents: frozen.totalCents,
+    },
+    depositPercent: frozen.depositPercent,
+  };
+}
+
+// Every signing link the proposal has had, newest first, for the panel's
+// history, and whether the customer has opened the live one. Only the live
+// link's token is handed over: it is the one the panel offers to copy, and an
+// ended one opens nothing.
+async function linkHistory(ctx: QueryCtx, proposalId: Id<"proposals">) {
+  // Two sends in the same millisecond still list newest first.
+  const links = (await signingLinksForProposal(ctx, proposalId)).sort(
+    (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
+  );
+  const live = links.find((link) => link.endedAt === undefined);
+  return {
+    liveToken: live?.token ?? null,
+    // The address the email carried, built the same way, so the link the panel
+    // copies is that one exactly. Null where this deployment names no origin,
+    // and the panel builds it from its own.
+    liveUrl: live ? signingUrl(appOrigin(), live.token) : null,
+    opened: live ? await customerViewedLink(ctx, live.token) : false,
+    links: links.map((link) => ({
+      linkId: link._id,
+      sentTo: link.sentTo,
+      sentAt: link.sentAt,
+      email: link.email ?? null,
+      endedAt: link.endedAt ?? null,
+      endedReason: link.endedReason ?? null,
+    })),
+  };
+}
+
+// **Send** (CONTEXT.md): the draft offered to the customer by email. An action
+// only so the link's token comes from real randomness, which a mutation's
+// seeded generator is not promised to be; everything else happens in one
+// mutation, so the offer, the link and the scheduled email land together.
+export const send = action({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    await ctx.runMutation(internal.proposals.sendWithLink, {
+      proposalId: a.proposalId,
+      token: mintLinkToken(),
+    });
+  },
+});
+
+// Freezes the offer as it stands (FRSG's frozen block, plus the Proposal ID,
+// the customer's name, the site's address, the email it goes to and the
+// Estimator), mints the link and schedules its email. The email is scheduled,
+// never awaited: Send is the offer, and a Resend outage must be able to fail
+// without unmaking it.
+export const sendWithLink = internalMutation({
+  args: { proposalId: v.id("proposals"), token: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposal = await requireDraft(ctx, a.proposalId, "sent");
+    const site = await ctx.db.get(proposal.siteId);
+    if (!site) throw new Error("Site not found.");
+    const customer = await ctx.db.get(site.customerId);
+    if (!customer) throw new Error("Customer not found.");
+    const identity = await ctx.auth.getUserIdentity();
+
+    const priced = (await liveSolutions(ctx, proposal)).map((solution) => ({
+      solution,
+      price: priceStoredSolution(solution),
+    }));
+    const sentTo = sendableEmail(customer.email);
+    // The same questions the button asks, asked again here, because a stale
+    // panel is exactly how an unpriced solution would otherwise reach a
+    // customer.
+    refuseSend([
+      ...sendBlockers(
+        priced.map(({ price }) => price?.priceCents ?? null),
+        proposal.tax,
+      ),
+      ...recipientBlockers(sentTo),
+    ]);
+    // Refused above; this only tells the type checker so.
+    if (sentTo === null) return;
+
+    const frozen: FrozenProposal = {
+      code: proposalCode(site.name, proposal.number),
+      customerName: customer.name,
+      site: { street: siteStreetLine(site), city: siteCityLine(site) },
+      sentTo,
+      estimator: {
+        name: identity?.name?.trim() || Unknown,
+        email: identity?.email?.trim() || Unknown,
+      },
+      solutions: priced.map(({ solution, price }) => {
+        // Unreachable past the refusal above, which names every unpriced
+        // solution. Stated rather than defaulted, because a solution frozen at
+        // $0 would be a price Expand never offered.
+        if (!price) throw new Error("A solution with no price reached Send.");
+        return {
+          solutionId: solution._id,
+          title: solution.title,
+          scopeOfWork: solution.description,
+          priceCents: price.priceCents,
+          lineItems: offeredLineItems(solution.lineItems),
+        };
+      }),
+      ...proposalMoney(
+        priced.map(({ price }) => price),
+        proposal.tax,
+      ),
+      depositPercent: proposal.depositPercent,
+      tax: proposal.tax,
+      terms: proposalTerms(),
+      // The draft's own text, copied like everything else here. It stays on
+      // the draft too, so Withdraw hands the live field back unchanged.
+      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
+    };
+    const now = Date.now();
+    await ctx.db.patch(proposal._id, {
+      state: "sent",
+      frozen,
+      sentAt: now,
+      updatedAt: now,
+    });
+    await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
+  },
+});
+
+// **Withdraw** (CONTEXT.md): the offer taken back. The link ends, the frozen
+// copy and the send stamp go, and the proposal is a draft reading its live
+// solutions again. Nobody is emailed; the customer's link just stops working.
+export const withdraw = mutation({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposal = await requireSent(ctx, a.proposalId, "withdrawn");
+    const now = Date.now();
+    await endSigningLinks(ctx, proposal._id, "withdrawn", now);
+    await ctx.db.patch(proposal._id, {
+      state: "draft",
+      frozen: undefined,
+      sentAt: undefined,
+      updatedAt: now,
+    });
+  },
+});
+
+// **Re-send** (CONTEXT.md): the same frozen offer, to the customer's current
+// email, with a fresh link. An action for the reason Send is one.
+export const resend = action({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    await ctx.runMutation(internal.proposals.resendWithLink, {
+      proposalId: a.proposalId,
+      token: mintLinkToken(),
+    });
+  },
+});
+
+// Nothing about what was offered moves, not even the send date on the paper:
+// only where it went. The old link ends as `resent`, so the email it sat in
+// stops opening anything.
+export const resendWithLink = internalMutation({
+  args: { proposalId: v.id("proposals"), token: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposal = await requireSent(ctx, a.proposalId, "re-sent");
+    if (!proposal.frozen) throw new Error("This proposal has no offer to send again.");
+    const site = await ctx.db.get(proposal.siteId);
+    const customer = site ? await ctx.db.get(site.customerId) : null;
+    const sentTo = customer ? sendableEmail(customer.email) : null;
+    refuseSend(recipientBlockers(sentTo));
+    // Refused above; this only tells the type checker so.
+    if (sentTo === null) return;
+
+    const identity = await ctx.auth.getUserIdentity();
+    const frozen = { ...proposal.frozen, sentTo };
+    const now = Date.now();
+    await endSigningLinks(ctx, proposal._id, "resent", now);
+    await ctx.db.patch(proposal._id, { frozen, updatedAt: now });
+    await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
+  },
+});
+
+// One fresh link, and the email that carries it, scheduled to run once this
+// mutation commits. The letter is written from the frozen offer, so a Re-send
+// says exactly what the Send did.
+async function emailNewLink(
+  ctx: MutationCtx,
+  send: {
+    proposal: Doc<"proposals">;
+    frozen: FrozenProposal;
+    token: string;
+    ownerName: string | undefined;
+    now: number;
+  },
+) {
+  const { proposal, frozen } = send;
+  const linkId = await mintSigningLink(ctx, {
+    proposalId: proposal._id,
+    token: send.token,
+    sentTo: frozen.sentTo,
+    sentAt: send.now,
+  });
+  await ctx.scheduler.runAfter(0, internal.proposalEmails.sendSigningLink, {
+    linkId,
+    token: send.token,
+    to: frozen.sentTo,
+    customerName: frozen.customerName,
+    // The owner's name on their account profile; the letter still reads
+    // without one.
+    ownerName: send.ownerName?.trim() || "Your estimator",
+    siteStreet: frozen.site.street,
+    siteAddress: [frozen.site.street, frozen.site.city].filter(Boolean).join(", "),
+    proposalTitle: proposalDisplayName(
+      proposal.name,
+      frozen.solutions.map((solution) => solution.title),
+    ),
+    totalCents: frozen.totalCents,
+  });
+}
+
+// Every reason Send is refused, in one sentence, so fixing one thing is never
+// followed by being told the next. The code names the first, for a caller
+// that wants to branch.
+function refuseSend(blockers: readonly SendBlocker[]) {
+  if (blockers.length === 0) return;
+  throw new ConvexError({
+    code: blockers[0],
+    blockers: [...blockers],
+    message: blockers.map(sendBlockerMessage).join(" "),
+  });
+}
+
+type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
 // The next Proposal number at a site. The site's `lastProposalNumber` only
 // ever climbs, so a deleted draft leaves a gap and a number a customer has
@@ -482,6 +794,14 @@ async function verifiedSolutions(
   return unique;
 }
 
+// A draft's solutions as it offers them, read live. An id naming a solution
+// since deleted is simply not there.
+async function liveSolutions(ctx: QueryCtx, proposal: Doc<"proposals">) {
+  return (await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))).flatMap(
+    (solution) => (solution ? [solution] : []),
+  );
+}
+
 function proposalsAtSite(ctx: QueryCtx, siteId: Id<"sites">) {
   return ctx.db
     .query("proposals")
@@ -500,6 +820,14 @@ async function requireProposal(ctx: MutationCtx, proposalId: Id<"proposals">) {
 async function requireDraft(ctx: MutationCtx, proposalId: Id<"proposals">, act: string) {
   const proposal = await requireProposal(ctx, proposalId);
   if (proposal.state !== "draft") throw new Error(`Only a draft proposal can be ${act}.`);
+  return proposal;
+}
+
+// Approved and Declined are final: only an offer still waiting on the
+// customer can be taken back or sent again.
+async function requireSent(ctx: MutationCtx, proposalId: Id<"proposals">, act: string) {
+  const proposal = await requireProposal(ctx, proposalId);
+  if (proposal.state !== "sent") throw new Error(`Only a sent proposal can be ${act}.`);
   return proposal;
 }
 
