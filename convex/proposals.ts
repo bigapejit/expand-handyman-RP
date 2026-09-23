@@ -13,6 +13,7 @@ import {
 } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
+import { discardPdfCopy } from "./proposalPdfFiles";
 import { lookUpSiteTax } from "./salesTax";
 import { emailOutcome } from "./schema";
 import {
@@ -788,8 +789,9 @@ export const sendWithLink = internalMutation({
 });
 
 // **Withdraw** (CONTEXT.md): the offer taken back. The link ends, the frozen
-// copy and the send stamp go, and the proposal is a draft reading its live
-// solutions again. Nobody is emailed; the customer's link just stops working.
+// copy, the send stamp and any PDF copy go, and the proposal is a draft reading
+// its live solutions again. Nobody is emailed; the customer's link just stops
+// working.
 export const withdraw = mutation({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a) => {
@@ -797,6 +799,7 @@ export const withdraw = mutation({
     const proposal = await requireSent(ctx, a.proposalId, "withdrawn");
     const now = Date.now();
     await endSigningLinks(ctx, proposal._id, "withdrawn", now);
+    await discardPdfCopy(ctx, proposal);
     await ctx.db.patch(proposal._id, {
       state: "draft",
       frozen: undefined,
@@ -821,7 +824,8 @@ export const resend = action({
 
 // Nothing about what was offered moves, not even the send date on the paper:
 // only where it went. The old link ends as `resent`, so the email it sat in
-// stops opening anything.
+// stops opening anything. The PDF copy goes too, as it does whenever the offer
+// is taken back from where it was: the new link's first Download makes its own.
 export const resendWithLink = internalMutation({
   args: { proposalId: v.id("proposals"), token: v.string() },
   handler: async (ctx, a) => {
@@ -839,6 +843,7 @@ export const resendWithLink = internalMutation({
     const frozen = { ...proposal.frozen, sentTo };
     const now = Date.now();
     await endSigningLinks(ctx, proposal._id, "resent", now);
+    await discardPdfCopy(ctx, proposal);
     await ctx.db.patch(proposal._id, { frozen, updatedAt: now });
     await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
   },
@@ -856,6 +861,7 @@ export const decline = mutation({
     const proposal = await requireSent(ctx, a.proposalId, "declined");
     const now = Date.now();
     await endSigningLinks(ctx, proposal._id, "declined", now);
+    await discardPdfCopy(ctx, proposal);
     await ctx.db.patch(proposal._id, {
       state: "declined",
       declinedAt: now,
@@ -990,6 +996,7 @@ export const declineFromLink = mutation({
     const now = Date.now();
     const reason = optionalText(a.reason ?? "", ReasonMaxLength);
     await endSigningLinks(ctx, proposal._id, "declined", now);
+    await discardPdfCopy(ctx, proposal);
     await ctx.db.patch(proposal._id, {
       state: "declined",
       declinedAt: now,
