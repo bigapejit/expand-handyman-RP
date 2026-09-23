@@ -14,18 +14,27 @@ import {
 import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { lookUpSiteTax } from "./salesTax";
+import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
   customerViewsOfLink,
   decidedAt,
   endSigningLinks,
+  firstCustomerView,
+  liveLinkForToken,
   mintLinkToken,
   mintSigningLink,
   sentPaper,
   signingLinksForProposal,
+  type LiveSigningLink,
 } from "./signingLinks";
 import { sendableEmail } from "../lib/customer";
-import { proposalTerms, Unknown } from "../lib/expand-business";
+import {
+  ExpandBusiness,
+  proposalTerms,
+  Unknown,
+  WashingtonNoticeToCustomer,
+} from "../lib/expand-business";
 import type { PaperProposal } from "../lib/proposal-paper";
 import { proposalCode } from "../lib/proposals";
 import { signingUrl } from "../lib/signing-link";
@@ -44,6 +53,14 @@ import {
   type ProposalFault,
   type SendBlocker,
 } from "../lib/proposal-pricing";
+import {
+  noticeToCustomerApplies,
+  sealProposal,
+  SigningConsent,
+  signingFaultMessage,
+  signingFaults,
+  type SigningFault,
+} from "../lib/proposal-signing";
 import { offeredLineItems, priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
 
@@ -118,6 +135,13 @@ export const forCustomer = query({
                   sentAt: proposal.sentAt ?? null,
                   sentTo: proposal.frozen?.sentTo ?? null,
                   ...(await linkHistory(ctx, proposal._id)),
+                  ...decisionForOwner(proposal),
+                  // Approving one proposal leaves the site's others alone, so
+                  // the panel says how many are still out for the owner to
+                  // retire by hand.
+                  otherSentAtSite: proposals.filter(
+                    (other) => other._id !== proposal._id && other.state === "sent",
+                  ).length,
                 };
               }),
           ),
@@ -626,6 +650,22 @@ function frozenOffer(frozen: FrozenProposal) {
   };
 }
 
+// The customer's answer as the panel shows it: who signed and when, or when
+// it was declined, by whom and why, and what became of the emails it sent.
+function decisionForOwner(proposal: Doc<"proposals">) {
+  return {
+    approvedAt: proposal.approvedAt ?? null,
+    signerName: proposal.signature?.signerName ?? null,
+    declinedAt: proposal.declinedAt ?? null,
+    declinedBy: proposal.declinedBy ?? null,
+    declineReason: proposal.declineReason ?? null,
+    decisionEmails: (proposal.decisionEmails ?? []).map((sent) => ({
+      to: sent.to,
+      email: sent.email ?? null,
+    })),
+  };
+}
+
 // Every signing link the proposal has had, newest first, for the panel's
 // history, and whether the customer has opened the live one. Only the live
 // link's token is handed over: it is the one the panel offers to copy, and an
@@ -706,7 +746,7 @@ export const sendWithLink = internalMutation({
     const frozen: FrozenProposal = {
       code: proposalCode(site.name, proposal.number),
       customerName: customer.name,
-      site: { street: siteStreetLine(site), city: siteCityLine(site) },
+      site: { street: siteStreetLine(site), city: siteCityLine(site), region: site.region },
       sentTo,
       estimator: {
         name: identity?.name?.trim() || Unknown,
@@ -804,6 +844,237 @@ export const resendWithLink = internalMutation({
   },
 });
 
+// The owner's Decline: the customer said no somewhere other than their link —
+// on the phone, or by never answering. Final, like the customer's own, and the
+// reason is optional because "they went elsewhere" is often all there is.
+// Nobody is emailed, and the link stops opening anything: the customer never
+// answered through it.
+export const decline = mutation({
+  args: { proposalId: v.id("proposals"), reason: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposal = await requireSent(ctx, a.proposalId, "declined");
+    const now = Date.now();
+    await endSigningLinks(ctx, proposal._id, "declined", now);
+    await ctx.db.patch(proposal._id, {
+      state: "declined",
+      declinedAt: now,
+      declinedBy: "owner",
+      declineReason: optionalText(a.reason ?? "", ReasonMaxLength),
+      decisionEmails: [],
+      updatedAt: now,
+    });
+  },
+});
+
+// **Approve** (CONTEXT.md): the customer's **Signature**, and the moment the
+// agreement forms. Public and token-authenticated, ported from FRSG's
+// `approve`: the signing link is the whole access model, and nobody at Expand
+// countersigns. Convex runs mutations one at a time, so a second press that
+// lands after the first finds the link ended and is refused.
+//
+// What is recorded is what the certificate of completion prints: who typed
+// what, on which browser, when their link was first viewed, the sentences they
+// ticked with their versions, and the offer as signed, sealed with its
+// fingerprint. Washington's Notice to Customer is a second tick of its own,
+// required only where the statute requires it. The approval emails follow,
+// scheduled, so a mail outage can never unmake the signature.
+export const approve = mutation({
+  args: {
+    token: v.string(),
+    signerName: v.string(),
+    consentTicked: v.boolean(),
+    noticeTicked: v.boolean(),
+    // The versions of the two sentences the page showed beside its ticks. The
+    // signature records the current constants, so a page rendered before a
+    // wording change, or a caller that doesn't say what it showed, is refused
+    // rather than recorded as having agreed to words its signer never read.
+    // The notice's is needed only where the notice applies.
+    consentWordingVersion: v.string(),
+    noticeWordingVersion: v.optional(v.string()),
+    // The signer's browser, as the page reports it. Recorded, never verified:
+    // it is evidence an electronic signature keeps, not a gate.
+    userAgent: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    const { link, proposal, site } = await requireLiveLink(ctx, a.token);
+    const frozen = proposal.frozen;
+    const noticeRequired = noticeToCustomerApplies(
+      frozen.site.region ?? site.region,
+      frozen.totalCents,
+    );
+
+    refuseStaleWording(a.consentWordingVersion, SigningConsent.version);
+    if (noticeRequired)
+      refuseStaleWording(a.noticeWordingVersion, WashingtonNoticeToCustomer.version);
+    refuseSigning(
+      signingFaults({
+        signerName: a.signerName,
+        consentTicked: a.consentTicked,
+        noticeRequired,
+        noticeTicked: a.noticeTicked,
+      }),
+    );
+
+    const now = Date.now();
+    const signerName = a.signerName.trim().replace(/\s+/g, " ").slice(0, NameMaxLength);
+    const userAgent = optionalText(a.userAgent ?? "", UserAgentMaxLength);
+    const firstOpenedAt = await firstCustomerView(ctx, link.token);
+    const title = frozenTitle(proposal.name, frozen);
+    const sealed = sealProposal({
+      proposalId: proposal._id,
+      number: proposal.number,
+      code: frozen.code,
+      name: title,
+      customerName: frozen.customerName,
+      site: frozen.site,
+      // Present on every Sent proposal; the fallback only satisfies the type.
+      sentAt: proposal.sentAt ?? link.sentAt,
+      sentByName: frozen.estimator.name,
+      offer: frozen,
+    });
+
+    // The customer at the address their link went to, and Expand, each on
+    // their own so neither sees the other's address.
+    const recipients = [link.sentTo, ExpandBusiness.email];
+    await ctx.db.patch(proposal._id, {
+      state: "approved",
+      approvedAt: now,
+      signature: {
+        signerName,
+        signingLinkId: link._id,
+        signedAt: now,
+        ...(userAgent === undefined ? {} : { userAgent }),
+        ...(firstOpenedAt === null ? {} : { firstOpenedAt }),
+        consentWording: SigningConsent.wording(proposal.number),
+        consentWordingVersion: SigningConsent.version,
+        noticeShown: noticeRequired,
+        noticeTicked: noticeRequired && a.noticeTicked,
+        ...(noticeRequired
+          ? {
+              noticeWording: WashingtonNoticeToCustomer.text,
+              noticeWordingVersion: WashingtonNoticeToCustomer.version,
+            }
+          : {}),
+        sealed,
+      },
+      decisionEmails: recipients.map((to) => ({ to })),
+      updatedAt: now,
+    });
+    await endSigningLinks(ctx, proposal._id, "approved", now);
+
+    for (const [index, to] of recipients.entries())
+      await ctx.scheduler.runAfter(0, internal.proposalEmails.sendApproval, {
+        proposalId: proposal._id,
+        index,
+        to,
+        token: link.token,
+        signerName,
+        code: frozen.code,
+        siteStreet: frozen.site.street,
+        siteAddress: siteAddress(frozen),
+        signedAt: now,
+        proposalTitle: title,
+        totalCents: frozen.totalCents,
+      });
+  },
+});
+
+// The customer's Decline, from the same link and just as final as their
+// signature. The reason is theirs to give or not; Expand hears either way.
+export const declineFromLink = mutation({
+  args: { token: v.string(), reason: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    const { proposal } = await requireLiveLink(ctx, a.token);
+    const frozen = proposal.frozen;
+    const now = Date.now();
+    const reason = optionalText(a.reason ?? "", ReasonMaxLength);
+    await endSigningLinks(ctx, proposal._id, "declined", now);
+    await ctx.db.patch(proposal._id, {
+      state: "declined",
+      declinedAt: now,
+      declinedBy: "customer",
+      declineReason: reason,
+      decisionEmails: [{ to: ExpandBusiness.email }],
+      updatedAt: now,
+    });
+    await ctx.scheduler.runAfter(0, internal.proposalEmails.sendDeclineNotice, {
+      proposalId: proposal._id,
+      index: 0,
+      to: ExpandBusiness.email,
+      customerName: frozen.customerName,
+      code: frozen.code,
+      siteStreet: frozen.site.street,
+      siteAddress: siteAddress(frozen),
+      proposalTitle: frozenTitle(proposal.name, frozen),
+      ...(reason === undefined ? {} : { reason }),
+    });
+  },
+});
+
+// What became of one of the decision's emails, written back by its scheduled
+// send. It never touches the decision itself.
+export const recordDecisionEmail = internalMutation({
+  args: { proposalId: v.id("proposals"), index: v.number(), email: emailOutcome },
+  handler: async (ctx, a) => {
+    const proposal = await ctx.db.get(a.proposalId);
+    const emails = proposal?.decisionEmails;
+    if (!proposal || !emails || !emails[a.index]) return;
+    await ctx.db.patch(proposal._id, {
+      decisionEmails: emails.map((sent, index) =>
+        index === a.index ? { ...sent, email: a.email } : sent,
+      ),
+    });
+  },
+});
+
+// The customer's acts, refused the way the page reads them. A token that names
+// nothing, a link that has ended and a proposal no longer Sent all get one
+// sentence: which of them it is tells the holder nothing they can use.
+async function requireLiveLink(ctx: MutationCtx, token: string): Promise<LiveSigningLink> {
+  const live = await liveLinkForToken(ctx, token);
+  if (!live)
+    throw new ConvexError({
+      code: "link_ended",
+      message: `This link is no longer live. Reply to the email it came in, or call Expand Handyman at ${ExpandBusiness.phone}.`,
+    });
+  return live;
+}
+
+// A page rendered under an earlier wording, or one that doesn't say which it
+// showed, is sent back to reload rather than recorded as agreeing to sentences
+// its signer never saw.
+function refuseStaleWording(shown: string | undefined, current: string) {
+  if (shown === current) return;
+  throw new ConvexError({
+    code: "wording_stale",
+    message: "The wording on this page has changed since it opened. Reload the page and sign again.",
+  });
+}
+
+// Every reason the signing step is short of a signature, in one sentence,
+// exactly as the sign bar lists them before it lets the button through.
+function refuseSigning(faults: readonly SigningFault[]) {
+  if (faults.length === 0) return;
+  throw new ConvexError({
+    code: faults[0],
+    message: faults.map(signingFaultMessage).join(" "),
+  });
+}
+
+// A sent proposal's display name, read from the solution titles Send froze.
+function frozenTitle(name: string | undefined, frozen: FrozenProposal): string {
+  return proposalDisplayName(
+    name,
+    frozen.solutions.map((solution) => solution.title),
+  );
+}
+
+// The site as one line, the way every email names it.
+function siteAddress(frozen: FrozenProposal): string {
+  return [frozen.site.street, frozen.site.city].filter(Boolean).join(", ");
+}
+
 // One fresh link, and the email that carries it, scheduled to run once this
 // mutation commits. The letter is written from the frozen offer, so a Re-send
 // says exactly what the Send did.
@@ -833,11 +1104,8 @@ async function emailNewLink(
     // without one.
     ownerName: send.ownerName?.trim() || "Your estimator",
     siteStreet: frozen.site.street,
-    siteAddress: [frozen.site.street, frozen.site.city].filter(Boolean).join(", "),
-    proposalTitle: proposalDisplayName(
-      proposal.name,
-      frozen.solutions.map((solution) => solution.title),
-    ),
+    siteAddress: siteAddress(frozen),
+    proposalTitle: frozenTitle(proposal.name, frozen),
     totalCents: frozen.totalCents,
   });
 }
@@ -924,6 +1192,8 @@ function refuse(fault: ProposalFault | null) {
 
 const NameMaxLength = 200;
 const NotesMaxLength = 8000;
+const ReasonMaxLength = 2000;
+const UserAgentMaxLength = 512;
 
 // Typed optional text as stored: trimmed, absent when blank, and cut at a
 // length nothing legitimate exceeds.

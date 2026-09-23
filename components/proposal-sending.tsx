@@ -2,7 +2,7 @@
 
 import { useAction, useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { RotateCcw, Send, Undo2 } from "lucide-react";
+import { CircleX, RotateCcw, Send, Undo2 } from "lucide-react";
 import { useState } from "react";
 
 import { CopyLinkButton, useAppOrigin } from "@/components/copy-link";
@@ -19,8 +19,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { sendBlockerMessage } from "@/lib/proposal-pricing";
+import { otherSentLabel } from "@/lib/proposals";
 import {
   emailFailed,
   endedReasonLabel,
@@ -33,9 +36,11 @@ type ProposalsTab = FunctionReturnType<typeof api.proposals.forCustomer>;
 type Proposal = ProposalsTab["proposals"][number];
 
 // The panel's Send, and once sent, its signing link: where it went, whether
-// the email did, whether the customer has opened it, and the two ways to act
-// on an offer still waiting — Re-send and Withdraw. A refusal is said here,
-// beside the button that met it.
+// the email did, whether the customer has opened it, and the ways to act on an
+// offer still waiting — Re-send, Withdraw and Mark declined. Once the customer
+// has answered, the decision: who signed or declined, when and why, and what
+// became of the emails it sent. A refusal is said here, beside the button that
+// met it.
 export function ProposalSending({
   proposal,
   customerEmail,
@@ -53,9 +58,12 @@ export function ProposalSending({
     }
   };
 
+  const heading =
+    proposal.state === "draft" ? "Send" : proposal.state === "sent" ? "Signing link" : "Decision";
+
   return (
     <div className="space-y-2">
-      <FieldHeading>{proposal.state === "draft" ? "Send" : "Signing link"}</FieldHeading>
+      <FieldHeading>{heading}</FieldHeading>
       {refusal ? (
         <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
           {refusal}
@@ -63,8 +71,10 @@ export function ProposalSending({
       ) : null}
       {proposal.state === "draft" ? (
         <SendDraft proposal={proposal} customerEmail={customerEmail} attempt={attempt} />
-      ) : (
+      ) : proposal.state === "sent" ? (
         <SentLink proposal={proposal} customerEmail={customerEmail} attempt={attempt} />
+      ) : (
+        <Decision proposal={proposal} />
       )}
       {proposal.links.length > 0 ? <LinkHistory links={proposal.links} /> : null}
     </div>
@@ -147,8 +157,10 @@ function SentLink({
 }) {
   const resend = useAction(api.proposals.resend);
   const withdraw = useMutation(api.proposals.withdraw);
+  const decline = useMutation(api.proposals.decline);
   const origin = useAppOrigin();
-  const [confirming, setConfirming] = useState<"resend" | "withdraw" | null>(null);
+  const [confirming, setConfirming] = useState<"resend" | "withdraw" | "decline" | null>(null);
+  const [declineReason, setDeclineReason] = useState("");
   const [busy, setBusy] = useState(false);
   const live = proposal.links.find((link) => link.endedAt === null) ?? null;
   const url =
@@ -210,6 +222,16 @@ function SentLink({
         <Button variant="outline" disabled={busy} onClick={() => setConfirming("withdraw")}>
           <Undo2 data-icon="inline-start" aria-hidden /> Withdraw
         </Button>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setDeclineReason("");
+            setConfirming("decline");
+          }}
+        >
+          <CircleX data-icon="inline-start" aria-hidden /> Mark declined
+        </Button>
       </div>
       {customerEmail === null ? (
         <p className="text-xs text-slate-500">
@@ -232,6 +254,26 @@ function SentLink({
                 they are now. The customer isn&rsquo;t told.
               </AlertDialogDescription>
             </AlertDialogHeader>
+          ) : confirming === "decline" ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Mark {proposal.code} declined?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  For a customer who said no another way. It&rsquo;s final, its link stops
+                  working, and nobody is emailed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="space-y-1.5">
+                <Label htmlFor="decline-reason">Reason (optional)</Label>
+                <Textarea
+                  id="decline-reason"
+                  rows={2}
+                  maxLength={2000}
+                  value={declineReason}
+                  onChange={(event) => setDeclineReason(event.target.value)}
+                />
+              </div>
+            </>
           ) : (
             <AlertDialogHeader>
               <AlertDialogTitle>Re-send {proposal.code}?</AlertDialogTitle>
@@ -248,16 +290,65 @@ function SentLink({
                 void act(() =>
                   confirming === "withdraw"
                     ? withdraw({ proposalId: proposal.proposalId })
-                    : resend({ proposalId: proposal.proposalId }),
+                    : confirming === "decline"
+                      ? decline({
+                          proposalId: proposal.proposalId,
+                          ...(declineReason.trim() ? { reason: declineReason } : {}),
+                        })
+                      : resend({ proposalId: proposal.proposalId }),
                 )
               }
             >
-              {confirming === "withdraw" ? "Withdraw" : "Re-send"}
+              {confirming === "withdraw"
+                ? "Withdraw"
+                : confirming === "decline"
+                  ? "Mark declined"
+                  : "Re-send"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+// The customer's answer. Approving one proposal leaves the site's others
+// alone, so the owner is told how many are still out, to retire by hand.
+function Decision({ proposal }: { proposal: Proposal }) {
+  const approved = proposal.state === "approved";
+  return (
+    <div className="space-y-2 rounded-xl border px-3 py-3 text-sm">
+      {approved ? (
+        <p className="text-slate-900">
+          Approved by {proposal.signerName ?? "the customer"} on{" "}
+          {dateTime(proposal.approvedAt ?? undefined)}.
+        </p>
+      ) : (
+        <>
+          <p className="text-slate-900">
+            {proposal.declinedBy === "owner"
+              ? "Marked declined"
+              : "Declined by the customer through their link"}{" "}
+            on {dateTime(proposal.declinedAt ?? undefined)}.
+          </p>
+          <p className="text-slate-600">
+            {proposal.declineReason ? `Reason: ${proposal.declineReason}` : "No reason given."}
+          </p>
+        </>
+      )}
+      {approved && proposal.otherSentAtSite > 0 ? (
+        <p className="font-medium text-amber-800">{otherSentLabel(proposal.otherSentAtSite)}</p>
+      ) : null}
+      {proposal.decisionEmails.length > 0 ? (
+        <ul className="space-y-0.5 text-xs text-slate-500">
+          {proposal.decisionEmails.map((sent, index) => (
+            <li key={index} className={cn(emailFailed(sent.email) && "text-amber-800")}>
+              {sent.to}: {linkEmailLabel(sent.email)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

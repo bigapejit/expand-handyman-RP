@@ -316,6 +316,23 @@
   flex: none;
 }
 
+.paper-bar-row > .paper-link {
+  white-space: nowrap;
+}
+
+/* "Read the Terms" after the consent sentence, lined up under its words
+   rather than under the box. */
+.paper-tick-after {
+  margin-left: 24px;
+}
+
+/* Where "Read the Terms" and the strip's links land: clear of the sticky top
+   bar. */
+.proposal-document #terms,
+.proposal-document .pd-certificate {
+  scroll-margin-top: 110px;
+}
+
 .paper-notice {
   border: 1px solid #ddd;
   background: #fafafa;
@@ -376,6 +393,17 @@
 
   .paper-fields {
     grid-template-columns: 1fr;
+  }
+
+  /* The total takes a line of its own over the buttons: beside "Read the
+     Terms", Decline and Sign it would break mid-date on a phone. */
+  .paper-bar-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .paper-bar-row > .paper-bar-sum {
+    flex-basis: 100%;
   }
 
   /* The sheet may take up to four-fifths of the screen; the paper keeps the

@@ -3,11 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   GrandTotalLines,
   SolutionLinesPerSheet,
+  approvedBanner,
+  certificatePages,
+  declinedBanner,
+  documentPages,
   paperDate,
+  paperStamp,
   paperScale,
   paperTitle,
   solutionLines,
   solutionSheets,
+  telHref,
+  totalAndValidity,
   validUntil,
   type PaperSolution,
 } from "./proposal-paper";
@@ -47,6 +54,43 @@ describe("the paper's dates", () => {
 describe("the top bar", () => {
   it("names the proposal by its number and its name", () => {
     expect(paperTitle(2, "Kitchen faucet")).toBe("Proposal 2 · Kitchen faucet");
+  });
+});
+
+describe("the signing page's words", () => {
+  it("stamps a moment to the second, in UTC", () => {
+    expect(paperStamp(Date.UTC(2026, 8, 23, 2, 14, 51))).toBe("9/23/2026, 2:14:51 AM");
+  });
+
+  it("gives the sign bar the total and how long the offer stands", () => {
+    expect(totalAndValidity(59_895, Date.UTC(2026, 8, 2))).toBe(
+      "$598.95 · valid until 10/2/2026",
+    );
+  });
+
+  it("tells the customer their answer landed, on the paper's own day", () => {
+    const evening = Date.UTC(2026, 8, 24, 3, 30);
+    expect(approvedBanner(evening)).toBe(
+      "You approved this proposal on 9/24/2026. A copy has been emailed to you.",
+    );
+    expect(declinedBanner(evening)).toBe("You declined this proposal on 9/24/2026.");
+  });
+
+  it("dials the business number as digits", () => {
+    expect(telHref("(564) 203-8721")).toBe("tel:5642038721");
+  });
+});
+
+describe("the certificate's page counts", () => {
+  it("counts the cover, every solution sheet and the Terms as the document", () => {
+    expect(documentPages([solution("a", 2)])).toBe(3);
+    const long = Array.from({ length: 6 }, (_, index) => solution(String(index), 10));
+    expect(documentPages(long)).toBe(2 + solutionSheets(long).length);
+  });
+
+  it("adds the Notice to Customer's page only when it was acknowledged", () => {
+    expect(certificatePages(false)).toBe(1);
+    expect(certificatePages(true)).toBe(2);
   });
 });
 

@@ -434,6 +434,17 @@
   overflow-wrap: anywhere;
 }
 
+/* A phone's user agent runs to four or five lines in a third of the measure,
+   which is what pushed the certificate onto a second sheet in the prototype's
+   prints. Two lines say which browser it was; the rest is cut. */
+.pc-browser {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
 .pc-gap {
   margin-top: 8pt;
 }

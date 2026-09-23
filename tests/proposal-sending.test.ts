@@ -287,10 +287,10 @@ describe("What Send freezes", () => {
     expect(paper?.terms.length).toBe(11);
     // The customer's link shows the same frozen paper.
     const token = await liveToken(customerId, proposalId);
-    expect(await t.query(api.signingLinks.paper, { token })).toEqual({
-      ...sentPaper,
-      unpricedSolutions: undefined,
-    } as unknown as typeof sentPaper);
+    expect(await t.query(api.signingLinks.page, { token })).toEqual({
+      paper: { ...sentPaper, unpricedSolutions: undefined },
+      noticeRequired: false,
+    });
   });
 
   test("keeps no line item costs in the frozen offer", async () => {
@@ -344,7 +344,7 @@ describe("Withdraw", () => {
     });
     expect(row.links).toMatchObject([{ endedReason: "withdrawn" }]);
     expect(await t.query(api.signingLinks.resolve, { token })).toBe("ended");
-    expect(await t.query(api.signingLinks.paper, { token })).toBeNull();
+    expect(await t.query(api.signingLinks.page, { token })).toBeNull();
     const stored = await t.run((ctx) => ctx.db.get(proposalId));
     expect(stored?.frozen).toBeUndefined();
     expect(stored?.sentAt).toBeUndefined();
@@ -413,7 +413,7 @@ describe("Re-send", () => {
       text: expect.stringContaining("Hello Maria Delgado,"),
     });
     expect(await t.query(api.signingLinks.resolve, { token: first })).toBe("ended");
-    expect(await t.query(api.signingLinks.paper, { token: first })).toBeNull();
+    expect(await t.query(api.signingLinks.page, { token: first })).toBeNull();
     expect(await t.query(api.signingLinks.resolve, { token: second })).toBe("proposal");
   });
 
@@ -591,11 +591,11 @@ describe("/sign/<token>", () => {
       _id: documentId,
       title: "Deck agreement",
     });
-    expect(await t.query(api.signingLinks.paper, { token: documentToken })).toBeNull();
+    expect(await t.query(api.signingLinks.page, { token: documentToken })).toBeNull();
 
     expect(await t.query(api.signingLinks.resolve, { token: proposalToken })).toBe("proposal");
     expect(await t.query(api.documents.forSigner, { token: proposalToken })).toBeNull();
-    expect(await t.query(api.signingLinks.paper, { token: proposalToken })).toMatchObject({
+    expect((await t.query(api.signingLinks.page, { token: proposalToken }))?.paper).toMatchObject({
       code: "1300FRANKLIN-P1",
     });
 

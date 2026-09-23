@@ -102,6 +102,12 @@ export function proposalActivity(proposals: readonly ProposalOutcome[]): Proposa
   return { kind: "quiet", label: drafts === 1 ? "1 draft" : `${drafts} drafts` };
 }
 
+// Beside an Approved proposal in its panel: approving one leaves the site's
+// other offers standing, and these are the ones to retire by hand.
+export function otherSentLabel(count: number): string {
+  return `${count} other Sent ${count === 1 ? "proposal" : "proposals"} at this Site`;
+}
+
 // What a Solution costs, beside its tick box. A Solution nobody has costed is
 // still pickable — a Draft may hold one — and says so rather than showing $0.
 export function solutionPickLabel(priceCents: number | null, locale?: string): string {
