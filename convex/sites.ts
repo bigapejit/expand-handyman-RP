@@ -11,6 +11,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
+import { lookUpDraftTax, resetDraftTax } from "./proposals";
 import { deleteSiteSolutions } from "./solutions";
 import {
   createSiteName,
@@ -122,18 +123,19 @@ export const update = action({
     const found = a.placeId
       ? await lookUpPlace(a.placeId, a.sessionToken)
       : undefined;
-    await ctx.runMutation(internal.sites.patch, {
+    const drafts = await ctx.runMutation(internal.sites.patch, {
       siteId: a.siteId,
       place: found?.address,
       addressLine2: a.addressLine2.trim() || (found?.unit ?? ""),
       accessNotes: a.accessNotes,
     });
+    await lookUpDraftTax(ctx, a.siteId, drafts);
   },
 });
 
 export const patch = internalMutation({
   args: { siteId: v.id("sites"), place: v.optional(place), ...details },
-  handler: async (ctx, a) => {
+  handler: async (ctx, a): Promise<Id<"proposals">[]> => {
     await requireOwner(ctx);
     const site = await ctx.db.get(a.siteId);
     if (!site) throw new Error("Site not found.");
@@ -147,6 +149,12 @@ export const patch = internalMutation({
       name: createSiteName(next.addressLine1),
       updatedAt: Date.now(),
     });
+    // The drafts' tax follows the street, city, state and ZIP it was looked
+    // up from; a new unit or access note changes none of them.
+    const moved = (["addressLine1", "city", "region", "postalCode"] as const).some(
+      (part) => next[part] !== site[part],
+    );
+    return moved ? resetDraftTax(ctx, { ...site, ...next }) : [];
   },
 });
 

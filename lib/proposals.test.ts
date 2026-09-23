@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  lastChangeLine,
   moveInOrder,
   proposalActivity,
   proposalCode,
@@ -185,11 +184,5 @@ describe("Ordering the Solutions a Proposal offers", () => {
     expect(moveInOrder(["a", "b", "c"], 1, "down")).toEqual(["a", "c", "b"]);
     expect(moveInOrder(["a", "b", "c"], 0, "up")).toEqual(["a", "b", "c"]);
     expect(moveInOrder(["a", "b", "c"], 2, "down")).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("The last change to a Proposal", () => {
-  it("names the day", () => {
-    expect(lastChangeLine(Date.UTC(2026, 8, 2, 18), "en-US")).toBe("Last edited Sep 2, 2026");
   });
 });

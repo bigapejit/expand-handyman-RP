@@ -21,12 +21,40 @@ function answerWith(body: string, status = 200) {
   );
 }
 
+// The places a site can be moved to through sites.update, as Google's place
+// details describe them.
+function googlePlace(id: string, number: string, street: string, city: string, state: string, zip: string) {
+  return {
+    id,
+    addressComponents: [
+      { longText: number, shortText: number, types: ["street_number"] },
+      { longText: street, shortText: street, types: ["route"] },
+      { longText: city, shortText: city, types: ["locality", "political"] },
+      { longText: state, shortText: state, types: ["administrative_area_level_1", "political"] },
+      { longText: "United States", shortText: "US", types: ["country", "political"] },
+      { longText: zip, shortText: zip, types: ["postal_code"] },
+    ],
+    location: { latitude: 45.6, longitude: -122.6 },
+  };
+}
+const googlePlaces: Record<string, object> = {
+  "place-main": googlePlace("place-main", "1215", "Main St", "Vancouver", "WA", "98660"),
+  "place-portland": googlePlace("place-portland", "1221", "SW 4th Ave", "Portland", "OR", "97204"),
+};
+
 beforeEach(() => {
   vi.stubEnv("OWNER_EMAIL", "andrew@cogtex.ai");
   vi.stubEnv("OWNER_CLERK_ID", "");
+  vi.stubEnv("GOOGLE_MAPS_API_KEY", "server-key");
   dor = vi.fn();
   answerWith(vancouverRate);
-  vi.stubGlobal("fetch", dor);
+  // DOR answers through `dor`; Google's place details answer from the table.
+  vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname !== "places.googleapis.com") return dor(input, init);
+    const place = googlePlaces[decodeURIComponent(url.pathname.replace("/v1/places/", ""))];
+    return place ? Response.json(place) : new Response("{}", { status: 404 });
+  });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -564,5 +592,105 @@ describe("deleting a site", () => {
     await expect(owner.mutation(api.sites.remove, { siteId })).rejects.toThrow(
       "has proposals",
     );
+  });
+});
+
+describe("moving a site to another address", () => {
+  const move = (
+    owner: ReturnType<typeof fixture>["owner"],
+    siteId: Id<"sites">,
+    placeId: string,
+  ) =>
+    owner.action(api.sites.update, {
+      siteId,
+      placeId,
+      sessionToken: "11111111-2222-3333-4444-555555555555",
+      addressLine2: "",
+      accessNotes: "",
+    });
+
+  test("looks up its drafts' tax again, over a rate typed by hand", async () => {
+    const { owner, customer, site, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, taxRate: 0.07 });
+    dor.mockClear();
+
+    await move(owner, siteId, "place-main");
+    const url = new URL(String(dor.mock.calls[0][0]));
+    expect(url.searchParams.get("addr")).toBe("1215 Main St");
+    expect((await read(customerId, proposalId)).tax).toEqual({
+      source: "lookup",
+      rate: 0.089,
+      locationCode: "0605",
+      period: "Q32026",
+    });
+  });
+
+  test("leaves a draft without a rate when the new lookup fails", async () => {
+    const { owner, customer, site, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    answerWith(zipCentroidGuess);
+    await move(owner, siteId, "place-main");
+    expect((await read(customerId, proposalId)).tax).toEqual({ source: "lookup" });
+  });
+
+  test("stops charging tax once the site is outside Washington", async () => {
+    const { owner, customer, site, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await move(owner, siteId, "place-portland");
+    expect((await read(customerId, proposalId)).tax).toEqual({ source: "none" });
+  });
+
+  test("starts charging tax once the site is in Washington", async () => {
+    const { owner, customer, site, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1221SW", {
+      addressLine1: "1221 SW 4th Ave",
+      city: "Portland",
+      region: "OR",
+      postalCode: "97204",
+    });
+    const proposalId = await create(siteId);
+    await move(owner, siteId, "place-main");
+    expect((await read(customerId, proposalId)).tax).toMatchObject({
+      source: "lookup",
+      rate: 0.089,
+    });
+  });
+
+  test("leaves a proposal past Draft alone", async () => {
+    const { owner, customer, site, create, read, setState } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await setState(proposalId, "sent");
+    await move(owner, siteId, "place-portland");
+    expect((await read(customerId, proposalId)).tax).toMatchObject({
+      source: "lookup",
+      rate: 0.089,
+    });
+  });
+
+  test("keeps a draft's tax when only the unit or access notes change", async () => {
+    const { owner, customer, site, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, taxRate: 0.07 });
+    await owner.action(api.sites.update, {
+      siteId,
+      addressLine2: "Unit B",
+      accessNotes: "Gate code 1234",
+    });
+    expect((await read(customerId, proposalId)).tax).toMatchObject({
+      source: "override",
+      rate: 0.07,
+    });
   });
 });

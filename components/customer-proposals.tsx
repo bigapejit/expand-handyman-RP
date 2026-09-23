@@ -27,7 +27,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { formatCents } from "@/lib/money";
 import { paymentTermsSentence, type PaymentSplit } from "@/lib/proposal-pricing";
 import {
-  lastChangeLine,
   moveInOrder,
   ProposalPanelParam,
   proposalStateLabel,
@@ -151,8 +150,7 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
             <SiteTag name={proposal.siteName} />
             <span aria-hidden>·</span>
             <span className="truncate">
-              {solutions === 1 ? "1 solution" : `${solutions} solutions`} ·{" "}
-              {lastChangeLine(proposal.updatedAt)}
+              {solutions === 1 ? "1 solution" : `${solutions} solutions`}
             </span>
           </span>
         </span>
@@ -358,9 +356,7 @@ function ProposalPanel({
           >
             <Copy data-icon="inline-start" aria-hidden /> Duplicate
           </Button>
-          <span className="flex-1 pl-3 text-xs text-slate-400">
-            {lastChangeLine(proposal.updatedAt)}
-          </span>
+          <span className="flex-1" />
           {isDraft ? (
             <Button variant="destructive" size="lg" onClick={() => setConfirmingDelete(true)}>
               <Trash2 data-icon="inline-start" aria-hidden /> Delete

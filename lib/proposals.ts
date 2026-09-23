@@ -152,16 +152,3 @@ export function moveInOrder<Item>(
 ): Item[] {
   return reorder(items, index, index + (direction === "up" ? -1 : 1));
 }
-
-// The last change to a Proposal, on its row in the list. To the day, because
-// a Proposal is assembled over days and an exact minute is precision nobody
-// acts on. There is only ever the owner to name, so nobody is.
-export function lastChangeLine(updatedAt: number, locale?: string): string {
-  const day = new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(updatedAt));
-
-  return `Last edited ${day}`;
-}

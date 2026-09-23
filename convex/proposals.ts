@@ -7,6 +7,7 @@ import {
   internalMutation,
   mutation,
   query,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
@@ -133,20 +134,53 @@ export const create = action({
   handler: async (ctx, a): Promise<Id<"proposals">> => {
     await requireOwner(ctx);
     const { proposalId, taxed } = await ctx.runMutation(internal.proposals.insertDraft, a);
-    if (!taxed) return proposalId;
-
-    // Anything but a rate leaves the draft without one, for the owner to type.
-    const looked = await lookUpSiteTax(ctx, a.siteId);
-    if (looked.outcome === "rate")
-      await ctx.runMutation(internal.proposals.storeLookedUpRate, {
-        proposalId,
-        rate: looked.rate,
-        locationCode: looked.locationCode,
-        ...(looked.period === null ? {} : { period: looked.period }),
-      });
+    await lookUpDraftTax(ctx, a.siteId, taxed ? [proposalId] : []);
     return proposalId;
   },
 });
+
+/**
+ * Shared with moving a site. The site's address decides its drafts' tax, so a
+ * draft at a site that has moved starts again from what a new draft there
+ * would get, a rate typed by hand included: that rate was for the old
+ * address. Proposals past Draft keep what they were offered. Returns the
+ * drafts waiting on a lookup.
+ */
+export async function resetDraftTax(
+  ctx: MutationCtx,
+  site: Doc<"sites">,
+): Promise<Id<"proposals">[]> {
+  const taxed = isWashingtonRegion(site.region);
+  const drafts = (await proposalsAtSite(ctx, site._id)).filter((p) => p.state === "draft");
+  const now = Date.now();
+  for (const draft of drafts)
+    await ctx.db.patch(draft._id, {
+      tax: { source: taxed ? "lookup" : "none" },
+      updatedAt: now,
+    });
+  return taxed ? drafts.map((draft) => draft._id) : [];
+}
+
+/**
+ * Asks DOR once for the site's rate and stores it on each draft still waiting
+ * for one. Anything but a rate leaves them without one, for the owner to type.
+ */
+export async function lookUpDraftTax(
+  ctx: ActionCtx,
+  siteId: Id<"sites">,
+  proposalIds: Id<"proposals">[],
+) {
+  if (proposalIds.length === 0) return;
+  const looked = await lookUpSiteTax(ctx, siteId);
+  if (looked.outcome !== "rate") return;
+  for (const proposalId of proposalIds)
+    await ctx.runMutation(internal.proposals.storeLookedUpRate, {
+      proposalId,
+      rate: looked.rate,
+      locationCode: looked.locationCode,
+      ...(looked.period === null ? {} : { period: looked.period }),
+    });
+}
 
 export const insertDraft = internalMutation({
   args: { siteId: v.id("sites") },
@@ -352,7 +386,6 @@ function proposalForOwner(
     money,
     depositPercent: proposal.depositPercent,
     payment: splitPayment(money.totalCents, proposal.depositPercent),
-    updatedAt: proposal.updatedAt,
   };
 }
 
