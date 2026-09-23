@@ -694,3 +694,128 @@ describe("moving a site to another address", () => {
     });
   });
 });
+
+describe("proposals.paper", () => {
+  const signedInOwner = (t: ReturnType<typeof fixture>["t"]) =>
+    t.withIdentity({
+      subject: "owner",
+      name: "Andrew Putilin",
+      email: "andrew@cogtex.ai",
+      emailVerified: true,
+    });
+
+  test("lays a draft out from its live solutions as if sent now, with the owner as Estimator", async () => {
+    const { t, owner, customer, site, create } = fixture();
+    const customerId = await customer("Dana Whitfield");
+    const siteId = await site(customerId, "1300FRANKLIN");
+    await t.run((ctx) => ctx.db.patch(siteId, { addressLine2: "Apt 2" }));
+    const faucet = await owner.mutation(api.solutions.create, {
+      siteId,
+      title: "Replace kitchen faucet",
+    });
+    await owner.mutation(api.solutions.update, {
+      solutionId: faucet,
+      description: "Shut off the water.\nFit the new faucet.",
+      lineItems: [
+        { name: "Pull-down faucet", quantity: 1, unitCostCents: 20_000, unit: "EA" },
+        { name: "Plumbing labor", quantity: 3, unitCostCents: 9_000, unit: "HR" },
+      ],
+    });
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [faucet],
+      notes: "Excludes the dishwasher.",
+      depositPercent: 30,
+    });
+
+    const now = Date.UTC(2026, 8, 22, 17, 42, 10);
+    vi.useFakeTimers({ toFake: ["Date"], now });
+    try {
+      const paper = await signedInOwner(t).query(api.proposals.paper, { proposalId });
+      expect(paper).toEqual({
+        proposalId,
+        number: 1,
+        code: "1300FRANKLIN-P1",
+        name: "Replace kitchen faucet",
+        state: "draft",
+        recommended: false,
+        sentAt: now,
+        estimator: { name: "Andrew Putilin", email: "andrew@cogtex.ai" },
+        customerName: "Dana Whitfield",
+        site: { street: "1300 Franklin St, Apt 2", city: "Vancouver, WA 98660" },
+        // The line items as the customer reads them: no unit cost.
+        solutions: [
+          {
+            solutionId: faucet,
+            title: "Replace kitchen faucet",
+            scopeOfWork: "Shut off the water.\nFit the new faucet.",
+            lineItems: [
+              { name: "Pull-down faucet", quantity: 1, unit: "EA" },
+              { name: "Plumbing labor", quantity: 3, unit: "HR" },
+            ],
+          },
+        ],
+        notes: "Excludes the dishwasher.",
+        tax: { source: "lookup", rate: 0.089, locationCode: "0605", period: "Q32026" },
+        // $470 cost at 10% is $517; 8.9% of it is $46.013.
+        subtotalCents: 51_700,
+        taxCents: 4_601,
+        totalCents: 56_301,
+        depositPercent: 30,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("reads the solutions and the customer live, so an edit shows at once", async () => {
+    const { t, owner, customer, site, solution, create } = fixture();
+    const customerId = await customer("Dana Whitfield");
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const deck = await solution(siteId, "Deck repair", 100_000);
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
+
+    await owner.mutation(api.solutions.update, { solutionId: deck, title: "Deck rebuild" });
+    await t.run((ctx) => ctx.db.patch(customerId, { name: "Dana W. Whitfield" }));
+    const paper = await signedInOwner(t).query(api.proposals.paper, { proposalId });
+    expect(paper).toMatchObject({
+      name: "Deck rebuild",
+      customerName: "Dana W. Whitfield",
+      solutions: [{ title: "Deck rebuild" }],
+    });
+  });
+
+  test("prints the gap where the owner's account has no name", async () => {
+    const { owner, customer, site, create } = fixture();
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+    const paper = await owner.query(api.proposals.paper, { proposalId });
+    expect(paper?.estimator).toEqual({ name: "<unknown>", email: "andrew@cogtex.ai" });
+  });
+
+  test("writes nothing to any view log", async () => {
+    const { t, customer, site, create } = fixture();
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+    await signedInOwner(t).query(api.proposals.paper, { proposalId });
+    expect(await t.run((ctx) => ctx.db.query("documentViews").collect())).toEqual([]);
+  });
+
+  test.each(["sent", "approved", "declined"] as const)(
+    "has nothing to lay out for a %s proposal until Send freezes its offer",
+    async (state) => {
+      const { t, customer, site, create, setState } = fixture();
+      const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+      await setState(proposalId, state);
+      expect(await signedInOwner(t).query(api.proposals.paper, { proposalId })).toBeNull();
+    },
+  );
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger, customer, site, create } = fixture();
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+    await expect(stranger.query(api.proposals.paper, { proposalId })).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});

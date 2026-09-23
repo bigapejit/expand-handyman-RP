@@ -13,7 +13,10 @@ import {
 } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { lookUpSiteTax } from "./salesTax";
+import { Unknown } from "../lib/expand-business";
+import type { PaperProposal } from "../lib/proposal-paper";
 import { proposalCode } from "../lib/proposals";
+import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
   depositPercentFault,
@@ -24,7 +27,7 @@ import {
   taxRateFault,
   type ProposalFault,
 } from "../lib/proposal-pricing";
-import { priceStoredSolution } from "../lib/solution-pricing";
+import { offeredLineItems, priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
 
 // Proposals, ported from FRSG's convex/proposals.ts: the offers the owner
@@ -123,6 +126,58 @@ export const list = query({
       });
     }
     return rows;
+  },
+});
+
+// The staff paper: a proposal as its **Proposal paper**, for the owner to read
+// before sending. A draft is laid out from its live solutions as if sent now,
+// with the signed-in owner as the Estimator Send would name. A query, so
+// reading the paper here never lands in a view log. Past Draft the paper is
+// the offer Send froze, which this does not lay out yet, so it answers null.
+export const paper = query({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a): Promise<PaperProposal | null> => {
+    await requireOwner(ctx);
+    const proposal = await ctx.db.get(a.proposalId);
+    if (!proposal || proposal.state !== "draft") return null;
+    const site = await ctx.db.get(proposal.siteId);
+    if (!site) return null;
+    const customer = await ctx.db.get(site.customerId);
+    const identity = await ctx.auth.getUserIdentity();
+
+    const solutions = (
+      await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))
+    ).flatMap((solution) => (solution ? [solution] : []));
+    const money = proposalMoney(solutions.map(priceStoredSolution), proposal.tax);
+
+    return {
+      proposalId: proposal._id,
+      number: proposal.number,
+      code: proposalCode(site.name, proposal.number),
+      name: proposalDisplayName(
+        proposal.name,
+        solutions.map((solution) => solution.title),
+      ),
+      state: proposal.state,
+      recommended: proposal.recommended,
+      sentAt: Date.now(),
+      estimator: {
+        name: identity?.name?.trim() || Unknown,
+        email: identity?.email?.trim() || Unknown,
+      },
+      customerName: customer?.name ?? Unknown,
+      site: { street: siteStreetLine(site), city: siteCityLine(site) },
+      solutions: solutions.map((solution) => ({
+        solutionId: solution._id,
+        title: solution.title,
+        scopeOfWork: solution.description,
+        lineItems: offeredLineItems(solution.lineItems),
+      })),
+      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
+      tax: proposal.tax,
+      ...money,
+      depositPercent: proposal.depositPercent,
+    };
   },
 });
 

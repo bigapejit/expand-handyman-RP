@@ -1,0 +1,570 @@
+/* The **Proposal paper** (CONTEXT.md), FRSG's app/report/proposal-document.css
+ * copied line for line, without the ink-signature rules Expand has no use for
+ * and with the Terms and Conditions page added at the end.
+ *
+ * One document, read on screen as sheets of paper and printed as the same
+ * sheets: US Letter, the serif this app carries (paper-fonts.css), black on
+ * white, with nothing here reading a theme token for the same reason
+ * paper-print.css reads none — the printed record has to look the same
+ * whatever the reader's browser is doing. It is drawn on the paper screen,
+ * where the sheets sit on a grey backdrop under a top bar and, on a signing
+ * link, over a sign bar (paper-screen.css); and as the owner's staff paper of
+ * the same proposal.
+ *
+ * A sheet here is a block that starts a page, not a fixed 11in box: a box
+ * would silently swallow anything that overran it, and nothing on a customer's
+ * offer may be dropped from print. The letterhead is drawn at the top of each
+ * such block rather than fixed to the sheet — a running header repeats on every
+ * sheet in some browsers and on the first only in others — so the solutions are
+ * grouped into blocks a sheet can hold (lib/proposal-paper.ts, `solutionSheets`)
+ * and every sheet is headed. A group the estimate got wrong still flows onto
+ * the next sheet rather than losing anything. On screen the same blocks are
+ * given the paper's proportions, which is the only place a height is asserted
+ * at all.
+ *
+ * The sheets' page name and their footer are not here: each document names its
+ * own sheets after its proposal number and foots them with its own Proposal ID
+ * (components/proposal-document.tsx, ProposalPageRules).
+ */
+
+/* Tinos and Homemade Apple, so this sheet sets the same glyphs in a browser,
+   a print dialogue and the server renderer. */
+@import "./paper-fonts.css";
+
+.proposal-document {
+  margin: 0 auto;
+  width: 8.5in;
+  max-width: 100%;
+  color: #000;
+  font-family: Tinos, "Times New Roman", Times, serif;
+  font-size: 10.5pt;
+  line-height: 1.35;
+}
+
+.pd-page {
+  box-sizing: border-box;
+  width: 8.5in;
+  max-width: 100%;
+  min-height: 11in;
+  margin: 0 auto 0.3in;
+  padding: 0.5in 0.45in 0.75in;
+  background: #fff;
+  box-shadow: 0 2px 14px rgb(0 0 0 / 0.45);
+}
+
+.pd-page p {
+  margin: 0 0 9pt;
+}
+
+/* ── Letterhead ─────────────────────────────────────────────────────────── */
+.pd-letterhead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.22in;
+  margin-bottom: 14pt;
+  break-after: avoid;
+}
+
+.pd-letterhead img {
+  width: 0.62in;
+  height: auto;
+}
+
+/* The name sits 2pt below the logo's top. It is the text that is nudged down,
+   never the logo that is pulled up: a negative margin on the first box of a
+   page-starting block reaches 2pt above the page it starts, and Chrome paints
+   that 2pt at the foot of the sheet before — a blue sliver under the last line
+   of one page, and a logo missing its top on the next. */
+.pd-letterhead-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2pt;
+}
+
+.pd-letterhead-name {
+  font-size: 13.5pt;
+  font-weight: bold;
+  border-bottom: 1pt solid #000;
+  padding-bottom: 2pt;
+  margin-bottom: 4pt;
+}
+
+.pd-letterhead-lines {
+  font-size: 10.5pt;
+  line-height: 1.2;
+}
+
+/* ── Cover block ────────────────────────────────────────────────────────── */
+.pd-facts {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10pt 0 24pt;
+}
+
+.pd-facts th {
+  width: 1.7in;
+  text-align: right;
+  font-weight: normal;
+  white-space: nowrap;
+  vertical-align: top;
+  line-height: 1.25;
+  padding: 0.75pt 12pt 0.75pt 0;
+}
+
+.pd-facts td {
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.25;
+  padding: 0.75pt 0;
+}
+
+/* A row's value, and the second fact some rows carry out at the right margin
+   — the Estimator's phone beside their name, their e-mail beside Position. */
+.pd-fact-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12pt;
+}
+
+/* The three groups the cover block reads in, marked by the gap above the row
+   that opens each one rather than by a rule. */
+.pd-fact-spaced th,
+.pd-fact-spaced td {
+  padding-top: 16pt;
+}
+
+/* ── The letter ─────────────────────────────────────────────────────────── */
+.pd-narrative p {
+  text-align: justify;
+  line-height: 1.22;
+}
+
+.pd-total {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+/* ── Signature lines ────────────────────────────────────────────────────── */
+.pd-agree {
+  margin-top: 18pt;
+  break-inside: avoid;
+}
+
+.pd-agree > p {
+  margin-bottom: 26pt;
+}
+
+.pd-signatures {
+  display: flex;
+  gap: 0.45in;
+}
+
+.pd-signature {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-signature-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8pt;
+  white-space: nowrap;
+}
+
+.pd-signature-rule {
+  position: relative;
+  display: inline-block;
+  flex: 1;
+  height: 0.42in;
+  border-bottom: 0.75pt solid #000;
+}
+
+.pd-signature-date {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3pt;
+}
+
+.pd-date-rule {
+  display: inline-block;
+  width: 0.85in;
+  height: 0.42in;
+  border-bottom: 0.75pt solid #000;
+  text-align: center;
+  line-height: 0.55in;
+}
+
+.pd-signature-label {
+  margin-top: 3pt;
+}
+
+/* The signature: the one line on the paper that is not the serif. It is a name
+   written, not a name set, so it takes the script face at a size that reads as
+   ink beside 10.5pt body copy, and no weight of its own — Homemade Apple has a
+   single one, and a synthetic bold on a handwriting face reads as a smudge.
+
+   The paper's own serif sits between the script and `cursive`, because
+   Homemade Apple covers Latin and no more: a signer named with `ř`, or in
+   Greek, would otherwise land on whatever the reader's system calls cursive,
+   which is a different face on every machine. Kept in step with
+   `lib/paper-fonts.ts`, which `paper-fonts.test.ts` checks. */
+.pd-script {
+  position: absolute;
+  left: 6pt;
+  bottom: 2pt;
+  font-family: "Homemade Apple", Tinos, cursive;
+  font-size: 14pt;
+  line-height: 1;
+  color: #1a1f7a;
+  white-space: nowrap;
+}
+
+/* The name as it is being typed into the sign bar, standing where the
+   signature will stand (issue #260). Pencil, not ink: the same script face and
+   the same place on the rule, at two-fifths' strength, so the customer sees
+   where their name is going without the page ever showing a signature that has
+   not been made. It never prints. */
+.pd-pencil {
+  opacity: 0.4;
+}
+
+/* DocuSign's yellow tag, hanging off the left of the customer's rule and
+   nudging until it is pressed. It is chrome on the paper, not part of it: sans
+   serif, and gone from print. */
+.pd-sign-here {
+  position: absolute;
+  left: -0.6in;
+  bottom: 3pt;
+  display: inline-flex;
+  align-items: center;
+  height: 0.27in;
+  padding: 0 4pt 0 7pt;
+  border: 0;
+  background: #ffd000;
+  color: #111;
+  font: 700 8pt/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  animation: pd-sign-here-nudge 1.8s ease-in-out infinite;
+}
+
+/* The tag's point, into the rule it belongs to. */
+.pd-sign-here::after {
+  content: "";
+  position: absolute;
+  right: -0.11in;
+  top: 0;
+  border-top: 0.135in solid transparent;
+  border-bottom: 0.135in solid transparent;
+  border-left: 0.11in solid #ffd000;
+}
+
+@keyframes pd-sign-here-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3pt);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-sign-here {
+    animation: none;
+  }
+}
+
+/* ── Solutions ──────────────────────────────────────────────────────────── */
+.pd-solution {
+  margin-bottom: 40pt;
+  break-inside: avoid;
+}
+
+.pd-solution-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12pt;
+  font-weight: bold;
+  margin-bottom: 0;
+}
+
+.pd-qty {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6pt;
+}
+
+.pd-qty th {
+  text-align: left;
+  font-size: 10.5pt;
+  font-weight: bold;
+  border-bottom: 0.75pt solid #000;
+  padding: 2pt 0 3pt;
+}
+
+.pd-qty td {
+  padding: 0.5pt 0;
+  line-height: 1.15;
+  vertical-align: top;
+}
+
+.pd-qty tbody tr:last-child td {
+  border-bottom: 0.75pt solid #000;
+  padding-bottom: 4pt;
+}
+
+.pd-amount {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 12pt;
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-qty th.pd-amount {
+  width: 1%;
+}
+
+.pd-scope-label {
+  font-weight: bold;
+  padding-top: 4pt;
+}
+
+.pd-scope {
+  margin-bottom: 8pt;
+  border-bottom: 0.75pt solid #000;
+  padding: 1pt 0 4pt;
+}
+
+.pd-scope p {
+  margin: 0;
+  line-height: 1.25;
+  text-align: justify;
+}
+
+/* ── The Grand Total block ──────────────────────────────────────────────── */
+.pd-grand {
+  margin-top: 26pt;
+  break-inside: avoid;
+}
+
+.pd-grand-table {
+  border-collapse: collapse;
+  margin-left: 0.6in;
+}
+
+.pd-grand-table th {
+  text-align: left;
+  font-weight: normal;
+  padding: 2pt 2.4in 2pt 0;
+}
+
+.pd-grand-table td {
+  text-align: right;
+  padding: 2pt 0;
+  min-width: 1.2in;
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-grand-total th,
+.pd-grand-total td {
+  padding-top: 8pt;
+}
+
+.pd-grand-total td {
+  border-bottom: 2.25pt double #000;
+}
+
+.pd-estimator {
+  margin: 30pt 0 0 2.4in;
+  width: 3.4in;
+}
+
+.pd-estimator-rule {
+  position: relative;
+  height: 0.5in;
+  border-bottom: 0.75pt solid #000;
+  margin-bottom: 3pt;
+}
+
+/* ── The Certificate of Completion ──────────────────────────────────────── */
+/* The last page of an Approved Proposal, in DocuSign's idiom (issue #240): a
+   sans-serif face, grey bands and three columns, so that it reads as the
+   record of the signing rather than as another sheet of the offer. It is a
+   `.pd-page` like any other, so it takes the paper's margins and starts a
+   fresh sheet; what it does not take is the letterhead, because it closes the
+   document rather than heading it. */
+.pd-certificate {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  line-height: 1.5;
+}
+
+.pc-band {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8pt;
+  background: #dcdcdc;
+  font-size: 12pt;
+  font-weight: bold;
+  padding: 3pt 4pt;
+  margin: 12pt 0 4pt;
+  break-after: avoid;
+}
+
+.pd-certificate > .pc-band:first-child {
+  margin-top: 0;
+}
+
+.pc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8pt;
+  padding: 0 4pt;
+}
+
+/* A network address, a browser string and a fingerprint are all longer than
+   a third of the measure — the fingerprint is 64 unbroken characters — and
+   none of them may be clipped away, on a sheet or on a phone. */
+.pc-grid > div,
+.pc-grid > div > div {
+  overflow-wrap: anywhere;
+}
+
+.pc-gap {
+  margin-top: 8pt;
+}
+
+/* The second column's first line sits level with the first column's own gap,
+   so the three columns read as one band rather than three lists. */
+.pc-gap-head {
+  margin-top: 78pt;
+}
+
+.pc-indent {
+  padding-left: 22pt;
+}
+
+.pc-span2 {
+  grid-column: span 2;
+}
+
+/* The signature itself, bracketed the way a signing record brackets one. */
+.pc-sigbox {
+  position: relative;
+  display: inline-block;
+  min-width: 1.6in;
+  padding: 6pt 8pt 4pt;
+  border-left: 1.5pt solid #2b55c8;
+  border-right: 1.5pt solid #2b55c8;
+  border-radius: 6pt;
+  margin: 2pt 0;
+  break-inside: avoid;
+}
+
+.pc-sigbox-label {
+  font-size: 6.5pt;
+  font-weight: bold;
+  color: #2b55c8;
+}
+
+.pc-sigbox-id {
+  font-size: 6.5pt;
+  color: #2b55c8;
+}
+
+/* The typed name an electronic signer adopted, in the same hand it takes on
+   the signature line of page 1. */
+.pc-sig {
+  font-family: "Homemade Apple", Tinos, cursive;
+  font-size: 12pt;
+  line-height: 1.4;
+  color: #1a1f7a;
+  white-space: nowrap;
+}
+
+.pc-mono {
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: 8.5pt;
+}
+
+.pc-disclosure {
+  padding: 8pt 4pt 0;
+  break-inside: avoid;
+}
+
+.pc-notice {
+  padding: 4pt 4pt 0;
+}
+
+/* Washington's statute as it was shown, its own paragraphs kept. */
+.pc-prose {
+  white-space: pre-line;
+}
+
+/* ── The Terms and Conditions ─────────────────────────────────────────── */
+/* Expand's own sheet, which FRSG's paper has no equivalent of: the Terms in
+   full, after the Grand Total and before the certificate, letterhead on top,
+   in the paper's own idiom. */
+.pd-terms-head {
+  font-size: 13.5pt;
+  font-weight: bold;
+  text-align: center;
+  margin: 6pt 0 12pt;
+}
+
+.pd-terms-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pd-terms-list li {
+  margin: 0 0 8pt;
+  text-align: justify;
+  line-height: 1.3;
+}
+
+/* The paper on a screen narrower than the paper is not relaxed, reflowed or
+ * re-measured: it is the same sheet, drawn smaller. What a customer opens on
+ * their phone has to be the page that will print — Andy settled that on the
+ * #241 prototype — and every fixed inch here is what makes the two the same
+ * document. The scaling itself is the screen's, not the paper's, and lives
+ * with the rest of the chrome in paper-screen.css.
+ */
+
+@media print {
+  /* Every Proposal is its own document: it starts a fresh sheet, and so does
+     each of its own page-starting blocks. On the document's own page the break
+     before the first sheet is simply not drawn. */
+  .proposal-document {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    break-before: page;
+  }
+
+  .pd-page {
+    width: auto;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .pd-page + .pd-page {
+    break-before: page;
+  }
+
+  /* Neither mark is part of the document: one is a name nobody has signed yet
+     and the other is a button. */
+  .pd-pencil,
+  .pd-sign-here {
+    display: none !important;
+  }
+}

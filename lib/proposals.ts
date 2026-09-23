@@ -40,6 +40,12 @@ export function proposalPanelHref(customerId: string, proposalId: string): strin
   return panelHref(`/customers/${customerId}/proposals`, "", ProposalPanelParam, proposalId);
 }
 
+// The staff paper: the proposal as its customer will read it, opened from the
+// panel in a tab of its own.
+export function proposalPaperHref(proposalId: string): string {
+  return `/proposals/${proposalId}/paper`;
+}
+
 // What a customer's row on the Customers list says about their proposals: the
 // Sent ones waiting on them first, since those are the ones to chase; else how
 // the last decided one went; else the drafts being written; else nothing yet.

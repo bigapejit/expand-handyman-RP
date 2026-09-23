@@ -1,0 +1,28 @@
+/* The part of FRSG's app/report/print.css the proposal paper needs on its own:
+ * the letter sheet and plain block flow.
+ *
+ * Nothing here reads a theme token. globals.css defines the palette in oklch
+ * with a `dark` custom variant, and the printed sheet has to be black on white
+ * whatever the reader's browser is doing, so every colour below is literal.
+ */
+@media print {
+  @page {
+    size: letter portrait;
+    /* One frame for every page. The bottom margin leaves room for the footer
+       margin boxes each proposal names its sheets for (Proposal ID, Page: N). */
+    margin: 0.55in 0.6in 0.75in;
+  }
+
+  html,
+  body {
+    /* The app shell is a flex column, and page breaks inside a flex container
+       are unreliable in both target browsers. The printed document is plain
+       block flow from the root down. */
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+}

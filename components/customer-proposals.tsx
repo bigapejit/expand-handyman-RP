@@ -2,7 +2,7 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
-import { ArrowDown, ArrowUp, Copy, GripVertical, Star, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Eye, GripVertical, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
@@ -29,6 +29,7 @@ import { paymentTermsSentence, type PaymentSplit } from "@/lib/proposal-pricing"
 import {
   moveInOrder,
   ProposalPanelParam,
+  proposalPaperHref,
   proposalStateLabel,
   readPercentField,
   readTaxRateField,
@@ -355,6 +356,19 @@ function ProposalPanel({
             }
           >
             <Copy data-icon="inline-start" aria-hidden /> Duplicate
+          </Button>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <a
+                href={proposalPaperHref(proposal.proposalId)}
+                target="_blank"
+                rel="noreferrer"
+              />
+            }
+          >
+            <Eye data-icon="inline-start" aria-hidden /> View paper
           </Button>
           <span className="flex-1" />
           {isDraft ? (
