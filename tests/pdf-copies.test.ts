@@ -488,3 +488,54 @@ describe("who may download", () => {
     expect(await passes()).toHaveLength(0);
   });
 });
+
+describe("a proposal that moves while its PDF is being made", () => {
+  test("a file of the withdrawn offer is never kept for the offer sent after it", async () => {
+    const { t, owner, sent, storedFiles } = fixture();
+    const { proposalId } = await sent();
+    let seen: unknown = undefined;
+    renderer = async (request) => {
+      // Offer A is printing when the owner takes it back and sends offer B.
+      await owner.mutation(api.proposals.withdraw, { proposalId });
+      await owner.mutation(api.proposals.update, { proposalId, notes: "Offer B." });
+      await owner.action(api.proposals.send, { proposalId });
+      seen = await t.query(api.pdfCopies.paper, { pass: passOf(request) });
+      return printPdf(request);
+    };
+
+    const download = await owner.action(api.pdfCopies.renderForOwner, { proposalId });
+
+    // A's pass never opens B's paper, and A's bytes are let go.
+    expect(seen).toBeNull();
+    expect(download).toMatchObject({ outcome: "unavailable" });
+    expect(await storedFiles()).toHaveLength(0);
+    expect(await owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
+  });
+
+  test("a file rendered before a Re-send is not kept for the new link", async () => {
+    const { owner, sent, storedFiles } = fixture();
+    const { proposalId } = await sent();
+    renderer = async (request) => {
+      await owner.action(api.proposals.resend, { proposalId });
+      return printPdf(request);
+    };
+
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId });
+
+    expect(await storedFiles()).toHaveLength(0);
+  });
+
+  test("a customer whose link is replaced mid-render is handed nothing", async () => {
+    const { t, owner, sent } = fixture();
+    const { proposalId, token } = await sent();
+    renderer = async (request) => {
+      await owner.action(api.proposals.resend, { proposalId });
+      return printPdf(request);
+    };
+
+    expect(await t.action(api.pdfCopies.renderForCustomer, { token })).toEqual({
+      outcome: "unavailable",
+      reason: "This proposal is not available.",
+    });
+  });
+});

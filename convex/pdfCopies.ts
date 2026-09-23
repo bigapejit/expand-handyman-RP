@@ -14,7 +14,12 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { currentPdfCopyOf } from "./pdfCopyFiles";
 import { hasRenderer, renderPageToPdf, type RenderFault } from "./pdfRenderer";
-import { mintLinkToken, paperStillOpenedBy, sentPaper } from "./signingLinks";
+import {
+  mintLinkToken,
+  paperStillOpenedBy,
+  sentPaper,
+  signingLinksForProposal,
+} from "./signingLinks";
 import type { PaperProposal } from "../lib/proposal-paper";
 import { pdfCopyFilename, pdfCopyStateFor, type PdfCopyState } from "../lib/pdf-copy";
 
@@ -74,7 +79,8 @@ export const renderForOwner = action({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a): Promise<PdfDownload> => {
     await requireOwner(ctx);
-    return renderAndRead(ctx, a.proposalId);
+    const result = await render(ctx, a.proposalId);
+    return answer(result, await ctx.runQuery(internal.pdfCopies.downloadRead, a));
   },
 });
 
@@ -97,7 +103,20 @@ export const renderForCustomer = action({
       token: a.token,
     });
     if (!proposalId) return { outcome: "unavailable", reason: NotAvailable };
-    return renderAndRead(ctx, proposalId);
+    const result = await render(ctx, proposalId);
+    // Asked again: a link replaced or withdrawn while the paper printed no
+    // longer opens it, and is handed nothing.
+    const after = await ctx.runQuery(internal.pdfCopies.customerDownloadRead, a);
+    if (!after) return { outcome: "unavailable", reason: NotAvailable };
+    return answer(result, after.file);
+  },
+});
+
+export const customerDownloadRead = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, a) => {
+    const opened = await paperStillOpenedBy(ctx, a.token);
+    return opened ? { file: await downloadOf(ctx, opened.proposal) } : null;
   },
 });
 
@@ -116,14 +135,17 @@ export const paper = query({
     const pass = await passFor(ctx, a.pass);
     if (!pass || pass.expiresAt <= Date.now()) return null;
     const proposal = await ctx.db.get(pass.proposalId);
-    if (!proposal || pdfCopyStateFor(proposal.state) !== pass.state) return null;
+    if (!proposal || !(await paperStillMeant(ctx, proposal, pass))) return null;
     return sentPaper(proposal);
   },
 });
 
-async function renderAndRead(ctx: ActionCtx, proposalId: Id<"proposals">): Promise<PdfDownload> {
-  const result = await render(ctx, proposalId);
-  const file = await ctx.runQuery(internal.pdfCopies.downloadRead, { proposalId });
+// What Download is handed after a render: the file for the proposal as it now
+// stands, or why there is none.
+function answer(
+  result: RenderOutcome,
+  file: { url: string; filename: string } | null,
+): PdfDownload {
   if (file) return { outcome: "ready", ...file };
   return { outcome: "unavailable", reason: unavailableReason(result) };
 }
@@ -159,6 +181,7 @@ async function render(ctx: ActionCtx, proposalId: Id<"proposals">): Promise<Rend
       proposalId,
       storageId,
       state: target.state,
+      linkId: target.linkId,
       renderedAt: Date.now(),
     });
     return { outcome: RecordedOutcome[recorded] };
@@ -179,23 +202,33 @@ export const mintRenderPass = internalMutation({
   ): Promise<
     | null
     | { already: true }
-    | { already: false; passId: Id<"renderPasses">; token: string; state: PdfCopyState; code: string }
+    | {
+        already: false;
+        passId: Id<"renderPasses">;
+        token: string;
+        state: PdfCopyState;
+        linkId: Id<"signingLinks">;
+        code: string;
+      }
   > => {
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal?.frozen) return null;
     const state = pdfCopyStateFor(proposal.state);
     if (!state) return null;
     if (proposal.pdfCopy?.state === state) return { already: true };
+    const linkId = await paperLinkOf(ctx, proposal);
+    if (!linkId) return null;
     if (!/^[A-Za-z0-9_-]{32,}$/.test(a.token)) throw new Error("Invalid render pass.");
     const passId = await ctx.db.insert("renderPasses", {
       token: a.token,
       proposalId: proposal._id,
       state,
+      linkId,
       expiresAt: Date.now() + RenderPassTtlMs,
     });
     // A render that dies before its `finally` still leaves no pass behind.
     await ctx.scheduler.runAfter(RenderPassTtlMs, internal.pdfCopies.dropRenderPass, { passId });
-    return { already: false, passId, token: a.token, state, code: proposal.frozen.code };
+    return { already: false, passId, token: a.token, state, linkId, code: proposal.frozen.code };
   },
 });
 
@@ -207,9 +240,10 @@ export const dropRenderPass = internalMutation({
 });
 
 // The bytes are in storage; this decides whether the row takes them. Between
-// the render's start and now the proposal may have moved (withdrawn, or
-// approved while the offer was rendering), and a file that describes a state
-// the proposal has left is deleted rather than kept. So is a second file for a
+// the render's start and now the proposal may have moved: approved while the
+// offer was printing, withdrawn and sent again (perhaps as a different offer),
+// or re-sent under a new link. A file of a paper the proposal no longer stands
+// on is deleted rather than kept. So is a second file for a
 // state that already has one: the first render to land is the record, and for
 // an approved proposal it is the record for good.
 export const recordPdfCopy = internalMutation({
@@ -217,11 +251,12 @@ export const recordPdfCopy = internalMutation({
     proposalId: v.id("proposals"),
     storageId: v.id("_storage"),
     state: v.union(v.literal("sent"), v.literal("approved")),
+    linkId: v.id("signingLinks"),
     renderedAt: v.number(),
   },
   handler: async (ctx, a): Promise<"recorded" | "discarded" | "kept"> => {
     const proposal = await ctx.db.get(a.proposalId);
-    if (!proposal || pdfCopyStateFor(proposal.state) !== a.state) {
+    if (!proposal || !(await paperStillMeant(ctx, proposal, a))) {
       await ctx.storage.delete(a.storageId);
       return "discarded";
     }
@@ -243,6 +278,36 @@ export const downloadRead = internalQuery({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a) => downloadOf(ctx, await ctx.db.get(a.proposalId)),
 });
+
+// The signing link a proposal's paper went out under: a Sent proposal's live
+// link, which Withdraw and Re-send both end, or the link an Approved one was
+// signed through. Send and Re-send each mint a new one, so it names the offer
+// exactly as the customer was handed it, where the state alone would not tell
+// an offer from the one sent after it was withdrawn.
+async function paperLinkOf(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+): Promise<Id<"signingLinks"> | null> {
+  if (proposal.state === "approved") return proposal.signature?.signingLinkId ?? null;
+  if (proposal.state !== "sent") return null;
+  const live = (await signingLinksForProposal(ctx, proposal._id)).find(
+    (link) => link.endedAt === undefined,
+  );
+  return live?._id ?? null;
+}
+
+// Whether a render begun for one state under one link is still of the paper
+// the proposal stands on.
+async function paperStillMeant(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  render: { state: PdfCopyState; linkId: Id<"signingLinks"> },
+): Promise<boolean> {
+  return (
+    pdfCopyStateFor(proposal.state) === render.state &&
+    (await paperLinkOf(ctx, proposal)) === render.linkId
+  );
+}
 
 async function downloadOf(
   ctx: QueryCtx,

@@ -232,12 +232,14 @@ export default defineSchema({
     .index("by_token", ["token"]),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
   // paper with, at `/paper/<token>`. One per render, for one proposal in the
-  // state being rendered, expiring within minutes and deleted when the render
-  // ends. Reading the paper through one never touches the view log.
+  // state being rendered and under the signing link it went out under,
+  // expiring within minutes and deleted when the render ends. Reading the
+  // paper through one never touches the view log.
   renderPasses: defineTable({
     token: v.string(),
     proposalId: v.id("proposals"),
     state: v.union(v.literal("sent"), v.literal("approved")),
+    linkId: v.id("signingLinks"),
     expiresAt: v.number(),
   }).index("by_token", ["token"]),
   // The proposal half of the view log, the same shape and rules as
