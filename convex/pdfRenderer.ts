@@ -11,12 +11,12 @@
 // was meant to happen and it is named.
 //
 // The renderer is Cloudflare Browser Run's REST `/pdf` endpoint
-// (lib/proposal-pdf.ts). Two variables name it, set on production Convex only:
+// (lib/pdf-copy.ts). Two variables name it, set on production Convex only:
 // the account whose browser time is spent (FRSG's), and Expand's own API token
 // with "Browser Rendering - Edit". Preview and dev deployments carry neither
 // and render nothing (docs/deployment.md).
 
-import { BrowserTimeHeader, looksLikePdf, proposalPdfRequest } from "../lib/proposal-pdf";
+import { BrowserTimeHeader, looksLikePdf, pdfCopyRequest } from "../lib/pdf-copy";
 
 // Everything that can stop a render this deployment meant to make.
 // `HTTP_${number}` carries Cloudflare's own status, so a spent daily allowance
@@ -64,7 +64,7 @@ export async function renderPageToPdf(page: { url: string; code: string }): Prom
     return { outcome: "notRendered", reason: "noRenderer" };
   }
 
-  const request = proposalPdfRequest({ ...config, url: page.url, code: page.code });
+  const request = pdfCopyRequest({ ...config, url: page.url, code: page.code });
 
   let response: Response;
   try {

@@ -4,7 +4,7 @@ import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { WashingtonNoticeToCustomer } from "../lib/expand-business";
-import { BrowserTimeHeader } from "../lib/proposal-pdf";
+import { BrowserTimeHeader } from "../lib/pdf-copy";
 import { SigningConsent } from "../lib/proposal-signing";
 
 const modules = import.meta.glob("../convex/**/*.ts");
@@ -145,8 +145,8 @@ describe("the owner's Download", () => {
     const { owner, sent, storedFiles } = fixture();
     const { proposalId } = await sent();
 
-    expect(await owner.query(api.proposalPdf.downloadForOwner, { proposalId })).toBeNull();
-    const first = await owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    expect(await owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
+    const first = await owner.action(api.pdfCopies.renderForOwner, { proposalId });
     expect(first).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Proposal 1300FRANKLIN-P1.pdf",
@@ -159,13 +159,13 @@ describe("the owner's Download", () => {
       /^https:\/\/staff\.expandhandyman\.com\/paper\/[A-Za-z0-9_-]{32,}\?footer=renderer$/,
     );
 
-    const stored = await owner.query(api.proposalPdf.downloadForOwner, { proposalId });
+    const stored = await owner.query(api.pdfCopies.downloadForOwner, { proposalId });
     expect(stored).toEqual({
       url: first.outcome === "ready" ? first.url : null,
       filename: "Expand Handyman Proposal 1300FRANKLIN-P1.pdf",
     });
-    // A second press that raced the first still renders nothing new.
-    expect(await owner.action(api.proposalPdf.renderForOwner, { proposalId })).toMatchObject({
+    // A later press renders nothing new.
+    expect(await owner.action(api.pdfCopies.renderForOwner, { proposalId })).toMatchObject({
       outcome: "ready",
     });
     expect(renders).toHaveLength(1);
@@ -180,11 +180,11 @@ describe("the render pass", () => {
     let seen: unknown = undefined;
     renderer = async (request) => {
       // The renderer's browser, reading the page it was sent to.
-      seen = await t.query(api.proposalPdf.paper, { pass: passOf(request) });
+      seen = await t.query(api.pdfCopies.paper, { pass: passOf(request) });
       return printPdf(request);
     };
 
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId });
 
     expect(seen).toMatchObject({
       proposalId,
@@ -193,7 +193,7 @@ describe("the render pass", () => {
       customerName: "Maria Delgado",
     });
     // Used once: the render is over and the pass with it.
-    expect(await t.query(api.proposalPdf.paper, { pass: passOf(renders[0]) })).toBeNull();
+    expect(await t.query(api.pdfCopies.paper, { pass: passOf(renders[0]) })).toBeNull();
     expect(await passes()).toHaveLength(0);
     expect(await t.run((ctx) => ctx.db.query("proposalViews").collect())).toHaveLength(0);
   });
@@ -203,8 +203,8 @@ describe("the render pass", () => {
     const first = await sent();
     const second = await sent();
 
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId: first.proposalId });
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId: second.proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId: first.proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId: second.proposalId });
 
     expect(passOf(renders[0])).not.toBe(passOf(renders[1]));
     expect(passOf(renders[0])).not.toBe(first.token);
@@ -218,11 +218,11 @@ describe("the render pass", () => {
       // The clock alone moves, so it is the pass's own expiry that answers
       // and not the scheduled clean-up.
       vi.setSystemTime(Date.now() + 5 * 60_000);
-      seen = await t.query(api.proposalPdf.paper, { pass: passOf(request) });
+      seen = await t.query(api.pdfCopies.paper, { pass: passOf(request) });
       return printPdf(request);
     };
 
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId });
 
     expect(seen).toBeNull();
   });
@@ -234,16 +234,19 @@ describe("the render pass", () => {
     renderer = async (request) => {
       // The customer signs while the offer is rendering.
       await approve(token);
-      seen = await t.query(api.proposalPdf.paper, { pass: passOf(request) });
+      seen = await t.query(api.pdfCopies.paper, { pass: passOf(request) });
       return printPdf(request);
     };
 
-    const download = await owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    const download = await owner.action(api.pdfCopies.renderForOwner, { proposalId });
 
     expect(seen).toBeNull();
     // The offer's file arrived after the offer had become a contract, and was
     // let go rather than handed out as the signed copy.
-    expect(download.outcome).toBe("unavailable");
+    expect(download).toEqual({
+      outcome: "unavailable",
+      reason: "This proposal changed while its PDF was being made. Press Download again.",
+    });
     expect(await storedFiles()).toHaveLength(0);
   });
 
@@ -253,11 +256,11 @@ describe("the render pass", () => {
     renderer = async () =>
       new Response(JSON.stringify({ success: false }), { status: 429 });
 
-    const download = await owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    const download = await owner.action(api.pdfCopies.renderForOwner, { proposalId });
 
     expect(download).toEqual({
       outcome: "unavailable",
-      reason: "Too many PDFs are being made right now. Try again in a few minutes.",
+      reason: "Too many PDFs have been made for now. Try again later.",
     });
     expect(await passes()).toHaveLength(0);
     expect(await storedFiles()).toHaveLength(0);
@@ -266,7 +269,7 @@ describe("the render pass", () => {
   test("never outlives its minutes, even when the render never ends", async () => {
     const { t, deliver, sent, passes } = fixture();
     const { proposalId } = await sent();
-    await t.mutation(internal.proposalPdf.mintRenderPass, {
+    await t.mutation(internal.pdfCopies.mintRenderPass, {
       proposalId,
       token: "a".repeat(43),
     });
@@ -282,7 +285,7 @@ describe("which states keep a PDF copy", () => {
   // A sent proposal whose offer has already been downloaded once.
   async function downloaded(f: ReturnType<typeof fixture>) {
     const made = await f.sent();
-    await f.owner.action(api.proposalPdf.renderForOwner, { proposalId: made.proposalId });
+    await f.owner.action(api.pdfCopies.renderForOwner, { proposalId: made.proposalId });
     expect(await f.storedFiles()).toHaveLength(1);
     return made;
   }
@@ -292,7 +295,7 @@ describe("which states keep a PDF copy", () => {
     const { proposalId } = await f.sent();
     await f.owner.mutation(api.proposals.withdraw, { proposalId });
 
-    expect(await f.owner.action(api.proposalPdf.renderForOwner, { proposalId })).toEqual({
+    expect(await f.owner.action(api.pdfCopies.renderForOwner, { proposalId })).toEqual({
       outcome: "unavailable",
       reason: "Only a sent or approved proposal has a PDF.",
     });
@@ -307,8 +310,8 @@ describe("which states keep a PDF copy", () => {
     expect(await f.storedFiles()).toHaveLength(0);
 
     await f.owner.action(api.proposals.send, { proposalId });
-    expect(await f.owner.query(api.proposalPdf.downloadForOwner, { proposalId })).toBeNull();
-    await f.owner.action(api.proposalPdf.renderForOwner, { proposalId });
+    expect(await f.owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
+    await f.owner.action(api.pdfCopies.renderForOwner, { proposalId });
     expect(renders).toHaveLength(2);
   });
 
@@ -319,7 +322,7 @@ describe("which states keep a PDF copy", () => {
     await f.owner.action(api.proposals.resend, { proposalId });
 
     expect(await f.storedFiles()).toHaveLength(0);
-    expect(await f.owner.query(api.proposalPdf.downloadForOwner, { proposalId })).toBeNull();
+    expect(await f.owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
   });
 
   test("the owner's Decline lets the sent file go, and a declined proposal has none", async () => {
@@ -329,7 +332,7 @@ describe("which states keep a PDF copy", () => {
     await f.owner.mutation(api.proposals.decline, { proposalId });
 
     expect(await f.storedFiles()).toHaveLength(0);
-    expect(await f.owner.action(api.proposalPdf.renderForOwner, { proposalId })).toMatchObject({
+    expect(await f.owner.action(api.pdfCopies.renderForOwner, { proposalId })).toMatchObject({
       outcome: "unavailable",
     });
     expect(renders).toHaveLength(1);
@@ -342,38 +345,48 @@ describe("which states keep a PDF copy", () => {
     await f.t.mutation(api.proposals.declineFromLink, { token });
 
     expect(await f.storedFiles()).toHaveLength(0);
-    expect(await f.owner.query(api.proposalPdf.downloadForOwner, { proposalId })).toBeNull();
+    expect(await f.owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
   });
 
-  test("the signed copy is made on its first download, replaces the offer, and is never replaced", async () => {
+  test("Approve lets the sent file go, and the signed copy is made on its first download", async () => {
     const f = fixture();
     const { proposalId, token } = await downloaded(f);
+
     await f.approve(token);
 
-    // The offer's file is not the signed copy, and is not handed out as one.
-    expect(await f.owner.query(api.proposalPdf.downloadForOwner, { proposalId })).toBeNull();
-    const signed = await f.owner.action(api.proposalPdf.renderForOwner, { proposalId });
-    expect(signed).toMatchObject({
+    // The offer's file is not the signed copy, and is not kept beside it.
+    expect(await f.storedFiles()).toHaveLength(0);
+    expect(await f.owner.query(api.pdfCopies.downloadForOwner, { proposalId })).toBeNull();
+    expect(await f.owner.action(api.pdfCopies.renderForOwner, { proposalId })).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Proposal 1300FRANKLIN-P1 (signed).pdf",
     });
-    const files = await f.storedFiles();
-    expect(files).toHaveLength(1);
+    expect(await f.storedFiles()).toHaveLength(1);
+  });
 
-    // A second render that lands anyway is let go, and the first file stays.
-    const late = await f.t.run((ctx) =>
-      ctx.storage.store(new Blob([pdfBytes], { type: "application/pdf" })),
-    );
-    expect(
-      await f.t.mutation(internal.proposalPdf.recordPdfCopy, {
-        proposalId,
-        storageId: late,
-        state: "approved",
-        renderedAt: Date.now(),
-      }),
-    ).toBe("kept");
-    expect((await f.storedFiles()).map((file) => file._id)).toEqual(files.map((file) => file._id));
-    await f.owner.action(api.proposalPdf.renderForOwner, { proposalId });
+  test("the signed copy is never replaced, even by a press that raced the first", async () => {
+    const f = fixture();
+    const { proposalId, token } = await f.sent();
+    await f.approve(token);
+    // The customer presses Download while the owner's first render is still
+    // printing: both find no file, and both render.
+    let customerPress: Promise<unknown> | undefined;
+    renderer = async (request) => {
+      if (!customerPress)
+        customerPress = f.t.action(api.pdfCopies.renderForCustomer, { token });
+      else return printPdf(request);
+      await customerPress;
+      return printPdf(request);
+    };
+
+    const owners = await f.owner.action(api.pdfCopies.renderForOwner, { proposalId });
+
+    expect(renders).toHaveLength(2);
+    // The customer's render landed first and is the record; the owner's,
+    // landing second, was let go, and both were handed the same file.
+    expect(await customerPress).toEqual(owners);
+    expect(await f.storedFiles()).toHaveLength(1);
+    await f.owner.action(api.pdfCopies.renderForOwner, { proposalId });
     expect(renders).toHaveLength(2);
   });
 });
@@ -383,10 +396,10 @@ describe("who may download", () => {
     const { stranger, t, sent } = fixture();
     const { proposalId } = await sent();
 
-    await expect(stranger.query(api.proposalPdf.downloadForOwner, { proposalId })).rejects.toThrow(
+    await expect(stranger.query(api.pdfCopies.downloadForOwner, { proposalId })).rejects.toThrow(
       /Owner access required/,
     );
-    await expect(t.action(api.proposalPdf.renderForOwner, { proposalId })).rejects.toThrow(
+    await expect(t.action(api.pdfCopies.renderForOwner, { proposalId })).rejects.toThrow(
       /Owner access required/,
     );
     expect(renders).toHaveLength(0);
@@ -396,15 +409,15 @@ describe("who may download", () => {
     const { t, owner, sent } = fixture();
     const { proposalId, token } = await sent();
 
-    expect(await t.query(api.proposalPdf.downloadForCustomer, { token })).toBeNull();
-    const rendered = await t.action(api.proposalPdf.renderForCustomer, { token });
+    expect(await t.query(api.pdfCopies.downloadForCustomer, { token })).toBeNull();
+    const rendered = await t.action(api.pdfCopies.renderForCustomer, { token });
     expect(rendered).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Proposal 1300FRANKLIN-P1.pdf",
     });
     // The same bytes the owner gets.
-    expect(await t.query(api.proposalPdf.downloadForCustomer, { token })).toEqual(
-      await owner.query(api.proposalPdf.downloadForOwner, { proposalId }),
+    expect(await t.query(api.pdfCopies.downloadForCustomer, { token })).toEqual(
+      await owner.query(api.pdfCopies.downloadForOwner, { proposalId }),
     );
     expect(renders).toHaveLength(1);
     expect(await t.run((ctx) => ctx.db.query("proposalViews").collect())).toHaveLength(0);
@@ -415,7 +428,7 @@ describe("who may download", () => {
     const { token } = await sent();
     await approve(token);
 
-    expect(await t.action(api.proposalPdf.renderForCustomer, { token })).toMatchObject({
+    expect(await t.action(api.pdfCopies.renderForCustomer, { token })).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Proposal 1300FRANKLIN-P1 (signed).pdf",
     });
@@ -424,12 +437,12 @@ describe("who may download", () => {
   test("nothing for a replaced link, a withdrawn one, or one that names nothing", async () => {
     const { t, owner, sent, liveToken } = fixture();
     const replaced = await sent();
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId: replaced.proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId: replaced.proposalId });
     await owner.action(api.proposals.resend, { proposalId: replaced.proposalId });
-    await owner.action(api.proposalPdf.renderForOwner, { proposalId: replaced.proposalId });
+    await owner.action(api.pdfCopies.renderForOwner, { proposalId: replaced.proposalId });
     // The new link has a file; the old one still gets nothing.
     expect(
-      await t.query(api.proposalPdf.downloadForCustomer, {
+      await t.query(api.pdfCopies.downloadForCustomer, {
         token: await liveToken(replaced.customerId, replaced.proposalId),
       }),
     ).not.toBeNull();
@@ -438,8 +451,8 @@ describe("who may download", () => {
     const rendersBefore = renders.length;
 
     for (const token of [replaced.token, withdrawn.token, "no-such-link"]) {
-      expect(await t.query(api.proposalPdf.downloadForCustomer, { token })).toBeNull();
-      expect(await t.action(api.proposalPdf.renderForCustomer, { token })).toEqual({
+      expect(await t.query(api.pdfCopies.downloadForCustomer, { token })).toBeNull();
+      expect(await t.action(api.pdfCopies.renderForCustomer, { token })).toEqual({
         outcome: "unavailable",
         reason: "This proposal is not available.",
       });
@@ -453,8 +466,8 @@ describe("who may download", () => {
     await t.mutation(api.proposals.declineFromLink, { token, reason: "Too dear." });
 
     expect(await t.query(api.signingLinks.page, { token })).not.toBeNull();
-    expect(await t.query(api.proposalPdf.downloadForCustomer, { token })).toBeNull();
-    expect(await t.action(api.proposalPdf.renderForCustomer, { token })).toMatchObject({
+    expect(await t.query(api.pdfCopies.downloadForCustomer, { token })).toBeNull();
+    expect(await t.action(api.pdfCopies.renderForCustomer, { token })).toMatchObject({
       outcome: "unavailable",
     });
     expect(renders).toHaveLength(0);
@@ -469,8 +482,8 @@ describe("who may download", () => {
       outcome: "unavailable",
       reason: "This deployment does not render PDFs.",
     };
-    expect(await owner.action(api.proposalPdf.renderForOwner, { proposalId })).toEqual(said);
-    expect(await t.action(api.proposalPdf.renderForCustomer, { token })).toEqual(said);
+    expect(await owner.action(api.pdfCopies.renderForOwner, { proposalId })).toEqual(said);
+    expect(await t.action(api.pdfCopies.renderForCustomer, { token })).toEqual(said);
     expect(renders).toHaveLength(0);
     expect(await passes()).toHaveLength(0);
   });

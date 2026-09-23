@@ -13,7 +13,18 @@
 // It imports nothing, on purpose: tsx runs the check script's imports as they
 // are, and the `@/` alias does not resolve there.
 
-export type ProposalPdfRequest = {
+// Which paper a proposal in a given state has as its PDF copy: the offer while
+// it is Sent, the signed copy once Approved, and nothing at all as a Draft
+// (nothing is frozen) or once Declined (an offer Expand no longer means is not
+// handed out as a file). Asked by the server that stores the file and by every
+// surface that decides whether to offer Download.
+export type PdfCopyState = "sent" | "approved";
+
+export function pdfCopyStateFor(state: string): PdfCopyState | null {
+  return state === "sent" || state === "approved" ? state : null;
+}
+
+export type PdfCopyRequest = {
   accountId: string;
   apiToken: string;
   // The page to print: the paper at its render pass (`/paper/<pass>`). Never a
@@ -46,7 +57,7 @@ export function rendererPageUrl(pageUrl: string): string {
 // what the renderer's Linux carries. Liberation Serif is metrically Times.
 // The 6pt at the bottom lifts the line to where a page-margin box centres it,
 // so the same proposal foots the same whichever of the two printed it.
-export function proposalPdfFooterTemplate(code: string): string {
+export function pdfCopyFooterTemplate(code: string): string {
   const face =
     "font-family: Tinos, 'Times New Roman', 'Liberation Serif', Times, serif; font-size: 9.5pt; color: #000;";
   return (
@@ -83,7 +94,7 @@ export const ProposalPaperReadyTimeoutMs = 30_000;
 // `/sign/<token>` is the customer's private link, and opening it is a view.
 export const SigningLinkRequestPattern = ".*/sign/.*";
 
-export function proposalPdfEndpoint(accountId: string): string {
+export function pdfRendererEndpoint(accountId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/browser-rendering/pdf`;
 }
 
@@ -94,7 +105,7 @@ export function proposalPdfEndpoint(accountId: string): string {
 // bands. The footer is the renderer's, drawn in the bottom margin the page's
 // own `@page` rule leaves; the header template is empty rather than absent,
 // because Chrome's default header is the page title and the date.
-export function proposalPdfRequestBody(url: string, code: string) {
+export function pdfCopyRequestBody(url: string, code: string) {
   return {
     url: rendererPageUrl(url),
     gotoOptions: { waitUntil: "load", timeout: ProposalPaperReadyTimeoutMs },
@@ -109,24 +120,24 @@ export function proposalPdfRequestBody(url: string, code: string) {
       preferCSSPageSize: true,
       displayHeaderFooter: true,
       headerTemplate: "<span></span>",
-      footerTemplate: proposalPdfFooterTemplate(code),
+      footerTemplate: pdfCopyFooterTemplate(code),
     },
   };
 }
 
-export function proposalPdfRequest(request: ProposalPdfRequest): {
+export function pdfCopyRequest(request: PdfCopyRequest): {
   url: string;
   init: { method: "POST"; headers: Record<string, string>; body: string };
 } {
   return {
-    url: proposalPdfEndpoint(request.accountId),
+    url: pdfRendererEndpoint(request.accountId),
     init: {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(proposalPdfRequestBody(request.url, request.code)),
+      body: JSON.stringify(pdfCopyRequestBody(request.url, request.code)),
     },
   };
 }
@@ -154,7 +165,7 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
 // both in one folder, and the offer and the contract must not be told apart
 // only by the date on them. Characters no file system takes are dropped rather
 // than escaped, so the name stays readable.
-export function proposalPdfFilename(code: string, options: { signed?: boolean } = {}): string {
+export function pdfCopyFilename(code: string, options: { signed?: boolean } = {}): string {
   const id = code
     .replace(/\s+/g, " ")
     // eslint-disable-next-line no-control-regex

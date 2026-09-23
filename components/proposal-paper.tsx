@@ -45,7 +45,7 @@ export type PendingSignature = { pendingName: string; onSignHere?: () => void };
 
 // Who foots the printed sheets. The page does it for a browser's print, with
 // CSS page-margin boxes; the PDF renderer draws its own footer and opens the
-// paper flagged so the page leaves its off (lib/proposal-pdf.ts,
+// paper flagged so the page leaves its off (lib/pdf-copy.ts,
 // RendererFooterParam), or a renderer that learns margin boxes would print two.
 export type PaperFooter = "page" | "renderer";
 

@@ -1,5 +1,5 @@
 import { RenderPaper } from "@/components/render-paper";
-import { RendererFooterParam } from "@/lib/proposal-pdf";
+import { RendererFooterParam } from "@/lib/pdf-copy";
 
 // `/paper/<pass>`: the one page the PDF renderer opens. The renderer asks for
 // it with `?footer=renderer` and draws the sheets' footer itself; opened any

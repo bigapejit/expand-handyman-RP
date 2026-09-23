@@ -2,25 +2,27 @@
 // scripts/render-pdf-check.ts.
 //
 // Points Cloudflare Browser Run at one page (a preview's `/paper/<pass>`) with
-// the very request the Convex action sends (lib/proposal-pdf.ts), writes the
-// PDF it gets back, and reads it with pypdf: how many sheets, what is on each
-// (a blank trailing sheet is the Chrome quirk FRSG's ProposalPageRules guards
-// against, and an empty last sheet is how it shows), and which faces are
-// embedded (Tinos and Homemade Apple, not a fallback).
+// the very request the Convex action sends (lib/pdf-copy.ts), writes the PDF it
+// gets back, and reads it with pypdf: how many sheets, how many words on each
+// (an empty last sheet is the blank trailing sheet ProposalPageRules in
+// components/proposal-paper.tsx guards against), and which faces are embedded
+// (Tinos and Homemade Apple, not a fallback).
 //
-// A render pass lives only for a render, so mint one by hand on the preview's
-// Convex deployment for a Sent or Approved proposal, then run the check within
-// its five minutes:
+// A render pass lives only for a render, so mint one by hand for a Sent or
+// Approved proposal on the Convex deployment the preview reads (`--prod`,
+// `--preview-name <name>`, or neither for dev), then run the check within its
+// five minutes:
 //
-//   npx convex run proposalPdf:mintRenderPass \
-//     '{"proposalId":"<id>","token":"<43 random URL-safe characters>"}'
-//   CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… \
-//     npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> [out.pdf] [<Proposal ID>]
+//   npx convex run pdfCopies:mintRenderPass //     '{"proposalId":"<id>","token":"<43 random URL-safe characters>"}'
+//   CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… //     npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> [out.pdf] [<Proposal ID>]
 //
 // `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
 // makes a token. The two variables are the ones production Convex carries
 // (docs/deployment.md). The third argument is the Proposal ID the renderer
-// foots the sheets with, which `mintRenderPass` prints as `code`.
+// foots the sheets with, which `mintRenderPass` prints as `code`. A preview
+// behind Vercel Deployment Protection turns Cloudflare's browser away at its
+// login; add `?x-vercel-protection-bypass=<secret>` to the page URL, which the
+// request keeps.
 
 import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
@@ -29,8 +31,8 @@ import { resolve } from "node:path";
 import {
   BrowserTimeHeader,
   looksLikePdf,
-  proposalPdfRequest,
-} from "../lib/proposal-pdf";
+  pdfCopyRequest,
+} from "../lib/pdf-copy";
 
 async function main() {
   const [, , pageUrl, outArg, codeArg] = process.argv;
@@ -49,7 +51,7 @@ async function main() {
   }
 
   const outPath = resolve(outArg ?? "render-pdf-check.pdf");
-  const request = proposalPdfRequest({
+  const request = pdfCopyRequest({
     accountId,
     apiToken,
     url: pageUrl,

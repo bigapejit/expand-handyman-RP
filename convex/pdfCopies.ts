@@ -12,18 +12,18 @@ import {
 } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
-import { currentPdfCopyOf, pdfCopyStateOf, type PdfCopyState } from "./proposalPdfFiles";
-import { hasRenderer, renderPageToPdf, type RenderFault } from "./proposalPdfRenderer";
+import { currentPdfCopyOf } from "./pdfCopyFiles";
+import { hasRenderer, renderPageToPdf, type RenderFault } from "./pdfRenderer";
 import { mintLinkToken, paperStillOpenedBy, sentPaper } from "./signingLinks";
 import type { PaperProposal } from "../lib/proposal-paper";
-import { proposalPdfFilename } from "../lib/proposal-pdf";
+import { pdfCopyFilename, pdfCopyStateFor, type PdfCopyState } from "../lib/pdf-copy";
 
 // The **PDF copy** (CONTEXT.md; ADR 0002), ported from FRSG's
 // convex/proposalPdf.ts without its Send and Approve scheduling or its email
 // hand-off: nothing renders until someone presses Download. The first press
 // renders the paper for the proposal's present state and stores it; every
 // later press, the owner's or the customer's, gets the same bytes. A Sent file
-// goes when the offer does (convex/proposalPdfFiles.ts); an Approved file is
+// goes when the offer does (convex/pdfCopyFiles.ts); an Approved file is
 // the signed copy and is never replaced.
 //
 // The renderer is a browser with no sign-in, so it reads the paper through a
@@ -51,6 +51,9 @@ type RenderOutcome =
   | { outcome: "rendered" }
   // The file for this state already exists; nothing was rendered.
   | { outcome: "kept" }
+  // The proposal left the state being rendered before the file landed, and
+  // the file was let go.
+  | { outcome: "moved" }
   // No such proposal, or one in a state with no PDF copy.
   | { outcome: "nothing" }
   | { outcome: "notRendered"; reason: "noRenderer" }
@@ -90,7 +93,7 @@ export const downloadForCustomer = query({
 export const renderForCustomer = action({
   args: { token: v.string() },
   handler: async (ctx, a): Promise<PdfDownload> => {
-    const proposalId = await ctx.runQuery(internal.proposalPdf.proposalOpenedBy, {
+    const proposalId = await ctx.runQuery(internal.pdfCopies.proposalOpenedBy, {
       token: a.token,
     });
     if (!proposalId) return { outcome: "unavailable", reason: NotAvailable };
@@ -113,14 +116,14 @@ export const paper = query({
     const pass = await passFor(ctx, a.pass);
     if (!pass || pass.expiresAt <= Date.now()) return null;
     const proposal = await ctx.db.get(pass.proposalId);
-    if (!proposal || pdfCopyStateOf(proposal) !== pass.state) return null;
+    if (!proposal || pdfCopyStateFor(proposal.state) !== pass.state) return null;
     return sentPaper(proposal);
   },
 });
 
 async function renderAndRead(ctx: ActionCtx, proposalId: Id<"proposals">): Promise<PdfDownload> {
   const result = await render(ctx, proposalId);
-  const file = await ctx.runQuery(internal.proposalPdf.downloadRead, { proposalId });
+  const file = await ctx.runQuery(internal.pdfCopies.downloadRead, { proposalId });
   if (file) return { outcome: "ready", ...file };
   return { outcome: "unavailable", reason: unavailableReason(result) };
 }
@@ -138,7 +141,7 @@ async function render(ctx: ActionCtx, proposalId: Id<"proposals">): Promise<Rend
 
   // The pass's token comes from the action's real randomness, as a signing
   // link's does; a mutation's generator is seeded.
-  const target = await ctx.runMutation(internal.proposalPdf.mintRenderPass, {
+  const target = await ctx.runMutation(internal.pdfCopies.mintRenderPass, {
     proposalId,
     token: mintLinkToken(),
   });
@@ -152,16 +155,16 @@ async function render(ctx: ActionCtx, proposalId: Id<"proposals">): Promise<Rend
     });
     if (rendered.outcome !== "rendered") return rendered;
     const storageId = await ctx.storage.store(rendered.blob);
-    const recorded = await ctx.runMutation(internal.proposalPdf.recordPdfCopy, {
+    const recorded = await ctx.runMutation(internal.pdfCopies.recordPdfCopy, {
       proposalId,
       storageId,
       state: target.state,
       renderedAt: Date.now(),
     });
-    return { outcome: recorded === "recorded" ? "rendered" : "kept" };
+    return { outcome: RecordedOutcome[recorded] };
   } finally {
     // Used once, whatever became of the render.
-    await ctx.runMutation(internal.proposalPdf.dropRenderPass, { passId: target.passId });
+    await ctx.runMutation(internal.pdfCopies.dropRenderPass, { passId: target.passId });
   }
 }
 
@@ -180,7 +183,7 @@ export const mintRenderPass = internalMutation({
   > => {
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal?.frozen) return null;
-    const state = pdfCopyStateOf(proposal);
+    const state = pdfCopyStateFor(proposal.state);
     if (!state) return null;
     if (proposal.pdfCopy?.state === state) return { already: true };
     if (!/^[A-Za-z0-9_-]{32,}$/.test(a.token)) throw new Error("Invalid render pass.");
@@ -191,7 +194,7 @@ export const mintRenderPass = internalMutation({
       expiresAt: Date.now() + RenderPassTtlMs,
     });
     // A render that dies before its `finally` still leaves no pass behind.
-    await ctx.scheduler.runAfter(RenderPassTtlMs, internal.proposalPdf.dropRenderPass, { passId });
+    await ctx.scheduler.runAfter(RenderPassTtlMs, internal.pdfCopies.dropRenderPass, { passId });
     return { already: false, passId, token: a.token, state, code: proposal.frozen.code };
   },
 });
@@ -218,7 +221,7 @@ export const recordPdfCopy = internalMutation({
   },
   handler: async (ctx, a): Promise<"recorded" | "discarded" | "kept"> => {
     const proposal = await ctx.db.get(a.proposalId);
-    if (!proposal || pdfCopyStateOf(proposal) !== a.state) {
+    if (!proposal || pdfCopyStateFor(proposal.state) !== a.state) {
       await ctx.storage.delete(a.storageId);
       return "discarded";
     }
@@ -226,7 +229,8 @@ export const recordPdfCopy = internalMutation({
       await ctx.storage.delete(a.storageId);
       return "kept";
     }
-    // The Sent paper, once the signed copy has landed: superseded, and gone.
+    // A file for another state, which Approve's own discard should already
+    // have let go: superseded, and gone.
     if (proposal.pdfCopy) await ctx.storage.delete(proposal.pdfCopy.storageId);
     await ctx.db.patch(proposal._id, {
       pdfCopy: { storageId: a.storageId, state: a.state, renderedAt: a.renderedAt },
@@ -251,7 +255,7 @@ async function downloadOf(
   if (!url) return null;
   return {
     url,
-    filename: proposalPdfFilename(proposal.frozen.code, { signed: copy.state === "approved" }),
+    filename: pdfCopyFilename(proposal.frozen.code, { signed: copy.state === "approved" }),
   };
 }
 
@@ -263,6 +267,13 @@ function passFor(ctx: QueryCtx, token: string) {
     .withIndex("by_token", (q) => q.eq("token", trimmed))
     .unique();
 }
+
+// What the render amounts to, by what became of its file.
+const RecordedOutcome = {
+  recorded: "rendered",
+  kept: "kept",
+  discarded: "moved",
+} as const;
 
 // A token that opens no paper, said in Download's own words rather than
 // borrowing one of the render's.
@@ -277,11 +288,15 @@ function unavailableReason(result: RenderOutcome): string {
       return "Only a sent or approved proposal has a PDF.";
     case "fault":
       // The free plan's cap: one render every ten seconds, and ten
-      // browser-minutes a day. Either passes; the second press usually finds
-      // the file.
+      // browser-minutes a day, which comes back at midnight UTC. Which of the
+      // two it was, Cloudflare doesn't say.
       return result.fault === "HTTP_429"
-        ? "Too many PDFs are being made right now. Try again in a few minutes."
+        ? "Too many PDFs have been made for now. Try again later."
         : "The PDF couldn't be made. Try again in a moment.";
+    case "moved":
+      // Approved, most likely, while the offer was printing: the signed copy
+      // is the next press's to make.
+      return "This proposal changed while its PDF was being made. Press Download again.";
     default:
       return "The PDF is not available.";
   }

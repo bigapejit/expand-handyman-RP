@@ -13,7 +13,7 @@ import {
 } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
-import { discardPdfCopy } from "./proposalPdfFiles";
+import { discardPdfCopy } from "./pdfCopyFiles";
 import { lookUpSiteTax } from "./salesTax";
 import { emailOutcome } from "./schema";
 import {
@@ -968,6 +968,9 @@ export const approve = mutation({
       updatedAt: now,
     });
     await endSigningLinks(ctx, proposal._id, "approved", now);
+    // The offer's PDF copy is not the signed copy, and goes with the state it
+    // printed. The signed copy is made on its first download.
+    await discardPdfCopy(ctx, proposal);
 
     for (const [index, to] of recipients.entries())
       await ctx.scheduler.runAfter(0, internal.proposalEmails.sendApproval, {

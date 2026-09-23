@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { PdfCopyState } from "@/lib/pdf-copy";
 import { errorMessage } from "@/lib/utils";
 
 // Download of a proposal's **PDF copy** (CONTEXT.md; ADR 0002), for whichever
@@ -22,10 +23,10 @@ export type PdfSource = { proposalId: Id<"proposals"> } | { token: string };
 export function usePdfDownload(source: PdfSource | null) {
   const owner = source && "proposalId" in source ? source : null;
   const customer = source && "token" in source ? source : null;
-  const ownerFile = useQuery(api.proposalPdf.downloadForOwner, owner ?? "skip");
-  const customerFile = useQuery(api.proposalPdf.downloadForCustomer, customer ?? "skip");
-  const renderForOwner = useAction(api.proposalPdf.renderForOwner);
-  const renderForCustomer = useAction(api.proposalPdf.renderForCustomer);
+  const ownerFile = useQuery(api.pdfCopies.downloadForOwner, owner ?? "skip");
+  const customerFile = useQuery(api.pdfCopies.downloadForCustomer, customer ?? "skip");
+  const renderForOwner = useAction(api.pdfCopies.renderForOwner);
+  const renderForCustomer = useAction(api.pdfCopies.renderForCustomer);
   const stored = owner ? ownerFile : customerFile;
 
   const [working, setWorking] = useState(false);
@@ -66,7 +67,7 @@ export function usePdfDownload(source: PdfSource | null) {
 }
 
 // The button's words: a signed proposal's file is the signed copy.
-export function pdfDownloadLabel(state: "sent" | "approved", working: boolean): string {
+export function pdfDownloadLabel(state: PdfCopyState, working: boolean): string {
   if (working) return "Preparing…";
   return state === "approved" ? "Download signed copy" : "Download PDF";
 }

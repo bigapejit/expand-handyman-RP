@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatCents } from "@/lib/money";
+import { pdfCopyStateFor } from "@/lib/pdf-copy";
 import { paymentTermsSentence, type PaymentSplit } from "@/lib/proposal-pricing";
 import {
   moveInOrder,
@@ -210,9 +211,7 @@ function ProposalPanel({
   const [refusal, setRefusal] = useState("");
 
   const isDraft = proposal.state === "draft";
-  // Only a sent or approved proposal has a PDF copy to offer.
-  const pdfState =
-    proposal.state === "sent" || proposal.state === "approved" ? proposal.state : null;
+  const pdfState = pdfCopyStateFor(proposal.state);
   const pdf = usePdfDownload(pdfState ? { proposalId: proposal.proposalId } : null);
   const shownRefusal = refusal || pdf.fault;
 

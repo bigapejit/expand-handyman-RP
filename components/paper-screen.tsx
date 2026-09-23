@@ -7,6 +7,7 @@ import { ProposalPaper, type PaperFooter, type PendingSignature } from "@/compon
 import { Skeleton } from "@/components/ui/skeleton";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
+import { pdfCopyStateFor, type PdfCopyState } from "@/lib/pdf-copy";
 import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper";
 
 // The screen a **Proposal paper** is read on: white letter pages on a grey
@@ -22,7 +23,7 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 //
 // The root says `data-paper="ready"` once the paper's faces and the
 // letterhead's image have arrived, which is what a print has to wait for, and
-// what the PDF renderer waits for before it prints (lib/proposal-pdf.ts).
+// what the PDF renderer waits for before it prints (lib/pdf-copy.ts).
 
 // The one sentence under the top bar, and the colour it is said in.
 export type PaperStrip = {
@@ -54,7 +55,7 @@ export function PaperScreen({
   const { scale, sheetsRef, naturalHeight } = usePaperFit();
   const ready = usePaperReady();
   const scaled = scale < 1;
-  const pdfState = paper.state === "sent" || paper.state === "approved" ? paper.state : null;
+  const pdfState = pdfCopyStateFor(paper.state);
 
   return (
     <div
@@ -168,7 +169,7 @@ function PaperTopWithDownload({
 }: {
   title: string;
   source: PdfSource;
-  state: "sent" | "approved";
+  state: PdfCopyState;
   strip?: PaperStrip;
 }) {
   const { download, ready, working, fault } = usePdfDownload(source);

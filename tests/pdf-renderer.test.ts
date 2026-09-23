@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { renderPageToPdf } from "../convex/proposalPdfRenderer";
+import { renderPageToPdf } from "../convex/pdfRenderer";
 import {
   BrowserTimeHeader,
   ProposalPaperReadySelector,
-  proposalPdfFooterTemplate,
-} from "../lib/proposal-pdf";
+  pdfCopyFooterTemplate,
+} from "../lib/pdf-copy";
 
 // The renderer seam, ported from FRSG and stubbed at `fetch` exactly as
 // convex/email.ts's Resend is: what it asks Cloudflare for, and the three
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("rendering a page through Cloudflare Browser Rendering", () => {
-  it("posts the page URL with the print options and the document-ready wait", async () => {
+  test("posts the page URL with the print options and the document-ready wait", async () => {
     const fetchStub = stubCloudflare(rendered());
 
     const result = await renderPageToPdf({ url: pageUrl, code });
@@ -80,12 +80,12 @@ describe("rendering a page through Cloudflare Browser Rendering", () => {
         preferCSSPageSize: true,
         displayHeaderFooter: true,
         headerTemplate: "<span></span>",
-        footerTemplate: proposalPdfFooterTemplate(code),
+        footerTemplate: pdfCopyFooterTemplate(code),
       },
     });
   });
 
-  it("never asks the browser to open a signing link", async () => {
+  test("never asks the browser to open a signing link", async () => {
     const fetchStub = stubCloudflare(rendered());
 
     await renderPageToPdf({ url: pageUrl, code });
@@ -97,7 +97,7 @@ describe("rendering a page through Cloudflare Browser Rendering", () => {
     expect(new RegExp(pattern).test(pageUrl)).toBe(false);
   });
 
-  it("reads no browser time when the header is missing", async () => {
+  test("reads no browser time when the header is missing", async () => {
     stubCloudflare(
       new Response(pdfBytes, { status: 200, headers: { "Content-Type": "application/pdf" } }),
     );
@@ -109,7 +109,7 @@ describe("rendering a page through Cloudflare Browser Rendering", () => {
 });
 
 describe("a deployment that does not render", () => {
-  it.each([
+  test.each([
     ["CLOUDFLARE_ACCOUNT_ID"],
     ["CLOUDFLARE_BROWSER_RENDERING_TOKEN"],
   ])("without %s makes no request and says so", async (name) => {
@@ -124,7 +124,7 @@ describe("a deployment that does not render", () => {
 });
 
 describe("what stops a render this deployment meant to make", () => {
-  it("names the network when Cloudflare cannot be reached", async () => {
+  test("names the network when Cloudflare cannot be reached", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -141,7 +141,7 @@ describe("what stops a render this deployment meant to make", () => {
   // Someone is waiting on Download, so a provider that never answers is given
   // up on rather than waited out, and the giving up is the same fault as never
   // reaching it.
-  it("gives up on a Cloudflare that never answers", async () => {
+  test("gives up on a Cloudflare that never answers", async () => {
     const fetchStub = vi.fn(
       async (_url: string, init: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -160,7 +160,7 @@ describe("what stops a render this deployment meant to make", () => {
     expect(await rendering).toEqual({ outcome: "fault", fault: "REQUEST_FAILED" });
   });
 
-  it("carries Cloudflare's status when it refuses", async () => {
+  test("carries Cloudflare's status when it refuses", async () => {
     stubCloudflare(
       new Response(JSON.stringify({ success: false, errors: [{ message: "timed out" }] }), {
         status: 429,
@@ -174,7 +174,7 @@ describe("what stops a render this deployment meant to make", () => {
     });
   });
 
-  it("refuses a 2xx that is not a PDF", async () => {
+  test("refuses a 2xx that is not a PDF", async () => {
     stubCloudflare(
       new Response(JSON.stringify({ success: false }), {
         status: 200,
