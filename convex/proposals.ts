@@ -12,6 +12,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireOwner } from "./auth";
+import { appOrigin } from "./email";
 import { lookUpSiteTax } from "./salesTax";
 import {
   customerViewedLink,
@@ -25,6 +26,7 @@ import { sendableEmail } from "../lib/customer";
 import { proposalTerms, Unknown } from "../lib/expand-business";
 import type { PaperProposal } from "../lib/proposal-paper";
 import { proposalCode } from "../lib/proposals";
+import { signingUrl } from "../lib/signing-link";
 import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
@@ -200,9 +202,7 @@ export const paper = query({
     const customer = await ctx.db.get(site.customerId);
     const identity = await ctx.auth.getUserIdentity();
 
-    const solutions = (
-      await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))
-    ).flatMap((solution) => (solution ? [solution] : []));
+    const solutions = await liveSolutions(ctx, proposal);
     const prices = solutions.map(priceStoredSolution);
     const money = proposalMoney(prices, proposal.tax);
 
@@ -544,12 +544,17 @@ function frozenOffer(frozen: FrozenProposal) {
 // link's token is handed over: it is the one the panel offers to copy, and an
 // ended one opens nothing.
 async function linkHistory(ctx: QueryCtx, proposalId: Id<"proposals">) {
+  // Two sends in the same millisecond still list newest first.
   const links = (await signingLinksForProposal(ctx, proposalId)).sort(
-    (x, y) => y.sentAt - x.sentAt,
+    (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
   );
   const live = links.find((link) => link.endedAt === undefined);
   return {
     liveToken: live?.token ?? null,
+    // The address the email carried, built the same way, so the link the panel
+    // copies is that one exactly. Null where this deployment names no origin,
+    // and the panel builds it from its own.
+    liveUrl: live ? signingUrl(appOrigin(), live.token) : null,
     opened: live ? await customerViewedLink(ctx, live.token) : false,
     links: links.map((link) => ({
       linkId: link._id,
@@ -593,10 +598,7 @@ export const sendWithLink = internalMutation({
     if (!customer) throw new Error("Customer not found.");
     const identity = await ctx.auth.getUserIdentity();
 
-    const solutions = (
-      await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))
-    ).flatMap((solution) => (solution ? [solution] : []));
-    const priced = solutions.map((solution) => ({
+    const priced = (await liveSolutions(ctx, proposal)).map((solution) => ({
       solution,
       price: priceStoredSolution(solution),
     }));
@@ -611,6 +613,7 @@ export const sendWithLink = internalMutation({
       ),
       ...recipientBlockers(sentTo),
     ]);
+    // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
 
     const frozen: FrozenProposal = {
@@ -702,6 +705,7 @@ export const resendWithLink = internalMutation({
     const customer = site ? await ctx.db.get(site.customerId) : null;
     const sentTo = customer ? sendableEmail(customer.email) : null;
     refuseSend(recipientBlockers(sentTo));
+    // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
 
     const identity = await ctx.auth.getUserIdentity();
@@ -788,6 +792,14 @@ async function verifiedSolutions(
       throw new Error("A proposal can only offer solutions written for its own site.");
   }
   return unique;
+}
+
+// A draft's solutions as it offers them, read live. An id naming a solution
+// since deleted is simply not there.
+async function liveSolutions(ctx: QueryCtx, proposal: Doc<"proposals">) {
+  return (await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))).flatMap(
+    (solution) => (solution ? [solution] : []),
+  );
 }
 
 function proposalsAtSite(ctx: QueryCtx, siteId: Id<"sites">) {

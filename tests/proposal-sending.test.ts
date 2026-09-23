@@ -17,6 +17,9 @@ let resend: ReturnType<typeof vi.fn>;
 let resendCalls: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[];
 
 beforeEach(() => {
+  // Scheduled email sends run only when a test calls `deliver()`. On real
+  // timers a send would fire after its test had finished with the database.
+  vi.useFakeTimers();
   vi.stubEnv("OWNER_EMAIL", "andrew@cogtex.ai");
   vi.stubEnv("OWNER_CLERK_ID", "");
   vi.stubEnv("RESEND_API_KEY", "re_test");
@@ -228,7 +231,6 @@ describe("proposals.send", () => {
 
 describe("What Send freezes", () => {
   test("later edits to the solutions, customer and site change nothing the sent proposal shows", async () => {
-    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-23T17:00:00Z"));
     const { t, owner, read, liveToken, sendable } = fixture();
     const { customerId, siteId, solutionId, proposalId } = await sendable();
@@ -317,7 +319,6 @@ describe("What Send freezes", () => {
 describe("Withdraw", () => {
   test("ends the link as withdrawn and returns a draft reading its live solutions", async () => {
     const { t, owner, read, liveToken, sendable, deliver } = fixture();
-    vi.useFakeTimers();
     const { customerId, solutionId, proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
@@ -376,7 +377,6 @@ describe("Withdraw", () => {
 
 describe("Re-send", () => {
   test("keeps the frozen offer, sends to the customer's current email, and ends the old link as resent", async () => {
-    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-23T17:00:00Z"));
     const { t, owner, read, liveToken, sendable, deliver } = fixture();
     const { customerId, proposalId } = await sendable();
@@ -443,7 +443,6 @@ describe("Re-send", () => {
 
 describe("The signing-link email", () => {
   test("goes through Resend with an idempotency key, tags, a User-Agent and no attachment", async () => {
-    vi.useFakeTimers();
     const { owner, read, liveToken, sendable, deliver } = fixture();
     const { customerId, proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
@@ -479,10 +478,13 @@ describe("The signing-link email", () => {
       tags: [{ name: "letter", value: "signing_link" }],
     });
     expect(link.email).toEqual({ outcome: "sent", id: "resend-message-1" });
+    // The link the panel copies is the one the email carried.
+    expect((await read(customerId, proposalId)).liveUrl).toBe(
+      `https://staff.expandhandyman.com/sign/${token}`,
+    );
   });
 
   test("takes the From and Reply-To a deployment names", async () => {
-    vi.useFakeTimers();
     vi.stubEnv("EMAIL_FROM", "Expand Test <test@expandhandyman.com>");
     vi.stubEnv("EMAIL_REPLY_TO", "owner@example.com");
     const { owner, sendable, deliver } = fixture();
@@ -496,7 +498,6 @@ describe("The signing-link email", () => {
   });
 
   test("logs the letter and records notSent when there is no Resend key", async () => {
-    vi.useFakeTimers();
     vi.stubEnv("RESEND_API_KEY", "");
     vi.stubEnv("APP_ORIGIN", "");
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -517,7 +518,6 @@ describe("The signing-link email", () => {
   });
 
   test("records Resend's refusal, and the proposal stays Sent with its link to copy", async () => {
-    vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     resend.mockImplementation(async () =>
       Response.json({ message: "The domain is not verified" }, { status: 403 }),
@@ -533,7 +533,6 @@ describe("The signing-link email", () => {
   });
 
   test("records a request that never reached Resend", async () => {
-    vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     resend.mockImplementation(async () => {
       throw new TypeError("fetch failed");
@@ -549,7 +548,6 @@ describe("The signing-link email", () => {
   });
 
   test("is a fault, not a send, when a deployment with a key names no app origin", async () => {
-    vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("APP_ORIGIN", "");
     const { owner, read, sendable, deliver } = fixture();
@@ -648,7 +646,6 @@ describe("Proposal views", () => {
   });
 
   test("the heartbeat and the close beacon count only visible time", async () => {
-    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-23T10:00:00Z"));
     const { t, owner, liveToken, sendable } = fixture();
     const { customerId, proposalId } = await sendable();

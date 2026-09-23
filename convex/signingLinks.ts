@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { isOwner } from "./auth";
-import { MAX_SEEN_STEP } from "./documents";
+import { seenUpdate } from "./documents";
 import { emailOutcome } from "./schema";
 import { proposalDisplayName } from "../lib/proposal-pricing";
 import type { PaperProposal } from "../lib/proposal-paper";
@@ -186,18 +186,12 @@ export const opened = mutation({
 
 const seenArgs = { viewId: v.id("proposalViews"), token: v.string() };
 
-// The heartbeat and the close beacon, counted as documents count them: a gap
-// longer than one step means the tab was hidden, and adds nothing.
+// The heartbeat and the close beacon, counted exactly as documents count them.
 async function touchView(ctx: MutationCtx, a: { viewId: Id<"proposalViews">; token: string }) {
   const view = await ctx.db.get(a.viewId);
   if (!view || view.token !== a.token) return;
-  const now = Date.now();
-  const gap = now - view.lastSeenAt;
-  if (gap <= 0) return;
-  await ctx.db.patch(view._id, {
-    lastSeenAt: now,
-    viewedMs: view.viewedMs + (gap <= MAX_SEEN_STEP ? gap : 0),
-  });
+  const update = seenUpdate(view, Date.now());
+  if (update) await ctx.db.patch(view._id, update);
 }
 
 export const seen = mutation({

@@ -151,7 +151,9 @@ function SentLink({
   const [confirming, setConfirming] = useState<"resend" | "withdraw" | null>(null);
   const [busy, setBusy] = useState(false);
   const live = proposal.links.find((link) => link.endedAt === null) ?? null;
-  const url = proposal.liveToken && origin ? `${origin}${signingPath(proposal.liveToken)}` : "";
+  const url =
+    proposal.liveUrl ??
+    (proposal.liveToken && origin ? `${origin}${signingPath(proposal.liveToken)}` : "");
 
   const act = async (run: () => Promise<unknown>) => {
     setConfirming(null);

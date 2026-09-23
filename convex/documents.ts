@@ -284,19 +284,27 @@ const seenArgs = { viewId: v.id("documentViews"), token: v.string() };
 // Heartbeats arrive every 20 seconds while the tab is visible. A longer gap since
 // the last one means the tab was hidden, and that time is not counted as reading.
 export const MAX_SEEN_STEP = 30_000;
+// What one heartbeat or beacon changes on a view, in either view log, or
+// nothing when the clock has not moved forward.
+export function seenUpdate(
+  view: { lastSeenAt: number; viewedMs: number },
+  now: number,
+): { lastSeenAt: number; viewedMs: number } | null {
+  const gap = now - view.lastSeenAt;
+  if (gap <= 0) return null;
+  return {
+    lastSeenAt: now,
+    viewedMs: view.viewedMs + (gap <= MAX_SEEN_STEP ? gap : 0),
+  };
+}
 async function touchView(
   ctx: MutationCtx,
   a: { viewId: Id<"documentViews">; token: string },
 ) {
   const view = await ctx.db.get(a.viewId);
   if (!view || view.token !== a.token) return;
-  const now = Date.now();
-  const gap = now - view.lastSeenAt;
-  if (gap <= 0) return;
-  await ctx.db.patch(view._id, {
-    lastSeenAt: now,
-    viewedMs: view.viewedMs + (gap <= MAX_SEEN_STEP ? gap : 0),
-  });
+  const update = seenUpdate(view, Date.now());
+  if (update) await ctx.db.patch(view._id, update);
 }
 export const seen = mutation({
   args: seenArgs,
