@@ -43,12 +43,20 @@ import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
 // in pencil, and the Sign here tag that opens the sign bar.
 export type PendingSignature = { pendingName: string; onSignHere?: () => void };
 
+// Who foots the printed sheets. The page does it for a browser's print, with
+// CSS page-margin boxes; the PDF renderer draws its own footer and opens the
+// paper flagged so the page leaves its off (lib/pdf-copy.ts,
+// RendererFooterParam), or a renderer that learns margin boxes would print two.
+export type PaperFooter = "page" | "renderer";
+
 export function ProposalPaper({
   proposal,
   pending,
+  footer = "page",
 }: {
   proposal: PaperProposal;
   pending?: PendingSignature;
+  footer?: PaperFooter;
 }) {
   const sheets = solutionSheets(proposal.solutions);
   const signature = proposal.state === "approved" ? proposal.signature : undefined;
@@ -61,7 +69,9 @@ export function ProposalPaper({
         signature ? `Signed copy of Proposal ${proposal.number}` : `Proposal ${proposal.number}`
       }
     >
-      <ProposalPageRules number={proposal.number} code={proposal.code} />
+      {footer === "page" ? (
+        <ProposalPageRules number={proposal.number} code={proposal.code} />
+      ) : null}
 
       <section className="pd-page">
         <Letterhead />

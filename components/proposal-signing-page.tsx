@@ -95,6 +95,10 @@ export function ProposalSigningPage({ token }: { token: string }) {
     <PaperScreen
       paper={paper}
       strip={decisionStrip(paper)}
+      // The PDF copy, while this link opens the paper: the offer, or the
+      // signed copy once approved. A declined proposal has none. The owner
+      // previewing through the link gets the same button.
+      download={{ token }}
       pending={
         paper.state === "sent"
           ? {

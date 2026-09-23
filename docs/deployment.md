@@ -96,3 +96,32 @@ The signing-link email goes through Resend from a scheduled Convex action (`conv
 | `EMAIL_REPLY_TO` | optional; defaults to `contact@expandhandyman.com` | optional |
 
 A deployment with a key but no `APP_ORIGIN` records the fault `MISSING_APP_ORIGIN` instead of sending a letter with no link. This adds the `signingLinks` and `proposalViews` tables, so run `npx convex deploy --yes` after merging. Then send one proposal to the owner's own address and check that it arrives From `proposals@expandhandyman.com` with Reply-To `contact@expandhandyman.com`. `tests/proposal-sending.test.ts` covers every blocker, what Send freezes, Withdraw, Re-send, each email outcome with Resend stubbed at `fetch`, token resolution for documents and proposals, and views versus owner previews.
+
+## PDF copies
+
+Download, in the proposal panel, on the staff paper page and in the signing page's top bar, hands over a sent or approved proposal as a PDF copy (ADR 0002). The first press renders the paper through Cloudflare Browser Run and stores the file in Convex; later presses, the owner's or the customer's, get the same file. Withdraw, Re-send and either Decline delete the sent file, and so does Approve; the signed copy is made on its first download and never replaced. Nothing renders at Send or Approve.
+
+The renderer never opens a signing link. Each render mints a render pass, a random token for one proposal in one state, and Cloudflare opens `/paper/<pass>?footer=renderer`. The pass stops working after five minutes and is deleted when the render ends; the page's query writes nothing, so a render is never a view. With `?footer=renderer` the page leaves its own footer off and Cloudflare draws the Proposal ID and `Page: N` on every sheet, because its Chromium is older than the page-margin boxes the page uses for a browser's print.
+
+Owner setup, once, before the first production render:
+
+1. In FRSG's Cloudflare account, create an API token for Expand with the single permission **Account → Browser Rendering → Edit**. Keep it separate from FRSG's own token so either can be revoked alone.
+2. Set both variables on production Convex only:
+
+```
+npx convex env set --prod CLOUDFLARE_ACCOUNT_ID <FRSG's account id>
+npx convex env set --prod CLOUDFLARE_BROWSER_RENDERING_TOKEN <the Expand token>
+```
+
+Dev and preview deployments stay without them and answer "This deployment does not render PDFs." Production also needs `APP_ORIGIN`, already set for email, because that is the origin Cloudflare opens. Rendering shares FRSG's Workers Free allowance: one request every ten seconds and ten browser-minutes a day. Past either, Download says "Too many PDFs have been made for now" and a later press, after ten seconds or after midnight UTC, renders again. Every render logs its `X-Browser-Ms-Used`.
+
+Before the first production render, prove the paper against a Vercel preview whose Convex deployment has a sent proposal. Mint a pass on the deployment the preview reads (add `--prod` or `--preview-name <name>` to `npx convex run` if that isn't dev) and run the check within five minutes, using the production values of the two variables locally. If the preview is behind Vercel Deployment Protection, Cloudflare's browser stops at its login: append `?x-vercel-protection-bypass=<secret>` to the page URL.
+
+```
+npx convex run pdfCopies:mintRenderPass '{"proposalId":"<id>","token":"<43 URL-safe characters>"}'
+CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> check.pdf <code>
+```
+
+It prints the sheet count, the words on each sheet (an empty last sheet is a fault) and the embedded fonts, which should be Tinos and, on a signed copy, Homemade Apple. `python -m pip install pypdf` enables that read-out.
+
+This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers render passes (single use, expiry, bound to one state, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.

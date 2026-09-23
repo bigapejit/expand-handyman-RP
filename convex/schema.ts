@@ -199,6 +199,16 @@ export default defineSchema({
     decisionEmails: v.optional(
       v.array(v.object({ to: v.string(), email: v.optional(emailOutcome) })),
     ),
+    // The **PDF copy** (CONTEXT.md; ADR 0002): the paper as a file, made the
+    // first time someone presses Download and kept while the proposal stays in
+    // the state it was made for. Only Sent and Approved have one.
+    pdfCopy: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        state: v.union(v.literal("sent"), v.literal("approved")),
+        renderedAt: v.number(),
+      }),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -220,6 +230,18 @@ export default defineSchema({
   })
     .index("by_proposal", ["proposalId"])
     .index("by_token", ["token"]),
+  // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
+  // paper with, at `/paper/<token>`. One per render, for one proposal in the
+  // state being rendered and under the signing link it went out under,
+  // expiring within minutes and deleted when the render ends. Reading the
+  // paper through one never touches the view log.
+  renderPasses: defineTable({
+    token: v.string(),
+    proposalId: v.id("proposals"),
+    state: v.union(v.literal("sent"), v.literal("approved")),
+    linkId: v.id("signingLinks"),
+    expiresAt: v.number(),
+  }).index("by_token", ["token"]),
   // The proposal half of the view log, the same shape and rules as
   // `documentViews` (ADR 0001).
   proposalViews: defineTable({

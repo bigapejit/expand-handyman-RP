@@ -112,3 +112,7 @@ The closing pages of a signed copy, recording how it was signed: when it was sen
 **PDF copy**:
 The proposal paper of a sent or approved proposal saved as a PDF file, made only when the owner or the customer asks to download it and then kept for as long as the proposal stays in that state. A draft or declined proposal has none. An approved proposal's PDF copy is its signed copy as a file, and it never changes once made.
 _Avoid_: Proposal PDF, proposal document, attachment
+
+**Render pass**:
+The short-lived key the PDF renderer opens a proposal paper with, instead of a signing link. Each one is made for a single PDF copy, of one proposal in one state, stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view.
+_Avoid_: Paper token, report token

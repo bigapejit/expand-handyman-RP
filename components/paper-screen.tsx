@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { ProposalPaper, type PendingSignature } from "@/components/proposal-paper";
+import { pdfDownloadLabel, usePdfDownload, type PdfSource } from "@/components/pdf-download";
+import { ProposalPaper, type PaperFooter, type PendingSignature } from "@/components/proposal-paper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
+import { pdfCopyStateFor, type PdfCopyState } from "@/lib/pdf-copy";
 import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper";
 
 // The screen a **Proposal paper** is read on: white letter pages on a grey
@@ -20,7 +22,8 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 // would have had is measured here and given back to it.
 //
 // The root says `data-paper="ready"` once the paper's faces and the
-// letterhead's image have arrived, which is what a print has to wait for.
+// letterhead's image have arrived, which is what a print has to wait for, and
+// what the PDF renderer waits for before it prints (lib/pdf-copy.ts).
 
 // The one sentence under the top bar, and the colour it is said in.
 export type PaperStrip = {
@@ -33,6 +36,8 @@ export function PaperScreen({
   strip,
   pending,
   bar,
+  download,
+  footer = "page",
 }: {
   paper: PaperProposal;
   // What the page has to say about where the proposal stands, if anything.
@@ -41,10 +46,16 @@ export function PaperScreen({
   pending?: PendingSignature;
   // The sign bar, pinned to the bottom of the screen over the paper.
   bar?: ReactNode;
+  // Whose Download the top bar offers, where the reader may have the PDF copy.
+  // Only a sent or approved proposal has one.
+  download?: PdfSource;
+  // Who foots the printed sheets (proposal-paper.tsx).
+  footer?: PaperFooter;
 }) {
   const { scale, sheetsRef, naturalHeight } = usePaperFit();
   const ready = usePaperReady();
   const scaled = scale < 1;
+  const pdfState = pdfCopyStateFor(paper.state);
 
   return (
     <div
@@ -52,11 +63,18 @@ export function PaperScreen({
       data-paper={ready ? "ready" : "loading"}
       style={{ ["--paper-scale" as string]: String(scale) }}
     >
-      <PaperTop title={paperTitle(paper.number, paper.name)}>
-        {strip ? (
-          <div className={`paper-strip paper-strip-${strip.tone}`}>{strip.body}</div>
-        ) : null}
-      </PaperTop>
+      {download && pdfState ? (
+        <PaperTopWithDownload
+          title={paperTitle(paper.number, paper.name)}
+          source={download}
+          state={pdfState}
+          strip={strip}
+        />
+      ) : (
+        <PaperTop title={paperTitle(paper.number, paper.name)}>
+          <Strip strip={strip} />
+        </PaperTop>
+      )}
 
       <div className="paper-sheets" ref={sheetsRef}>
         <div
@@ -66,7 +84,7 @@ export function PaperScreen({
           // one frame of a slightly long page and never a short one.
           style={scaled && naturalHeight !== null ? { height: naturalHeight * scale } : undefined}
         >
-          <ProposalPaper proposal={paper} pending={pending} />
+          <ProposalPaper proposal={paper} pending={pending} footer={footer} />
         </div>
       </div>
 
@@ -115,16 +133,67 @@ export function PaperLoading() {
   );
 }
 
-function PaperTop({ title, children }: { title: string; children?: ReactNode }) {
+function PaperTop({
+  title,
+  actions,
+  children,
+}: {
+  title: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
   return (
     <header className="paper-top">
       <div className="paper-top-row">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="paper-brand" src="/logo.svg" alt="Expand Handyman" />
         <span className="paper-title">{title}</span>
+        {actions}
       </div>
       {children}
     </header>
+  );
+}
+
+function Strip({ strip }: { strip?: PaperStrip }) {
+  return strip ? <div className={`paper-strip paper-strip-${strip.tone}`}>{strip.body}</div> : null;
+}
+
+// The top bar with the PDF copy's Download at its end, and what stopped the
+// last press said under it.
+function PaperTopWithDownload({
+  title,
+  source,
+  state,
+  strip,
+}: {
+  title: string;
+  source: PdfSource;
+  state: PdfCopyState;
+  strip?: PaperStrip;
+}) {
+  const { download, ready, working, fault } = usePdfDownload(source);
+  return (
+    <PaperTop
+      title={title}
+      actions={
+        <button
+          type="button"
+          className="paper-btn"
+          disabled={!ready}
+          onClick={() => void download()}
+        >
+          {pdfDownloadLabel(state, working)}
+        </button>
+      }
+    >
+      <Strip strip={strip} />
+      {fault ? (
+        <div className="paper-strip paper-strip-fault" role="alert">
+          {fault}
+        </div>
+      ) : null}
+    </PaperTop>
   );
 }
 

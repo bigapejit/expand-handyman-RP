@@ -2,11 +2,21 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
-import { ArrowDown, ArrowUp, Copy, Eye, GripVertical, Star, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Download,
+  Eye,
+  GripVertical,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
+import { pdfDownloadLabel, usePdfDownload } from "@/components/pdf-download";
 import { OpenedChip, ProposalStateChip } from "@/components/proposal-chips";
 import { ProposalSending } from "@/components/proposal-sending";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
@@ -26,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatCents } from "@/lib/money";
+import { pdfCopyStateFor } from "@/lib/pdf-copy";
 import { paymentTermsSentence, type PaymentSplit } from "@/lib/proposal-pricing";
 import {
   moveInOrder,
@@ -200,6 +211,9 @@ function ProposalPanel({
   const [refusal, setRefusal] = useState("");
 
   const isDraft = proposal.state === "draft";
+  const pdfState = pdfCopyStateFor(proposal.state);
+  const pdf = usePdfDownload(pdfState ? { proposalId: proposal.proposalId } : null);
+  const shownRefusal = refusal || pdf.fault;
 
   const save = async (patch: ProposalPatch): Promise<boolean> => {
     try {
@@ -265,9 +279,9 @@ function ProposalPanel({
       onClose={onClose}
     >
       <div className="space-y-6 pt-5">
-        {refusal ? (
+        {shownRefusal ? (
           <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-            {refusal}
+            {shownRefusal}
           </p>
         ) : null}
 
@@ -350,7 +364,7 @@ function ProposalPanel({
 
         <ProposalSending proposal={proposal} customerEmail={tab.customerEmail} />
 
-        <div className="flex items-center gap-1 border-t pt-4">
+        <div className="flex flex-wrap items-center gap-1 border-t pt-4">
           <Button
             variant="outline"
             onClick={() =>
@@ -374,6 +388,12 @@ function ProposalPanel({
           >
             <Eye data-icon="inline-start" aria-hidden /> View paper
           </Button>
+          {pdfState ? (
+            <Button variant="outline" disabled={!pdf.ready} onClick={() => void pdf.download()}>
+              <Download data-icon="inline-start" aria-hidden />
+              {pdfDownloadLabel(pdfState, pdf.working)}
+            </Button>
+          ) : null}
           <span className="flex-1" />
           {isDraft ? (
             <Button variant="destructive" size="lg" onClick={() => setConfirmingDelete(true)}>
