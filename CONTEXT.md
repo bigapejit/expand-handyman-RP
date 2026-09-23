@@ -75,10 +75,10 @@ A request for payment that belongs to one approved proposal: its deposit invoice
 _Avoid_: Bill, statement, receipt
 
 **Deposit invoice**:
-The invoice made and sent by itself when the customer approves a proposal, for exactly the Deposit they signed for. Never a draft, and its amount is never changed. A proposal with a 0% Deposit gets none.
+The invoice made and sent by itself when the customer approves a proposal, for exactly the Deposit they signed for: its one line is the Deposit's share of the price before tax, and the paper adds the tax. Never a draft, and its amount is never changed. A proposal with a 0% Deposit gets none.
 
 **Final invoice**:
-The invoice the owner raises by saying the job is done. It starts with one line, the proposal's total less everything already invoiced on it, and the owner may add lines for materials that came in under or over and for approved extras before sending. One per proposal.
+The invoice the owner raises by saying the job is done. It starts with the proposal at its price before tax and one line taking off each invoice already sent on it, and the owner may add lines for materials that came in under or over and for approved extras before sending. The paper adds sales tax at the proposal's rate. One per proposal.
 _Avoid_: Balance invoice, closing invoice, progress invoice
 
 **Job done**:
@@ -86,7 +86,7 @@ The owner saying, on an approved proposal, that the work is finished. It raises 
 _Avoid_: Complete, close out, finish (as app actions)
 
 **Invoice line**:
-One entry on an invoice: a description and an amount, which may be negative for a credit. The deposit invoice has one fixed line, the final invoice starts with its balance line, and any other invoice's lines are all typed by the owner.
+One entry on an invoice: a description and an amount before tax, which may be negative for a credit. The deposit invoice has one fixed line, the final invoice starts with the proposal's price and a line taking off each earlier invoice, and any other invoice's lines are all typed by the owner.
 _Avoid_: Line item (a solution's, which carries a cost the customer never sees)
 
 **Draft invoice**:
@@ -125,7 +125,7 @@ What an invoice reads about its money: Unpaid, Paid, or Overdue when still unpai
 _Avoid_: Status (which is draft, sent or void), state, paid flag
 
 **Invoice paper**:
-An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines and the amount due, how to pay, and one line placing it under the Terms of the proposal as signed. It prints nothing about other invoices on the proposal and no Terms page. Stamped VOID once voided and PAID once marked paid.
+An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines before tax, then Subtotal, Sales Tax at the proposal's rate and Amount Due, and how to pay. Washington requires the tax stated separately on an invoice. No Terms page and no line about the Terms: the invoice sits under the proposal as signed. Stamped VOID in red once voided and PAID in green, with the day, once marked paid.
 _Avoid_: Invoice document, invoice PDF, bill
 
 **Invoice link**:
