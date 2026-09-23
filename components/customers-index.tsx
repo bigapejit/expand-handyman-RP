@@ -6,9 +6,11 @@ import { useState } from "react";
 
 import { CustomerDialog } from "@/components/customer-dialog";
 import { IndexEmptyState, IndexRow } from "@/components/index-row";
+import { ProposalStateChip } from "@/components/proposal-chips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCustomers } from "@/hooks/use-customers";
+import type { ProposalActivity } from "@/lib/proposals";
 
 // FRSG's Customers index: one row each, alphabetical, searched by name.
 export function CustomersIndex() {
@@ -72,9 +74,7 @@ export function CustomersIndex() {
               ]
                 .filter(Boolean)
                 .join(" · ")}
-              // Proposal activity: "1 awaiting a signature" or the last
-              // outcome once proposals exist.
-              hint={<span className="text-slate-400">No proposals</span>}
+              hint={<ProposalActivityHint activity={customer.proposalActivity} />}
             />
           ))}
         </ul>
@@ -87,5 +87,16 @@ export function CustomersIndex() {
         />
       ) : null}
     </div>
+  );
+}
+
+// Where the customer's proposals stand: the Sent ones waiting on them, else how
+// the last decided one went, else the drafts being written.
+function ProposalActivityHint({ activity }: { activity: ProposalActivity }) {
+  if (activity.kind === "decided") return <ProposalStateChip state={activity.state} />;
+  return (
+    <span className={activity.kind === "awaiting" ? "text-sky-800" : "text-slate-400"}>
+      {activity.label}
+    </span>
   );
 }
