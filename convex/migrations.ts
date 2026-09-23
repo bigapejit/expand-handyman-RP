@@ -8,8 +8,8 @@ import { internal } from "./_generated/api";
 import { customerDetails } from "./documents";
 import { findSite, insertSite, place } from "./sites";
 import {
-  LookupFailed,
   MAX_LOOKUP,
+  NotAStreetAddress,
   placeAddress,
   placesKey,
   suggestAddresses,
@@ -87,8 +87,10 @@ async function resolve(key: string, text: string) {
   try {
     return { found: await placeAddress(key, suggestions[0].placeId, session) };
   } catch (error) {
-    if (error instanceof LookupFailed) throw error;
-    return { reason: (error as Error).message };
+    // Anything else is Google or the network failing, which must abort the
+    // run before any address is cleared.
+    if (!(error instanceof NotAStreetAddress)) throw error;
+    return { reason: error.message };
   }
 }
 

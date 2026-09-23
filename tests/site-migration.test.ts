@@ -258,6 +258,18 @@ describe("migrations.sitesFromCustomers", () => {
     expect(await legacyText()).toEqual(["4410 NE 94th St, Vancouver WA"]);
   });
 
+  test("a network failure on the details call writes nothing either", async () => {
+    const { customer, migrate, sitesOf, legacyText } = fixture();
+    const maria = await customer("Maria Delgado", "4410 NE 94th St, Vancouver WA");
+    google.mockImplementationOnce(async () =>
+      Response.json({ suggestions: [{ placePrediction: { placeId: "place-94th" } }] }),
+    );
+    google.mockRejectedValueOnce(new TypeError("fetch failed"));
+    await expect(migrate()).rejects.toThrow("fetch failed");
+    expect(await sitesOf(maria)).toEqual([]);
+    expect(await legacyText()).toEqual(["4410 NE 94th St, Vancouver WA"]);
+  });
+
   test("refuses to run without the Google key", async () => {
     const { customer, migrate, legacyText } = fixture();
     await customer("Maria Delgado", "4410 NE 94th St, Vancouver WA");

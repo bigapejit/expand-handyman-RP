@@ -115,9 +115,11 @@ export function addressFromPlace(place: Place): PlaceAddress {
   const street = [part("street_number"), part("route", "shortText")];
   const city = part("locality") || part("postal_town") || part("sublocality");
   if (part("country", "shortText") !== "US")
-    throw new Error("Pick an address in the United States.");
+    throw new NotAStreetAddress("Pick an address in the United States.");
   if (street.some((s) => !s) || !city || !place.location)
-    throw new Error("Google has no street address for that place. Pick another.");
+    throw new NotAStreetAddress(
+      "Google has no street address for that place. Pick another.",
+    );
   return {
     placeId: place.id,
     addressLine1: street.join(" "),
@@ -129,11 +131,11 @@ export function addressFromPlace(place: Place): PlaceAddress {
   };
 }
 
-/** Google did not answer, as opposed to answering with no usable address. */
-export class LookupFailed extends Error {}
+/** Google answered, but with a place no site can be. */
+export class NotAStreetAddress extends Error {}
 
 function lookupFailed(response: Response) {
-  return new LookupFailed(
+  return new Error(
     `Google address lookup failed (HTTP ${response.status}). Try again.`,
   );
 }
