@@ -71,11 +71,11 @@ What is left of a proposal's total after the Deposit, due on completion.
 _Avoid_: Final payment, remainder
 
 **Invoice**:
-A request for payment that belongs to one approved proposal: a deposit invoice, an advance invoice, a progress invoice or the final invoice. A draft, sent or declined proposal has none. A new invoice may be raised while an earlier one is unpaid.
+A request for payment that belongs to one approved proposal: a deposit invoice, an advance invoice, a progress invoice or the final invoice. A draft, sent or declined proposal has none. An invoice is a draft until sent, then sent, and void if it was wrong; whether it is paid is read from its payments, not a state of its own. A new invoice may be raised while an earlier one is unpaid.
 _Avoid_: Bill, statement, receipt
 
 **Deposit invoice**:
-The invoice made by itself when the customer approves a proposal, for exactly the Deposit they signed for. Its amount is never changed. A proposal with a 0% Deposit gets none. Counts as money On account.
+The invoice made by itself when the customer approves a proposal, for exactly the Deposit they signed for. Sent by itself the moment they approve, never a draft, and its amount is never changed. A proposal with a 0% Deposit gets none. Counts as money On account.
 
 **Advance invoice**:
 An invoice for a set amount the owner types, asked for ahead of any solution being done, for when a long job needs money before its first solution is finished. Never more than what is Left to bill. Counts as money On account.
@@ -111,6 +111,29 @@ An allowance settlement or an approved extra: the lines that move an invoice awa
 **Fully billed**:
 A proposal whose final invoice exists. Nothing more is invoiced on it: a forgotten extra means voiding the final invoice and making it again, and a change found later is a new proposal.
 _Avoid_: Closed, complete, paid (payment is a different question)
+
+**Draft invoice**:
+A progress, advance or final invoice the owner is still putting together: its ticks, materials costs, extras or amount can change, it has no invoice number and the customer cannot see it. A proposal has at most one at a time, and deleting it leaves no trace.
+_Avoid_: Pending invoice, unsent invoice
+
+**Send (an invoice)**:
+Emailing a draft invoice to the customer as a private link. Its lines, amounts, invoice number, date, customer name, site address, Proposal ID and the email address it went to are fixed as they stand. The paper's date is the day it was sent.
+_Avoid_: Issue, post, raise (which is making one)
+
+**Invoice number**:
+`INV-` and a count that runs across the whole business from `INV-1001`, given when the invoice is sent and never reused or reset. A draft has none and a void invoice keeps its own, so the sequence has no gaps. Printed beside the Proposal ID.
+_Avoid_: Invoice ID, reference
+
+**Due date**:
+The day an invoice was sent: every invoice is due on receipt and the paper says so. Overdue is read against it.
+_Avoid_: Net 30, payment deadline, terms (which are the contract conditions)
+
+**Void**:
+The owner cancelling a sent invoice that was wrong, giving a short reason the customer never sees. Only the newest sent invoice on a proposal can be voided, so an earlier one is reached by voiding the ones after it first, and it is refused while a payment is recorded on it. The invoice keeps its number and stays in the list struck through, its link shows the paper stamped VOID, nobody is emailed, and the solutions it ticked, the allowances it settled and the on-account money it used are returned. Void offers a redo: a fresh draft with the same ticks, settlements, extras or amount to correct. A voided deposit invoice is not made again; an advance invoice stands in when the money should still be billed.
+_Avoid_: Cancel, delete (a draft is deleted, a sent invoice is voided), withdraw, credit note, reverse
+
+**Re-send (an invoice)**:
+Emailing a sent invoice again, to the customer's current email address, with a fresh link; the old link stops working. Nothing on the invoice changes, not even its date.
 
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
