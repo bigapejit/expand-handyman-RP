@@ -30,9 +30,6 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     phone: v.string(),
-    // Legacy free-text address from before Sites. New customers have none; the
-    // one-off migration moves these onto Sites and drops the field.
-    site: v.optional(v.string()),
   }),
   // One verified street address of a customer, as Google's parts. The printed
   // address is built from the parts (lib/sites.ts), never stored.

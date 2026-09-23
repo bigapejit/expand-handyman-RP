@@ -456,12 +456,11 @@ describe("customers.update", () => {
   test("normalizes what the dialog sends, legacy raw values included", async () => {
     const { t, owner, customer } = fixture();
     const customerId = await customer();
-    // A row saved before validation existed, with a legacy site string.
+    // A row saved before validation existed.
     await t.run((ctx) =>
       ctx.db.patch(customerId, {
         email: " Maria@Example.COM",
         phone: "555.123.4567",
-        site: "4410 NE 94th St",
       }),
     );
     const saved = await t.run((ctx) => ctx.db.get(customerId));
@@ -475,8 +474,6 @@ describe("customers.update", () => {
       name: "Maria D.",
       email: "maria@example.com",
       phone: "+15551234567",
-      // Not the dialog's to change; the migration moves it onto a site.
-      site: "4410 NE 94th St",
     });
   });
 
