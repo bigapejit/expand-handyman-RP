@@ -385,6 +385,9 @@ function LineItemTable({
   const markupPercent = readMarkupField(markup) ?? solution.markupPercent;
   const allowanceCents = allowance === null ? undefined : readMaterialAllowanceField(allowance);
   const readout = priceReadout(draftPrice(drafts, markupPercent, allowanceCents));
+  // A solution priced on its allowance alone has no cost or markup to read
+  // out, rather than a cost and a markup of $0.
+  const linesReadout = readLineItems(drafts).length > 0 ? readout : null;
 
   return (
     <div className="space-y-2">
@@ -457,7 +460,9 @@ function LineItemTable({
         {/* Internal for good: the customer reads the price and never the cost
             or the markup. */}
         <dl className="w-full space-y-1 text-sm sm:w-auto sm:min-w-64">
-          {readout === null ? null : <Readout label="Cost" value={readout.costLabel} />}
+          {linesReadout === null ? null : (
+            <Readout label="Cost" value={linesReadout.costLabel} />
+          )}
           <div className="flex items-center justify-between gap-6 text-slate-500">
             <dt className="flex items-center gap-1.5">
               <label htmlFor="solution-markup">Markup</label>
@@ -471,7 +476,9 @@ function LineItemTable({
               />
               <span aria-hidden>%</span>
             </dt>
-            <dd className="tabular-nums">{readout === null ? "—" : readout.markupAmountLabel}</dd>
+            <dd className="tabular-nums">
+              {linesReadout === null ? "—" : linesReadout.markupAmountLabel}
+            </dd>
           </div>
           {readout?.materialAllowanceLabel ? (
             <Readout label="Material allowance" value={readout.materialAllowanceLabel} />
