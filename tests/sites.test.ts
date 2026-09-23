@@ -33,6 +33,20 @@ const places: Record<string, object> = {
     ],
     location: { latitude: 45.63, longitude: -122.67 },
   },
+  // One apartment in a building, picked from a subpremise suggestion.
+  "place-apt": {
+    id: "place-apt",
+    addressComponents: [
+      { longText: "4", shortText: "4", types: ["subpremise"] },
+      { longText: "1215", shortText: "1215", types: ["street_number"] },
+      { longText: "Main Street", shortText: "Main St", types: ["route"] },
+      { longText: "Vancouver", shortText: "Vancouver", types: ["locality", "political"] },
+      { longText: "Washington", shortText: "WA", types: ["administrative_area_level_1", "political"] },
+      { longText: "United States", shortText: "US", types: ["country", "political"] },
+      { longText: "98660", shortText: "98660", types: ["postal_code"] },
+    ],
+    location: { latitude: 45.63, longitude: -122.67 },
+  },
   // A street with no house number: not something a site can be.
   "place-route": {
     id: "place-route",
@@ -180,6 +194,17 @@ describe("sites.add", () => {
     });
     // The details call closes the lookup's billing session.
     expect(calls().at(-1)?.searchParams.get("sessionToken")).toBe(session);
+  });
+
+  test("keeps the unit of a picked apartment unless the owner typed one", async () => {
+    const { owner, customer, addSite } = fixture();
+    const customerId = await customer();
+    await addSite(customerId, "place-apt");
+    await addSite(customerId, "place-apt", "Apt 4B");
+    const units = (await owner.query(api.sites.forCustomer, { customerId })).map(
+      (s) => s.addressLine2,
+    );
+    expect(units.sort()).toEqual(["#4", "Apt 4B"]);
   });
 
   test("refuses the same place and unit twice for one customer", async () => {
@@ -362,6 +387,19 @@ describe("customers.add", () => {
     expect(sites).toMatchObject([{ name: "441094TH", addressLine2: "" }]);
     const [row] = await owner.query(api.customers.list, {});
     expect(row).toMatchObject({ _id: customerId, siteCount: 1 });
+  });
+
+  test("keeps the unit of a picked apartment on the first site", async () => {
+    const { owner } = fixture();
+    const customerId = await owner.action(api.customers.add, {
+      name: "Maria Delgado",
+      email: "maria@example.com",
+      phone: "",
+      firstSite: { placeId: "place-apt", sessionToken: session },
+    });
+    expect(await owner.query(api.sites.forCustomer, { customerId })).toMatchObject([
+      { name: "1215MAIN", addressLine2: "#4", address: "1215 Main St, #4, Vancouver, WA 98660" },
+    ]);
   });
 
   test("adds nothing when the first site's address is refused", async () => {

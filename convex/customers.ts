@@ -38,20 +38,24 @@ export const add = action({
     const found = a.firstSite
       ? await lookUpPlace(a.firstSite.placeId, a.firstSite.sessionToken)
       : undefined;
-    return ctx.runMutation(internal.customers.insert, { ...customer, place: found });
+    return ctx.runMutation(internal.customers.insert, {
+      ...customer,
+      place: found?.address,
+      unit: found?.unit ?? "",
+    });
   },
 });
 
 // The customer and the first site in one transaction: a refused site leaves no
 // customer behind.
 export const insert = internalMutation({
-  args: { ...contact, place: v.optional(place) },
+  args: { ...contact, place: v.optional(place), unit: v.string() },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const customerId = await ctx.db.insert("customers", parseCustomer(a));
     if (a.place)
       await insertSite(ctx, customerId, a.place, {
-        addressLine2: "",
+        addressLine2: a.unit,
         accessNotes: "",
       });
     return customerId;

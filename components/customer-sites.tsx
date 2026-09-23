@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { useCustomer } from "@/hooks/use-customers";
 import { errorMessage } from "@/lib/utils";
 
 // The customer's sites: added, corrected and deleted here, since sites have no
@@ -26,6 +27,9 @@ import { errorMessage } from "@/lib/utils";
 export function CustomerSites({ customerId }: { customerId: string }) {
   const id = customerId as Id<"customers">;
   const sites = useQuery(api.sites.forCustomer, { customerId: id });
+  // The free-text address saved before Sites existed, shown until the one-off
+  // migration moves it onto a site, so it is never out of sight.
+  const legacyAddress = useCustomer(customerId)?.site?.trim();
   const remove = useMutation(api.sites.remove);
   const [editing, setEditing] = useState<Doc<"sites"> | "new" | null>(null);
   const [deleting, setDeleting] = useState<Doc<"sites"> | null>(null);
@@ -44,6 +48,12 @@ export function CustomerSites({ customerId }: { customerId: string }) {
       {error ? (
         <p role="alert" className="border-b px-5 py-3 text-sm text-destructive">
           {error}
+        </p>
+      ) : null}
+      {legacyAddress ? (
+        <p className="border-b bg-amber-50 px-5 py-3 text-sm text-amber-900">
+          Saved before sites: <span className="font-medium">{legacyAddress}</span>.
+          Add it as a site to write proposals for it.
         </p>
       ) : null}
       {sites === undefined ? (

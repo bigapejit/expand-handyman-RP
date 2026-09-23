@@ -77,12 +77,15 @@ export async function suggestAddresses(
   );
 }
 
-/** The details call that closes a lookup's session. */
+/**
+ * The details call that closes a lookup's session. A picked apartment also
+ * brings its unit, as `#4`, for the owner's unit line when they typed none.
+ */
 export async function placeAddress(
   key: string,
   placeId: string,
   sessionToken?: string,
-): Promise<PlaceAddress> {
+): Promise<{ address: PlaceAddress; unit: string }> {
   const url = new URL(`${PLACES}/places/${encodeURIComponent(placeId)}`);
   if (sessionToken) url.searchParams.set("sessionToken", sessionToken);
   const response = await fetch(url, {
@@ -92,7 +95,12 @@ export async function placeAddress(
     },
   });
   if (!response.ok) throw lookupFailed(response);
-  return addressFromPlace((await response.json()) as Place);
+  const place = (await response.json()) as Place;
+  const unit = place.addressComponents?.find((c) => c.types.includes("subpremise"));
+  return {
+    address: addressFromPlace(place),
+    unit: unit ? `#${unit.shortText.replace(/^#/, "")}` : "",
+  };
 }
 
 type Place = {

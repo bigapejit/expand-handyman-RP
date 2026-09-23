@@ -65,7 +65,13 @@ export function CustomersIndex() {
               href={`/customers/${customer._id}`}
               title={customer.name}
               subtitle={[
-                customer.siteCount === 1 ? "1 site" : `${customer.siteCount} sites`,
+                // A customer from before Sites shows their old address until
+                // the migration turns it into a site.
+                customer.siteCount === 0 && customer.site
+                  ? customer.site
+                  : customer.siteCount === 1
+                    ? "1 site"
+                    : `${customer.siteCount} sites`,
                 customer.email,
               ]
                 .filter(Boolean)

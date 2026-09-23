@@ -89,8 +89,8 @@ export const add = action({
     const found = await lookUpPlace(a.placeId, a.sessionToken);
     return ctx.runMutation(internal.sites.insert, {
       customerId: a.customerId,
-      place: found,
-      addressLine2: a.addressLine2,
+      place: found.address,
+      addressLine2: a.addressLine2.trim() || found.unit,
       accessNotes: a.accessNotes,
     });
   },
@@ -122,8 +122,8 @@ export const update = action({
       : undefined;
     await ctx.runMutation(internal.sites.patch, {
       siteId: a.siteId,
-      place: found,
-      addressLine2: a.addressLine2,
+      place: found?.address,
+      addressLine2: a.addressLine2.trim() || (found?.unit ?? ""),
       accessNotes: a.accessNotes,
     });
   },
