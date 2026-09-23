@@ -60,6 +60,9 @@ export const frozenProposal = v.object({
       lineItems: v.array(
         v.object({ name: v.string(), quantity: v.number(), unit: v.string() }),
       ),
+      // Whole-dollar cents, printed on the paper. Absent when the solution had
+      // none, and on every proposal sent before allowances existed.
+      materialAllowanceCents: v.optional(v.number()),
     }),
   ),
   subtotalCents: v.number(),
@@ -134,8 +137,8 @@ export default defineSchema({
     .index("by_place", ["placeId"]),
   // One priced piece of handyman work at a site (CONTEXT.md, **Solution**):
   // FRSG's shape keyed to a site, without the roof-record links. No price is
-  // stored; lib/solution-pricing.ts works it out from the line items and the
-  // markup on every read.
+  // stored; lib/solution-pricing.ts works it out from the line items, the
+  // markup and the material allowance on every read.
   solutions: defineTable({
     siteId: v.id("sites"),
     title: v.string(),
@@ -145,6 +148,9 @@ export default defineSchema({
     // Whole percent. Absent means the default markup; a stored zero is work
     // offered at cost.
     markupPercent: v.optional(v.number()),
+    // The **Material allowance**, in whole-dollar cents of at least $1.
+    // Absent means the solution has none.
+    materialAllowanceCents: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_site", ["siteId"]),

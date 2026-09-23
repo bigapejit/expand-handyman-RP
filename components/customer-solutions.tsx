@@ -29,6 +29,7 @@ import {
   lineItemUnitLabel,
   type LineItemUnit,
 } from "@/lib/line-item-units";
+import { formatCents } from "@/lib/money";
 import {
   blankLineItemDraft,
   draftPrice,
@@ -37,11 +38,15 @@ import {
   lineItemsToStore,
   markupField,
   markupToStore,
+  materialAllowanceField,
+  materialAllowanceToStore,
   moveDraft,
   priceReadout,
   readLineItems,
   readMarkupField,
+  readMaterialAllowanceField,
   sameLineItems,
+  solutionDetailLabel,
   solutionPriceLabel,
   unitCostField,
   type LineItemDraft,
@@ -125,7 +130,6 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
 }
 
 function SolutionRow({ solution, open }: { solution: Solution; open: () => void }) {
-  const lines = solution.lineItems.length;
   return (
     <li className="border-b last:border-b-0">
       <button
@@ -139,7 +143,7 @@ function SolutionRow({ solution, open }: { solution: Solution; open: () => void 
             <SiteTag name={solution.siteName} />
             <span aria-hidden>·</span>
             <span className="truncate">
-              {lines === 0 ? "No line items" : lines === 1 ? "1 line item" : `${lines} line items`}
+              {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
             </span>
           </span>
         </span>
@@ -279,10 +283,10 @@ function SolutionPanel({ solution, onClose }: { solution: Solution; onClose: () 
 }
 
 // The cost buildup: every kind of cost as an ordinary line, the markup the
-// solution is sold at, and the price the two add up to. The table is written
-// locally and stored whole on every commit — a line item has no identity of its
-// own — and the readout under it recomputes on every keystroke from the same
-// module the server prices with.
+// solution is sold at, any material allowance pinned under the lines, and the
+// price they add up to. The table is written locally and stored whole on every
+// commit — a line item has no identity of its own — and the readout under it
+// recomputes on every keystroke from the same module the server prices with.
 function LineItemTable({
   solution,
   onSave,
@@ -296,6 +300,12 @@ function LineItemTable({
   // A string for the same reason a quantity is: "1" on the way to "15" is a
   // real state of the field.
   const [markup, setMarkup] = useState(() => markupField(solution.markupPercent));
+  // The allowance field as typed, or null while the solution has none and its
+  // row is not shown.
+  const storedAllowance = solution.materialAllowanceCents;
+  const [allowance, setAllowance] = useState<string | null>(() =>
+    storedAllowance === null ? null : materialAllowanceField(storedAllowance),
+  );
   const nextKey = useRef(0);
 
   // Stored only when the table says something different and whole. A refusal
@@ -339,8 +349,45 @@ function LineItemTable({
     setMarkup(markupField(typed));
   };
 
+  // What the field goes back to after a refusal: the stored amount, or an empty
+  // row to try again in when there was none.
+  const storedAllowanceField =
+    storedAllowance === null ? "" : materialAllowanceField(storedAllowance);
+
+  // Leaving the field saves what it says, and emptied it takes the allowance
+  // off as the ✕ does. A save that lands after the ✕ has already taken the row
+  // away leaves it away.
+  const commitAllowance = async (typed: string) => {
+    const next = materialAllowanceToStore(typed, storedAllowance);
+    if (next === undefined) {
+      setAllowance(typed.trim() === "" ? null : storedAllowanceField);
+      return;
+    }
+    if (!(await onSave({ materialAllowanceCents: next }))) {
+      setAllowance((current) => (current === null ? null : storedAllowanceField));
+      return;
+    }
+    setAllowance((current) =>
+      current === null || next === null ? null : materialAllowanceField(next),
+    );
+  };
+
+  // Cleared on the server even when this render has nothing stored: pressing
+  // the ✕ blurs the field first, and the amount that blur is still saving must
+  // not land after the row has gone. Mutations from one client run in order,
+  // so this one always lands last.
+  const removeAllowance = async () => {
+    setAllowance(null);
+    if (!(await onSave({ materialAllowanceCents: null })))
+      setAllowance(storedAllowance === null ? null : storedAllowanceField);
+  };
+
   const markupPercent = readMarkupField(markup) ?? solution.markupPercent;
-  const readout = priceReadout(draftPrice(drafts, markupPercent));
+  const allowanceCents = allowance === null ? undefined : readMaterialAllowanceField(allowance);
+  const readout = priceReadout(draftPrice(drafts, markupPercent, allowanceCents));
+  // A solution priced on its allowance alone has no cost or markup to read
+  // out, rather than a cost and a markup of $0.
+  const linesReadout = readLineItems(drafts).length > 0 ? readout : null;
 
   return (
     <div className="space-y-2">
@@ -363,7 +410,7 @@ function LineItemTable({
           <span className="text-right">Cost</span>
           <span />
         </div>
-        {drafts.length === 0 ? (
+        {drafts.length === 0 && allowance === null ? (
           <p className="px-3 py-4 text-sm text-slate-500">
             No line items yet, so this solution has no price. Every kind of cost is a
             line: materials, labor, permits, disposal.
@@ -385,19 +432,37 @@ function LineItemTable({
                 onRemove={() => replace(drafts.filter((_, at) => at !== index))}
               />
             ))}
+            {allowance === null ? null : (
+              <MaterialAllowanceRow
+                value={allowance}
+                cents={allowanceCents}
+                onChange={setAllowance}
+                onCommit={() => void commitAllowance(allowance)}
+                onRemove={() => void removeAllowance()}
+              />
+            )}
           </ul>
         )}
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <Button variant="outline" onClick={addRow}>
-          <Plus data-icon="inline-start" aria-hidden /> Add line
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={addRow}>
+            <Plus data-icon="inline-start" aria-hidden /> Add line
+          </Button>
+          {allowance === null ? (
+            <Button variant="outline" onClick={() => setAllowance("")}>
+              <Plus data-icon="inline-start" aria-hidden /> Add material allowance
+            </Button>
+          ) : null}
+        </div>
 
         {/* Internal for good: the customer reads the price and never the cost
             or the markup. */}
         <dl className="w-full space-y-1 text-sm sm:w-auto sm:min-w-64">
-          {readout === null ? null : <Readout label="Cost" value={readout.costLabel} />}
+          {linesReadout === null ? null : (
+            <Readout label="Cost" value={linesReadout.costLabel} />
+          )}
           <div className="flex items-center justify-between gap-6 text-slate-500">
             <dt className="flex items-center gap-1.5">
               <label htmlFor="solution-markup">Markup</label>
@@ -411,8 +476,13 @@ function LineItemTable({
               />
               <span aria-hidden>%</span>
             </dt>
-            <dd className="tabular-nums">{readout === null ? "—" : readout.markupAmountLabel}</dd>
+            <dd className="tabular-nums">
+              {linesReadout === null ? "—" : linesReadout.markupAmountLabel}
+            </dd>
           </div>
+          {readout?.materialAllowanceLabel ? (
+            <Readout label="Material allowance" value={readout.materialAllowanceLabel} />
+          ) : null}
           {readout === null ? (
             <div className="text-amber-700">No price</div>
           ) : (
@@ -539,6 +609,70 @@ function LineItemRow({
           <ArrowDown aria-hidden />
         </Button>
         <Button variant="ghost" size="icon-sm" aria-label="Remove line" onClick={onRemove}>
+          <X aria-hidden />
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+// The material allowance, pinned under the line items and tinted apart from
+// them: it has no name, quantity or unit, is never marked up and cannot be
+// moved among the lines. A row freshly added opens with the cursor in it.
+function MaterialAllowanceRow({
+  value,
+  cents,
+  onChange,
+  onCommit,
+  onRemove,
+}: {
+  value: string;
+  cents: number | undefined;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <li
+      className={cn(
+        LineGrid,
+        "border-t border-amber-200 bg-amber-50/70 px-3 py-2 first:border-t-0 sm:first:border-t",
+      )}
+    >
+      <div className="col-span-3 flex items-center gap-2 sm:col-span-1">
+        <span className="text-sm font-medium text-slate-900">Material allowance</span>
+        <span className="rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-amber-900 uppercase">
+          No markup
+        </span>
+      </div>
+      <div className="relative col-span-2 sm:col-span-3 sm:ml-auto sm:w-40">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-slate-400"
+        >
+          $
+        </span>
+        <Input
+          aria-label="Material allowance, whole dollars"
+          inputMode="numeric"
+          placeholder="0"
+          autoFocus={value === ""}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onCommit}
+          className="w-full bg-white pl-6 text-right tabular-nums"
+        />
+      </div>
+      <p className="self-center text-sm tabular-nums text-slate-900 sm:text-right">
+        {cents === undefined ? "—" : formatCents(cents)}
+      </p>
+      <div className="flex justify-end">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Remove material allowance"
+          onClick={onRemove}
+        >
           <X aria-hidden />
         </Button>
       </div>

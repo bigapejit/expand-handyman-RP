@@ -114,6 +114,12 @@ describe("estimating a solution's lines", () => {
     expect(solutionLines(solution("a", 10))).toBe(26);
   });
 
+  it("counts a material allowance as one more row of the table", () => {
+    expect(solutionLines({ ...solution("a", 9), materialAllowanceCents: 130_000 })).toBe(
+      solutionLines(solution("a", 10)),
+    );
+  });
+
   it("wraps a long scope paragraph at about 122 characters", () => {
     const long = { ...solution("a", 0), scopeOfWork: "x".repeat(250) };
     expect(solutionLines(long)).toBe(15);

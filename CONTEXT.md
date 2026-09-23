@@ -39,7 +39,7 @@ The record of every view and owner preview of a document or proposal: who opened
 The completed PDF containing the customer's signature, retained for later download.
 
 **Solution**:
-One priced piece of handyman work at a site: a title, a scope of work and its line items. Its price is never typed; it is worked out from the line items and the markup, rounded up to the whole dollar. A solution with no line items has no price, which is different from a price of $0.
+One priced piece of handyman work at a site: a title, a scope of work and its line items. Its price is never typed; it is worked out from the line items and the markup, rounded up to the whole dollar, plus any material allowance. A solution with neither line items nor a material allowance has no price, which is different from a price of $0.
 _Avoid_: Option, estimate, task, job
 
 **Line item**:
@@ -49,6 +49,10 @@ _Avoid_: Rate, cost line, labor entry
 **Markup**:
 The percentage added to a solution's cost to reach its price. 10% unless the owner sets a different whole percent for that one solution. Internal only: the customer sees the price, never the markup.
 _Avoid_: Margin, profit %, fee
+
+**Material allowance**:
+A solution's one optional dollar amount for materials that can only be estimated when the work is priced. Added to the solution's price as typed, with no markup, and printed on the proposal paper with its amount. Settled to the actual cost later: the customer is credited what the materials come in under, and approves in writing before they go over.
+_Avoid_: Allowance line item, materials budget
 
 **Catalog**:
 The memory of line items the owner has typed before, offered as suggestions while typing a new one. A convenience, not a price list: a suggestion taken becomes an ordinary line item with no tie back to the catalog.
@@ -86,7 +90,7 @@ A sent proposal being turned down, either by the customer through its signing li
 A sent proposal whose current signing link the customer has viewed at least once. Read from the view log; not a state of the proposal.
 
 **Proposal paper**:
-A proposal laid out as the customer reads it, the same on screen, printed or as a PDF: letterhead, cover details, an opening letter with the total and the two signature lines, one section per solution listing its line items and scope of work with no prices, the grand total with payment terms and tax, and the terms in full.
+A proposal laid out as the customer reads it, the same on screen, printed or as a PDF: letterhead, cover details, an opening letter with the total and the two signature lines, one section per solution listing its line items and scope of work with no prices except the amount of a material allowance, the grand total with payment terms and tax, and the terms in full.
 _Avoid_: Proposal document (a document is an uploaded PDF), proposal PDF
 
 **Terms**:

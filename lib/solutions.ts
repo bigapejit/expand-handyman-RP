@@ -5,6 +5,7 @@ import {
 } from "./line-item-units";
 import {
   lineCostCents,
+  materialAllowanceFault,
   MaxSolutionMarkupPercent,
   priceSolution,
   type SolutionLineItem,
@@ -30,15 +31,36 @@ export function solutionPriceLabel(
   return price === null ? "No price" : formatCents(price.priceCents, locale);
 }
 
-// The readout under the table: what the work costs, what the Markup adds, and
-// the one figure the customer will read. Nothing here is customer-visible —
-// the cost and the Markup are internal (CONTEXT.md, **Markup**). The percent
+// The row's detail line under the title: how many Line Items the Solution
+// holds, and its Material Allowance where it has one.
+export function solutionDetailLabel(
+  lineCount: number,
+  materialAllowanceCents: number | null,
+  locale?: string,
+): string {
+  const lines =
+    lineCount === 0
+      ? "No line items"
+      : lineCount === 1
+        ? "1 line item"
+        : `${lineCount} line items`;
+  return materialAllowanceCents === null
+    ? lines
+    : `${lines} · ${formatCents(materialAllowanceCents, locale)} material allowance`;
+}
+
+// The readout under the table: what the work costs, what the Markup adds, the
+// Material Allowance added on top unmarked, and the one figure the customer
+// will read. Only the price and the allowance ever reach the customer — the
+// cost and the Markup are internal (CONTEXT.md, **Markup**). The percent
 // itself is not a label here: it is the field the author
 // types in, and repeating it beside the amount would be the same figure told
 // twice, from two sources that could disagree mid-keystroke.
 export type PriceReadout = {
   costLabel: string;
   markupAmountLabel: string;
+  // Null for a Solution with no allowance, which has no row for one.
+  materialAllowanceLabel: string | null;
   priceLabel: string;
 };
 
@@ -47,11 +69,17 @@ export function priceReadout(
   locale?: string,
 ): PriceReadout | null {
   if (price === null) return null;
+  const allowanceCents = price.materialAllowanceCents;
   return {
     costLabel: formatCents(price.costCents, locale),
-    // The rounding up to the whole dollar lands here, so the three figures
-    // always add up on screen.
-    markupAmountLabel: formatCents(price.priceCents - price.costCents, locale),
+    // The rounding up to the whole dollar lands here, so the figures always
+    // add up on screen.
+    markupAmountLabel: formatCents(
+      price.priceCents - price.costCents - (allowanceCents ?? 0),
+      locale,
+    ),
+    materialAllowanceLabel:
+      allowanceCents === undefined ? null : formatCents(allowanceCents, locale),
     priceLabel: formatCents(price.priceCents, locale),
   };
 }
@@ -135,6 +163,13 @@ export function readUnitCostCents(raw: string): number {
   return Math.round(readTypedNumber(raw) * 100);
 }
 
+// An allowance typed by hand, in cents but deliberately not rounded to one:
+// "12.999" has to reach the fault as the fraction it is rather than as $13.
+// Whole dollars times 100 are exact, so "$1,300.00" is still 130,000.
+function readAllowanceCents(raw: string): number {
+  return readTypedNumber(raw) * 100;
+}
+
 // The rows that are Line Items yet. A row with no name is not one — it is
 // either a fresh row nobody has filled in or a name the author is in the
 // middle of replacing — so it is left out of the price rather than being
@@ -186,14 +221,46 @@ export function sameLineItems(
   );
 }
 
-// The price of the table as it stands, at the Markup the field above it
-// shows: recomputed on every keystroke from the same module the server prices
-// with, so what the author watches is what will be stored.
+// The price of the table as it stands, at the Markup the field beside it
+// shows and with the Material Allowance being typed: recomputed on every
+// keystroke from the same module the server prices with, so what the author
+// watches is what will be stored.
 export function draftPrice(
   drafts: readonly LineItemDraft[],
   markupPercent: number,
+  materialAllowanceCents?: number,
 ): SolutionPrice | null {
-  return priceSolution(readLineItems(drafts), markupPercent);
+  return priceSolution(readLineItems(drafts), markupPercent, materialAllowanceCents);
+}
+
+// The Material Allowance as the field shows it for editing: plain whole
+// dollars, with no sign or grouping to type around.
+export function materialAllowanceField(materialAllowanceCents: number): string {
+  return String(materialAllowanceCents / 100);
+}
+
+// The allowance the live price should add while the field is typed in:
+// whole dollars the save would keep, or nothing. A blank field, "0", cents
+// and anything that is not a figure yet all add nothing rather than pricing
+// the Solution at an amount that could never be stored.
+export function readMaterialAllowanceField(raw: string): number | undefined {
+  if (raw.trim() === "") return undefined;
+  const cents = readAllowanceCents(raw);
+  return materialAllowanceFault(cents) === null ? cents : undefined;
+}
+
+// What leaving the field should save, as `solutions.update` takes it: the
+// amount in cents, `null` to take the allowance off, or `undefined` for
+// nothing to save. Emptying the field is the same edit as its ✕. An amount
+// that is not whole dollars is passed through as typed, so the save refuses it
+// in words rather than the field quietly storing something else.
+export function materialAllowanceToStore(
+  typed: string,
+  stored: number | null,
+): number | null | undefined {
+  if (typed.trim() === "") return stored === null ? undefined : null;
+  const cents = readAllowanceCents(typed);
+  return cents === stored ? undefined : cents;
 }
 
 // The Markup as the field shows it for editing: a plain whole percent, with no

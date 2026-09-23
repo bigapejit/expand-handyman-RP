@@ -11,6 +11,8 @@ import {
   lineItemFaultMessage,
   markupFaultMessage,
   markupPercentFault,
+  materialAllowanceFault,
+  materialAllowanceFaultMessage,
   priceStoredSolution,
   readMarkupPercent,
   type SolutionLineItem,
@@ -20,7 +22,7 @@ import {
 // at a site that proposals are assembled from. They are plain live rows edited
 // in one place, and reach the customer only inside a sent proposal's frozen
 // copy. No price is ever stored: lib/solution-pricing.ts works it out from the
-// line items and the markup on every read.
+// line items, the markup and the material allowance on every read.
 
 const DefaultTitle = "Untitled solution";
 
@@ -74,7 +76,8 @@ export const create = mutation({
 });
 
 // One edit of one solution: its title, its Scope of Work (`description`), its
-// line items and its markup. Only what is named changes.
+// line items, its markup and its material allowance. Only what is named
+// changes; a material allowance named as null is taken off.
 export const update = mutation({
   args: {
     solutionId: v.id("solutions"),
@@ -82,6 +85,7 @@ export const update = mutation({
     description: v.optional(v.string()),
     lineItems: v.optional(v.array(solutionLineItem)),
     markupPercent: v.optional(v.number()),
+    materialAllowanceCents: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
@@ -101,6 +105,14 @@ export const update = mutation({
       const fault = markupPercentFault(a.markupPercent);
       if (fault) throw new Error(markupFaultMessage(fault));
       patch.markupPercent = a.markupPercent;
+    }
+    // Patching the field to undefined is what removes it, so a solution with
+    // no allowance never stores one of zero.
+    if (a.materialAllowanceCents === null) patch.materialAllowanceCents = undefined;
+    else if (a.materialAllowanceCents !== undefined) {
+      const fault = materialAllowanceFault(a.materialAllowanceCents);
+      if (fault) throw new Error(materialAllowanceFaultMessage(fault));
+      patch.materialAllowanceCents = a.materialAllowanceCents;
     }
 
     const now = Date.now();
@@ -158,6 +170,7 @@ function solutionForOwner(solution: Doc<"solutions">) {
     })),
     // Never absent: a solution nobody has repriced reads the default markup.
     markupPercent: readMarkupPercent(solution.markupPercent),
+    materialAllowanceCents: solution.materialAllowanceCents ?? null,
     // Null rather than zero when nothing has been priced yet.
     price: priceStoredSolution(solution),
     updatedAt: solution.updatedAt,

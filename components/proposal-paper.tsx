@@ -34,7 +34,8 @@ import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
 // accept line and the two signature lines), the solution sheets with the Grand
 // Total closing the last, then the Terms, and on an approved proposal the
 // Certificate of Completion. The only money on the paper is the Grand Total
-// block: a solution carries no price of its own.
+// block and a solution's material allowance: a solution carries no price of
+// its own.
 //
 // Every moment on the paper is read in UTC (lib/proposal-paper.ts), so the day
 // beside a signature is the same day wherever the paper is read.
@@ -300,14 +301,17 @@ function SignatureLine({
 }
 
 // One solution: what it is built from, and what it does. No price — the Grand
-// Total block is the only money on the paper.
+// Total block holds the money — except a material allowance, whose amount
+// closes the table where a quantity would be, so the customer can see what the
+// Terms' Material allowance clause settles against.
 function SolutionBlock({ solution }: { solution: PaperSolution }) {
+  const allowanceCents = solution.materialAllowanceCents;
   return (
     <div className="pd-solution">
       <div className="pd-solution-head">
         <span>{solution.title}</span>
       </div>
-      {solution.lineItems.length > 0 ? (
+      {solution.lineItems.length > 0 || allowanceCents !== undefined ? (
         <table className="pd-qty">
           <thead>
             <tr>
@@ -322,6 +326,12 @@ function SolutionBlock({ solution }: { solution: PaperSolution }) {
                 <td className="pd-amount">{quantityLabel(line.quantity, line.unit)}</td>
               </tr>
             ))}
+            {allowanceCents === undefined ? null : (
+              <tr>
+                <td>Material allowance</td>
+                <td className="pd-amount">{formatCentsExact(allowanceCents)}</td>
+              </tr>
+            )}
           </tbody>
         </table>
       ) : null}

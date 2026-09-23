@@ -164,6 +164,23 @@ describe("the sealed copy", () => {
     expect(sealProposal(reordered).fingerprint).toBe(sealProposal(input).fingerprint);
   });
 
+  // The allowance is printed inside the solution the customer signed for.
+  it("seals a solution's material allowance", () => {
+    const withAllowance: SealedProposalInput = {
+      ...input,
+      offer: {
+        ...input.offer,
+        solutions: [{ ...input.offer.solutions[0], materialAllowanceCents: 130_000 }],
+      },
+    };
+    const parsed = JSON.parse(sealProposal(withAllowance).document) as {
+      solutions: { materialAllowanceCents?: number }[];
+    };
+
+    expect(parsed.solutions[0].materialAllowanceCents).toBe(130_000);
+    expect(sealProposal(withAllowance).fingerprint).not.toBe(sealProposal(input).fingerprint);
+  });
+
   it("changes when a cent of the offer changes", () => {
     const dearer = { ...input, offer: { ...input.offer, totalCents: 59_896 } };
 

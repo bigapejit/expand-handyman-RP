@@ -1,9 +1,10 @@
 // The money on a Solution: what its Line Items cost, and the one price the
 // customer eventually reads (CONTEXT.md, **Line Item** / **Markup** /
-// **Solution**). Ported from FRSG's shared/solution-pricing.ts. The price is
-// never typed — if the figure should be different, a line or the Markup
-// changes and the price follows — so this module is the only place a
-// Solution's price comes from.
+// **Material allowance** / **Solution**). Ported from FRSG's
+// shared/solution-pricing.ts. The price is never typed — if the figure should
+// be different, a line, the Markup or the Material Allowance changes and the
+// price follows — so this module is the only place a Solution's price comes
+// from.
 //
 // It is kept free of Convex imports because the same arithmetic has to run in
 // three places that must never disagree by a cent: the authoring panel's live readout, the
@@ -115,11 +116,15 @@ export function offeredLineItems(
   }));
 }
 
-// A priced Solution: what it costs Expand, and what it is sold for. Both in
-// cents, and `priceCents` is always a whole number of dollars.
+// A priced Solution: what its Line Items cost Expand, the Material Allowance
+// it carries, if any, and what it is sold for. All in cents, and `priceCents`
+// is always a whole number of dollars. The allowance is not part of the cost:
+// it is not marked up, so the readout shows it as its own figure between the
+// Markup and the price.
 export type SolutionPrice = {
   costCents: number;
   priceCents: number;
+  materialAllowanceCents?: number;
 };
 
 // What one line costs, for the figure printed beside it. Rounded to the cent —
@@ -131,14 +136,16 @@ export function lineCostCents(line: SolutionLineItem): number {
   return Math.round(line.quantity * line.unitCostCents);
 }
 
-// The whole of a Solution's money, or nothing at all: a Solution with no Line
-// Items has no price, which is a different answer from $0 and reads that way
-// everywhere (a Proposal cannot be Sent carrying one).
+// The whole of a Solution's money, or nothing at all: a Solution with neither
+// Line Items nor a Material Allowance has no price, which is a different
+// answer from $0 and reads that way everywhere (a Proposal cannot be Sent
+// carrying one). An allowance alone is a price.
 export function priceSolution(
   lineItems: readonly SolutionLineItem[],
   markupPercent?: number,
+  materialAllowanceCents?: number,
 ): SolutionPrice | null {
-  if (lineItems.length === 0) return null;
+  if (lineItems.length === 0 && materialAllowanceCents === undefined) return null;
 
   // Summed exactly and rounded once, because that is what the cost is: the sum
   // of quantity × unit cost. Rounding each line first would let a table of
@@ -154,16 +161,27 @@ export function priceSolution(
     (costCents * (100 + readMarkupPercent(markupPercent))) / 10_000,
   );
 
-  return { costCents, priceCents: priceDollars * 100 };
+  // The allowance lands on top exactly as typed: never marked up, and never
+  // part of the rounding, which it has no need of since it is whole dollars.
+  if (materialAllowanceCents === undefined) {
+    return { costCents, priceCents: priceDollars * 100 };
+  }
+  return {
+    costCents,
+    priceCents: priceDollars * 100 + materialAllowanceCents,
+    materialAllowanceCents,
+  };
 }
 
 // A Solution as it is stored, as far as its price is concerned: the lines it
-// holds and the Markup it is sold at, both absent on a Solution nobody has
-// costed or repriced. Structural, so a Convex `Doc<"solutions">` is one
-// without this module ever hearing about Convex.
+// holds, the Markup it is sold at and its Material Allowance, each absent on
+// a Solution nobody has costed, repriced or given one. Structural, so a
+// Convex `Doc<"solutions">` is one without this module ever hearing about
+// Convex.
 export type PriceableSolution = {
   lineItems?: readonly SolutionLineItem[];
   markupPercent?: number;
+  materialAllowanceCents?: number;
 };
 
 // The price of a stored Solution, which is the only way anything outside this
@@ -173,7 +191,39 @@ export type PriceableSolution = {
 export function priceStoredSolution(
   solution: PriceableSolution,
 ): SolutionPrice | null {
-  return priceSolution(solution.lineItems ?? [], solution.markupPercent);
+  return priceSolution(
+    solution.lineItems ?? [],
+    solution.markupPercent,
+    solution.materialAllowanceCents,
+  );
+}
+
+// Every way a Material Allowance can fail to be one, named here beside the
+// Line Item and Markup faults for the same reason they are.
+export type MaterialAllowanceFault = "material_allowance_invalid";
+
+// Whole dollars, at least one of them. Absent is how a Solution has no
+// allowance, so a stored zero would only be a second way of saying that; a
+// figure in cents is not one the owner types or the paper should print; and
+// `isSafeInteger` is what turns away a NaN or an Infinity.
+export function materialAllowanceFault(
+  materialAllowanceCents: number,
+): MaterialAllowanceFault | null {
+  if (
+    !Number.isSafeInteger(materialAllowanceCents) ||
+    materialAllowanceCents < 100 ||
+    materialAllowanceCents % 100 !== 0
+  ) {
+    return "material_allowance_invalid";
+  }
+  return null;
+}
+
+export function materialAllowanceFaultMessage(fault: MaterialAllowanceFault): string {
+  switch (fault) {
+    case "material_allowance_invalid":
+      return "A Solution's Material Allowance must be a whole number of dollars, at least $1.";
+  }
 }
 
 // Every way a Line Item can fail to be one, named once here so the mutation

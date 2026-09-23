@@ -7,6 +7,8 @@ import {
   lineItemFaultMessage,
   markupFaultMessage,
   markupPercentFault,
+  materialAllowanceFault,
+  materialAllowanceFaultMessage,
   MaxSolutionMarkupPercent,
   priceSolution,
   priceStoredSolution,
@@ -144,6 +146,71 @@ describe("A Solution's price", () => {
   });
 });
 
+describe("A Solution's Material Allowance", () => {
+  // Priced, and sendable, on the allowance alone: only a Solution with neither
+  // lines nor an allowance has no price.
+  it("is a price by itself, with no Line Items beside it", () => {
+    expect(priceSolution([], undefined, 130_000)).toEqual({
+      costCents: 0,
+      priceCents: 130_000,
+      materialAllowanceCents: 130_000,
+    });
+  });
+
+  // $1,545.45 of cost at 10% is $1,699.995, rounded up to $1,700; the $1,300
+  // allowance lands on top exactly as typed. Marked up it would add $1,430,
+  // and summed before the rounding it would still land at $3,000 here, so the
+  // second case below is the one that tells the rounding apart.
+  it("is added as typed, after the lines are marked up and rounded", () => {
+    expect(priceSolution([line(1, 154_545)], undefined, 130_000)).toEqual({
+      costCents: 154_545,
+      priceCents: 300_000,
+      materialAllowanceCents: 130_000,
+    });
+    // At 25%, $10.01 of cost is $12.5125, rounded up to $13. Marked up with
+    // it, a $100 allowance would make $138; it makes $113.
+    expect(priceSolution([line(1, 1_001)], 25, 10_000)).toEqual({
+      costCents: 1_001,
+      priceCents: 11_300,
+      materialAllowanceCents: 10_000,
+    });
+  });
+
+  it("leaves a Solution without one priced exactly as before", () => {
+    const price = priceSolution([line(1, 154_545)]);
+    expect(price).toEqual({ costCents: 154_545, priceCents: 170_000 });
+    expect(price).not.toHaveProperty("materialAllowanceCents");
+  });
+
+  it("accepts whole dollars, from $1 up", () => {
+    expect(materialAllowanceFault(100)).toBeNull();
+    expect(materialAllowanceFault(130_000)).toBeNull();
+  });
+
+  // Nothing is not an allowance (there is the ✕ for that), cents are not a
+  // figure it is typed in, and a figure that is no figure at all would price
+  // the Solution into something unprintable.
+  it("refuses anything that is not one", () => {
+    for (const cents of [
+      0,
+      50,
+      -100,
+      130_050,
+      100.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(materialAllowanceFault(cents)).toBe("material_allowance_invalid");
+    }
+  });
+
+  it("words the refusal", () => {
+    expect(materialAllowanceFaultMessage("material_allowance_invalid")).toMatch(
+      /whole number of dollars.*\$1/,
+    );
+  });
+});
+
 describe("The Markup a Solution is priced at", () => {
   it("is Expand's when the Solution names none", () => {
     expect(readMarkupPercent(undefined)).toBe(DefaultSolutionMarkupPercent);
@@ -206,6 +273,21 @@ describe("Pricing a Solution as it is stored", () => {
     // Repricing an uncosted Solution does not give it a price: "no Line Items"
     // is still no price, whatever percent sits beside it.
     expect(priceStoredSolution({ lineItems: [], markupPercent: 50 })).toBeNull();
+  });
+
+  it("prices a stored Material Allowance, with or without lines beside it", () => {
+    expect(priceStoredSolution({ materialAllowanceCents: 50_000 })).toEqual({
+      costCents: 0,
+      priceCents: 50_000,
+      materialAllowanceCents: 50_000,
+    });
+    expect(
+      priceStoredSolution({
+        lineItems: [line(1, 100_000)],
+        markupPercent: 50,
+        materialAllowanceCents: 50_000,
+      }),
+    ).toEqual({ costCents: 100_000, priceCents: 200_000, materialAllowanceCents: 50_000 });
   });
 
   // Zero has to survive the whole way down — a `markupPercent ?? default`
