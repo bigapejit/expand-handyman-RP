@@ -17,10 +17,12 @@ if (existing)
 else await clerk.jwtTemplates.create({ name: "convex", claims });
 const identifiers =
   await clerk.allowlistIdentifiers.getAllowlistIdentifierList();
-if (!identifiers.data.some((i) => i.identifier === "andrew@cogtex.ai"))
-  await clerk.allowlistIdentifiers.createAllowlistIdentifier({
-    identifier: "andrew@cogtex.ai",
-    notify: false,
-  });
+for (const identifier of ["andrew@cogtex.ai", "*@expandhandyman.com"]) {
+  if (!identifiers.data.some((i) => i.identifier === identifier))
+    await clerk.allowlistIdentifiers.createAllowlistIdentifier({
+      identifier,
+      notify: false,
+    });
+}
 await clerk.instance.updateRestrictions({ allowlist: true });
-console.log("Convex JWT template configured; signup restricted to the owner.");
+console.log("Convex JWT template configured; signup allows the owner and expandhandyman.com.");
