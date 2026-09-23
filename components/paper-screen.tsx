@@ -24,7 +24,7 @@ import { paperScale, paperTitle, type PaperProposal } from "@/lib/proposal-paper
 
 // The one sentence under the top bar, and the colour it is said in.
 export type PaperStrip = {
-  tone: "note" | "signed" | "declined" | "fault";
+  tone: "note" | "signed" | "declined";
   body: ReactNode;
 };
 

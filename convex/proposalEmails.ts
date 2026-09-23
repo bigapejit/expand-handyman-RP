@@ -70,10 +70,7 @@ export const sendSigningLink = internalAction({
 
     await ctx.runMutation(internal.signingLinks.recordEmail, {
       linkId: a.linkId,
-      email:
-        result.outcome === "sent"
-          ? { outcome: "sent", ...(result.id === null ? {} : { id: result.id }) }
-          : result,
+      email: storedOutcome(result),
     });
   },
 });
@@ -108,11 +105,16 @@ async function recordDecision(
   await ctx.runMutation(internal.proposals.recordDecisionEmail, {
     proposalId: letter.proposalId,
     index: letter.index,
-    email:
-      result.outcome === "sent"
-        ? { outcome: "sent", ...(result.id === null ? {} : { id: result.id }) }
-        : result,
+    email: storedOutcome(result),
   });
+}
+
+// What became of a send, as the schema stores it: a send Resend gave no id
+// for keeps no id rather than a null.
+function storedOutcome(result: EmailResult | { outcome: "fault"; fault: string }) {
+  return result.outcome === "sent"
+    ? { outcome: "sent" as const, ...(result.id === null ? {} : { id: result.id }) }
+    : result;
 }
 
 export const approvalLetter = {

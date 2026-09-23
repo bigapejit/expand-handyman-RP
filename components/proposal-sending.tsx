@@ -341,8 +341,8 @@ function Decision({ proposal }: { proposal: Proposal }) {
       ) : null}
       {proposal.decisionEmails.length > 0 ? (
         <ul className="space-y-0.5 text-xs text-slate-500">
-          {proposal.decisionEmails.map((sent) => (
-            <li key={sent.to} className={cn(emailFailed(sent.email) && "text-amber-800")}>
+          {proposal.decisionEmails.map((sent, index) => (
+            <li key={index} className={cn(emailFailed(sent.email) && "text-amber-800")}>
               {sent.to}: {linkEmailLabel(sent.email)}
             </li>
           ))}

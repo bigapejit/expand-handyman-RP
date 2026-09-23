@@ -22,7 +22,6 @@ import {
   liveLinkForToken,
   mintLinkToken,
   mintSigningLink,
-  noticeRequiredFor,
   sentPaper,
   signingLinksForProposal,
   type LiveSigningLink,
@@ -53,6 +52,7 @@ import {
   type SendBlocker,
 } from "../lib/proposal-pricing";
 import {
+  noticeToCustomerApplies,
   sealProposal,
   SigningConsent,
   signingFaultMessage,
@@ -811,7 +811,7 @@ export const approve = mutation({
   handler: async (ctx, a) => {
     const { link, proposal, site } = await requireLiveLink(ctx, a.token);
     const frozen = proposal.frozen;
-    const noticeRequired = noticeRequiredFor(site, frozen);
+    const noticeRequired = noticeToCustomerApplies(site.region, frozen.totalCents);
 
     refuseStaleWording(a.consentWordingVersion, SigningConsent.version);
     if (noticeRequired)
@@ -971,6 +971,7 @@ function refuseSigning(faults: readonly SigningFault[]) {
   });
 }
 
+// A sent proposal's display name, read from the solution titles Send froze.
 function frozenTitle(name: string | undefined, frozen: FrozenProposal): string {
   return proposalDisplayName(
     name,
@@ -978,6 +979,7 @@ function frozenTitle(name: string | undefined, frozen: FrozenProposal): string {
   );
 }
 
+// The site as one line, the way every email names it.
 function siteAddress(frozen: FrozenProposal): string {
   return [frozen.site.street, frozen.site.city].filter(Boolean).join(", ");
 }

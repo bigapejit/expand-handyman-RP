@@ -123,12 +123,6 @@ export async function liveLinkForToken(
   return { link, proposal: { ...proposal, frozen: proposal.frozen }, site };
 }
 
-// Whether the sign bar has to show Washington's Notice to Customer: read from
-// the frozen total, so the page and Approve always agree.
-export function noticeRequiredFor(site: Doc<"sites">, frozen: { totalCents: number }): boolean {
-  return noticeToCustomerApplies(site.region, frozen.totalCents);
-}
-
 // When the customer first looked at this link: the earliest customer view the
 // log holds for it. Owner previews never count.
 export async function firstCustomerView(ctx: QueryCtx, token: string): Promise<number | null> {
@@ -239,7 +233,11 @@ export const page = query({
     return {
       paper,
       noticeRequired:
-        paper.state === "sent" && site !== null && noticeRequiredFor(site, paper),
+        // The frozen total, read the way Approve reads it, so the notice the
+        // page shows is the notice Approve asks to have been ticked.
+        paper.state === "sent" &&
+        site !== null &&
+        noticeToCustomerApplies(site.region, paper.totalCents),
     };
   },
 });

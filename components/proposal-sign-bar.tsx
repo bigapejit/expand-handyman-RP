@@ -69,6 +69,15 @@ export function ProposalSignBar({
   onApprove: (input: SignatureInput) => void;
   onDecline: (reason: string) => void;
 }) {
+  // The signature as far as it has been filled in. Held here rather than in
+  // the sheet, so closing the sheet to read the Terms and opening it again
+  // finds the name and the ticks where the customer left them.
+  const [draft, setDraft] = useState<SignatureInput>({
+    signerName: paper.customerName,
+    consentTicked: false,
+    noticeTicked: false,
+  });
+
   // Read off the state and never off the signature: a bar that asked "is it
   // signed?" by looking for one would offer to sign a proposal that already is.
   if (paper.state === "approved") {
@@ -112,10 +121,13 @@ export function ProposalSignBar({
       <div className="paper-bar">
         <div className="paper-bar-sheet">
           <SignForm
-            // A fresh form for each way in: opening Decline must not carry a
-            // half-filled signature with it, nor the other way round.
+            // A fresh form for each way in, so a half-written reason never
+            // follows the customer into signing. The signature itself is the
+            // draft above, which Decline never shows.
             key={open}
             paper={paper}
+            draft={draft}
+            onDraft={setDraft}
             noticeRequired={noticeRequired}
             declining={open === "decline"}
             busy={busy}
@@ -161,6 +173,8 @@ export function ProposalSignBar({
 
 function SignForm({
   paper,
+  draft,
+  onDraft,
   noticeRequired,
   declining,
   busy,
@@ -173,6 +187,8 @@ function SignForm({
   onDecline,
 }: {
   paper: PaperProposal;
+  draft: SignatureInput;
+  onDraft: (draft: SignatureInput) => void;
   noticeRequired: boolean;
   declining: boolean;
   busy: boolean;
@@ -184,9 +200,7 @@ function SignForm({
   onApprove: (input: SignatureInput) => void;
   onDecline: (reason: string) => void;
 }) {
-  const [signerName, setSignerName] = useState(paper.customerName);
-  const [consentTicked, setConsentTicked] = useState(false);
-  const [noticeTicked, setNoticeTicked] = useState(false);
+  const { signerName, consentTicked, noticeTicked } = draft;
   const [attempted, setAttempted] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -209,7 +223,7 @@ function SignForm({
         event.preventDefault();
         setAttempted(true);
         if (faults.length > 0 || busy) return;
-        onApprove({ signerName, consentTicked, noticeTicked });
+        onApprove(draft);
       }}
     >
       <div className="paper-form-head">
@@ -231,7 +245,7 @@ function SignForm({
                 autoComplete="name"
                 maxLength={200}
                 value={signerName}
-                onChange={(event) => setSignerName(event.target.value)}
+                onChange={(event) => onDraft({ ...draft, signerName: event.target.value })}
                 aria-invalid={shownFaults.includes("signer_name_required") || undefined}
               />
             </label>
@@ -243,7 +257,7 @@ function SignForm({
                 type="checkbox"
                 name="consent"
                 checked={consentTicked}
-                onChange={(event) => setConsentTicked(event.target.checked)}
+                onChange={(event) => onDraft({ ...draft, consentTicked: event.target.checked })}
                 aria-invalid={shownFaults.includes("consent_required") || undefined}
               />
               <span>{SigningConsent.wording(paper.number)}</span>
@@ -262,7 +276,7 @@ function SignForm({
                   type="checkbox"
                   name="notice"
                   checked={noticeTicked}
-                  onChange={(event) => setNoticeTicked(event.target.checked)}
+                  onChange={(event) => onDraft({ ...draft, noticeTicked: event.target.checked })}
                   aria-invalid={shownFaults.includes("notice_required") || undefined}
                 />
                 <span>{WashingtonNoticeToCustomer.acknowledgement}</span>
