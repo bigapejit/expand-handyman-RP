@@ -659,7 +659,7 @@ export const sendWithLink = internalMutation({
     const frozen: FrozenProposal = {
       code: proposalCode(site.name, proposal.number),
       customerName: customer.name,
-      site: { street: siteStreetLine(site), city: siteCityLine(site) },
+      site: { street: siteStreetLine(site), city: siteCityLine(site), region: site.region },
       sentTo,
       estimator: {
         name: identity?.name?.trim() || Unknown,
@@ -800,9 +800,10 @@ export const approve = mutation({
     noticeTicked: v.boolean(),
     // The versions of the two sentences the page showed beside its ticks. The
     // signature records the current constants, so a page rendered before a
-    // wording change is refused rather than recorded as having agreed to words
-    // its signer never read.
-    consentWordingVersion: v.optional(v.string()),
+    // wording change, or a caller that doesn't say what it showed, is refused
+    // rather than recorded as having agreed to words its signer never read.
+    // The notice's is needed only where the notice applies.
+    consentWordingVersion: v.string(),
     noticeWordingVersion: v.optional(v.string()),
     // The signer's browser, as the page reports it. Recorded, never verified:
     // it is evidence an electronic signature keeps, not a gate.
@@ -811,7 +812,10 @@ export const approve = mutation({
   handler: async (ctx, a) => {
     const { link, proposal, site } = await requireLiveLink(ctx, a.token);
     const frozen = proposal.frozen;
-    const noticeRequired = noticeToCustomerApplies(site.region, frozen.totalCents);
+    const noticeRequired = noticeToCustomerApplies(
+      frozen.site.region ?? site.region,
+      frozen.totalCents,
+    );
 
     refuseStaleWording(a.consentWordingVersion, SigningConsent.version);
     if (noticeRequired)
@@ -950,11 +954,11 @@ async function requireLiveLink(ctx: MutationCtx, token: string): Promise<LiveSig
   return live;
 }
 
-// A page rendered under an earlier wording is sent back to reload rather than
-// recorded as agreeing to sentences its signer never saw. A version the page
-// did not send is let through: only the page's own claim can be stale.
+// A page rendered under an earlier wording, or one that doesn't say which it
+// showed, is sent back to reload rather than recorded as agreeing to sentences
+// its signer never saw.
 function refuseStaleWording(shown: string | undefined, current: string) {
-  if (shown === undefined || shown === current) return;
+  if (shown === current) return;
   throw new ConvexError({
     code: "wording_stale",
     message: "The wording on this page has changed since it opened. Reload the page and sign again.",

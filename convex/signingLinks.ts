@@ -150,7 +150,7 @@ export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
     sentAt: proposal.sentAt,
     estimator: frozen.estimator,
     customerName: frozen.customerName,
-    site: frozen.site,
+    site: { street: frozen.site.street, city: frozen.site.city },
     solutions: frozen.solutions.map((solution) => ({
       solutionId: solution.solutionId,
       title: solution.title,
@@ -237,7 +237,10 @@ export const page = query({
         // page shows is the notice Approve asks to have been ticked.
         paper.state === "sent" &&
         site !== null &&
-        noticeToCustomerApplies(site.region, paper.totalCents),
+        noticeToCustomerApplies(
+          opened.proposal.frozen?.site.region ?? site.region,
+          paper.totalCents,
+        ),
     };
   },
 });

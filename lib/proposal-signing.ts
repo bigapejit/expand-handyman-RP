@@ -16,7 +16,7 @@
 // upper bound; the consent sentence drops "on behalf of the customer", because
 // the signer is the customer; there is no signer title and no paper path; and
 // the seal takes Expand's frozen offer, whose Terms are clauses and whose site
-// is the two printed lines.
+// is the two printed lines and the state it was sent in.
 
 import { sha256 } from "@noble/hashes/sha2.js";
 
@@ -95,7 +95,8 @@ export type SealedProposalInput = {
   code: string;
   name: string;
   customerName: string;
-  site: { street: string; city: string };
+  // The two printed lines, and the state the offer was sent in where known.
+  site: { street: string; city: string; region?: string };
   sentAt: number;
   sentByName: string;
   offer: {

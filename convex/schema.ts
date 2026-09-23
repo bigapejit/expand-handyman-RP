@@ -45,7 +45,10 @@ export const proposalTax = v.object({
 export const frozenProposal = v.object({
   code: v.string(),
   customerName: v.string(),
-  site: v.object({ street: v.string(), city: v.string() }),
+  // The state is kept for the Notice to Customer, which is Washington's: the
+  // offer answers to the state it was sent in, wherever the site moves after.
+  // Absent on proposals sent before it was frozen.
+  site: v.object({ street: v.string(), city: v.string(), region: v.optional(v.string()) }),
   sentTo: v.string(),
   estimator: v.object({ name: v.string(), email: v.string() }),
   solutions: v.array(

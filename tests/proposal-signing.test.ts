@@ -199,7 +199,7 @@ describe("Approve", () => {
         code: "1300FRANKLIN-P1",
         name: "Fix gate",
         customerName: "Maria Delgado",
-        site: { street: "1300 Franklin St", city: "Vancouver, WA 98660" },
+        site: { street: "1300 Franklin St", city: "Vancouver, WA 98660", region: "WA" },
         sentAt: proposal!.sentAt!,
         sentByName: "Andrew Putilin",
         offer: frozen,
@@ -267,6 +267,28 @@ describe("Approve", () => {
     const siteId = await site(customerId, "OR");
     const { token } = await sent(5_000_000, { customerId, siteId });
     expect((await t.query(api.signingLinks.page, { token }))?.noticeRequired).toBe(false);
+  });
+
+  test("the notice follows the state the offer was sent in, not where the site has moved since", async () => {
+    const { t, sent, approval } = fixture();
+    const { siteId, proposalId, token } = await sent(5_000_000);
+    await t.run((ctx) => ctx.db.patch(siteId, { region: "OR" }));
+    expect((await t.query(api.signingLinks.page, { token }))?.noticeRequired).toBe(true);
+    expect(await refusal(t.mutation(api.proposals.approve, approval(token)))).toMatchObject({
+      code: "notice_required",
+    });
+    await t.mutation(api.proposals.approve, approval(token, true));
+    expect((await t.run((ctx) => ctx.db.get(proposalId)))?.signature?.noticeShown).toBe(true);
+  });
+
+  test("refuses an approval that doesn't say which wording its page showed", async () => {
+    const { t, sent, approval } = fixture();
+    const { proposalId, token } = await sent(5_000_000);
+    const { noticeWordingVersion: _notice, ...withoutNotice } = approval(token, true);
+    expect(await refusal(t.mutation(api.proposals.approve, withoutNotice))).toMatchObject({
+      code: "wording_stale",
+    });
+    expect((await t.run((ctx) => ctx.db.get(proposalId)))?.state).toBe("sent");
   });
 
   test("refuses a blank name, a missing consent tick and stale wording", async () => {
@@ -466,6 +488,7 @@ describe("Decline through the link", () => {
           signerName: "Maria Delgado",
           consentTicked: true,
           noticeTicked: false,
+          consentWordingVersion: SigningConsent.version,
         }),
       ),
     ).toMatchObject({ code: "link_ended" });
