@@ -170,4 +170,41 @@ describe("Dashboard documents", () => {
     const board = await f.owner.query(api.documents.dashboard, {});
     expect(board.decided[0]).toMatchObject({ _id: id, decidedAt: created });
   });
+
+  test("picks recent answers by when they were answered, not when uploaded", async () => {
+    const f = setup();
+    const ada = await customer(f, "Ada");
+    const early = await document(f, ada, "Uploaded first", "f".repeat(64));
+    await f.t.run((ctx) =>
+      ctx.db.patch(early, { status: "signed", signedAt: 2_000 }),
+    );
+    for (let i = 0; i < 9; i++) {
+      const id = await document(f, ada, `Doc ${i}`, String(i).repeat(64));
+      await f.t.run((ctx) =>
+        ctx.db.patch(id, { status: "signed", signedAt: 1_000 + i }),
+      );
+    }
+    const board = await f.owner.query(api.documents.dashboard, {});
+    expect(board.decided).toHaveLength(8);
+    expect(board.decided[0]._id).toBe(early);
+  });
+});
+
+describe("A customer's documents", () => {
+  test("are only theirs, newest first, and only for the owner", async () => {
+    const f = setup();
+    const ada = await customer(f, "Ada");
+    const bob = await customer(f, "Bob");
+    const first = await document(f, ada, "First");
+    await document(f, bob, "Bob's");
+    const second = await document(f, ada, "Second");
+    await expect(
+      f.t.query(api.documents.forCustomer, { customerId: ada }),
+    ).rejects.toThrow();
+    const docs = await f.owner.query(api.documents.forCustomer, {
+      customerId: ada,
+    });
+    expect(docs.map((d) => d._id)).toEqual([second, first]);
+    expect(docs[0]).toMatchObject({ title: "Second", status: "draft" });
+  });
 });

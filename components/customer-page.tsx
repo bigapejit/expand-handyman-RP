@@ -16,10 +16,12 @@ import { displayPhone } from "@/lib/customer";
 // Solutions and Proposals replaces this.
 export function CustomerPage({ customerId }: { customerId: string }) {
   const customers = useQuery(api.documents.customers);
-  const documents = useQuery(api.documents.list);
-  const [uploading, setUploading] = useState(false);
   const customer = customers?.find((c) => c._id === customerId);
-  const theirs = documents?.filter((d) => d.customerId === customerId);
+  const theirs = useQuery(
+    api.documents.forCustomer,
+    customer ? { customerId: customer._id } : "skip",
+  );
+  const [uploading, setUploading] = useState(false);
 
   if (customers === undefined)
     return (

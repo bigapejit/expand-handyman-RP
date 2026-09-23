@@ -32,6 +32,7 @@ const navigation = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   return (
     <Sidebar>
@@ -51,7 +52,11 @@ export function AppSidebar() {
                         : pathname.startsWith(item.href)
                     }
                     render={
-                      <Link href={item.href}>
+                      <Link
+                        href={item.href}
+                        // The phone's sheet would otherwise stay over the page.
+                        onClick={() => isMobile && setOpenMobile(false)}
+                      >
                         <item.icon aria-hidden />
                         <span>{item.title}</span>
                       </Link>

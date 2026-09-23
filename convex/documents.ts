@@ -74,9 +74,18 @@ export const dashboard = query({
       ...(await byStatus("ready").collect()),
       ...(await byStatus("viewed").collect()),
     ];
+    // The latest eight of each by when they were answered, not when uploaded.
     const answered = [
-      ...(await byStatus("signed").order("desc").take(200)),
-      ...(await byStatus("declined").order("desc").take(200)),
+      ...(await ctx.db
+        .query("documents")
+        .withIndex("by_status_signed", (q) => q.eq("status", "signed"))
+        .order("desc")
+        .take(8)),
+      ...(await ctx.db
+        .query("documents")
+        .withIndex("by_status_declined", (q) => q.eq("status", "declined"))
+        .order("desc")
+        .take(8)),
     ];
     const out = await Promise.all(
       waiting
@@ -120,6 +129,24 @@ export const dashboard = query({
         })),
     );
     return { out, decided };
+  },
+});
+export const forCustomer = query({
+  args: { customerId: v.id("customers") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    return (
+      await ctx.db
+        .query("documents")
+        .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
+        .order("desc")
+        .collect()
+    ).map((d) => ({
+      _id: d._id,
+      _creationTime: d._creationTime,
+      title: d.title,
+      status: d.status,
+    }));
   },
 });
 export const customers = query({
