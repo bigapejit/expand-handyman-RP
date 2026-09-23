@@ -11,7 +11,7 @@ async function main(){
   try {
     const jwt=await clerk.sessions.getToken(session.id,'convex');
     const client=new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);client.setAuth(jwt.jwt);
-    const customers=await client.query(api.documents.customers,{});
+    const customers=await client.query(api.customers.list,{});
     const customer=customers.find(c=>c.name==='Test Customer');if(!customer)throw new Error('Create the test customer through the UI first.');
     const bytes=await readFile('test-results/upload-test.pdf');
     const uploadUrl=await client.mutation(api.documents.uploadUrl,{});

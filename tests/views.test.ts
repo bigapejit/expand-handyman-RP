@@ -27,11 +27,10 @@ async function fixture() {
     email: "andrew@cogtex.ai",
     emailVerified: true,
   });
-  const customerId = await owner.mutation(api.documents.addCustomer, {
+  const customerId = await owner.action(api.customers.add, {
     name: "Test Customer",
     email: "customer@example.com",
     phone: "(555) 123-4567",
-    site: "Test Site",
   });
   const pdf = await PDFDocument.create();
   pdf.addPage([612, 792]);

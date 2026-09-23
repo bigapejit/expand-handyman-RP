@@ -51,3 +51,19 @@ npx convex run --prod migrations:backfillCustomerDetails
 ```
 
 It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Three tests in `tests/signing.test.ts` cover the frozen issued document, the live draft and the backfill.
+
+## Sites and address lookup
+
+A customer's addresses are Sites, managed on the customer page's Sites tab and optionally created with the customer. Every site is a Google Places pick: the browser asks Convex for suggestions (`places.suggest`), and saving a site looks the picked place up again on the server, so no site holds an address Google did not return. Both calls share one session token per dialog, so Google bills a lookup as one session.
+
+The Google key lives only on the Convex deployments, never in the browser or on Vercel, and every lookup requires the owner's sign-in. Before the Sites tab can find addresses:
+
+1. In Google Cloud, enable **Places API (New)** and create an API key restricted to it. Convex calls Google from its own servers, so restrict the key by API, not by referrer or IP.
+2. Set it on both deployments:
+
+```
+npx convex env set GOOGLE_MAPS_API_KEY <key>
+npx convex env set --prod GOOGLE_MAPS_API_KEY <key>
+```
+
+Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites keep their old address text until the one-off migration moves it onto sites.

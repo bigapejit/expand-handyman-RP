@@ -3,10 +3,18 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+// Convex wraps a thrown message in its function tag, a request id and, in
+// development, the stack: `[CONVEX A(x)] [Request ID: 1] Server Error
+// Uncaught Error: <message>  at handler ... Called by client`. Keep the message.
 export function errorMessage(error: unknown) {
-  return error instanceof Error
-    ? error.message.replace(/\[CONVEX[^\]]*\]\s*/g, "")
-    : "Something went wrong. Please try again.";
+  if (!(error instanceof Error)) return "Something went wrong. Please try again.";
+  const thrown = /Uncaught Error: ([\s\S]*?)(?:\n\s*at |\s*Called by client|$)/.exec(
+    error.message,
+  );
+  return (thrown?.[1] ?? error.message)
+    .replace(/\[CONVEX[^\]]*\]\s*/g, "")
+    .replace(/\[Request ID: [^\]]*\]\s*/g, "")
+    .trim();
 }
 export function dateTime(value?: number) {
   return value ? new Date(value).toLocaleString() : "—";

@@ -17,7 +17,6 @@ import {
 
 export const blankCustomer: CustomerInput = {
   name: "",
-  site: "",
   email: "",
   phone: "",
 };
@@ -33,11 +32,6 @@ const BOXES: {
   onLeave?: (typed: string) => string;
 }[] = [
   { key: "name", label: "Customer name", placeholder: "Jane Doe" },
-  {
-    key: "site",
-    label: "Service address",
-    placeholder: "12 Oak Street, Springfield",
-  },
   {
     key: "email",
     label: "Email",
@@ -55,18 +49,21 @@ const BOXES: {
 ];
 
 /**
- * The four contact boxes, shared by every dialog that edits a customer. Values
+ * The three contact boxes, shared by every dialog that edits a customer. Values
  * self-correct as the owner types, so what is on screen is what gets stored.
  */
 export function CustomerFields({
   value,
   onChange,
   errors = {},
+  warnings = {},
   disabled,
 }: {
   value: CustomerInput;
   onChange: (value: CustomerInput) => void;
   errors?: CustomerErrors;
+  /** Worth a look but never blocking, like an email another customer uses. */
+  warnings?: Partial<Record<keyof CustomerInput, string>>;
   disabled?: boolean;
 }) {
   return (
@@ -89,6 +86,11 @@ export function CustomerFields({
               {...props}
             />
             <FieldError>{errors[key]}</FieldError>
+            {warnings[key] && !errors[key] ? (
+              <FieldDescription className="text-amber-700">
+                {warnings[key]}
+              </FieldDescription>
+            ) : null}
           </Field>
         );
       })}
