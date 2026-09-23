@@ -63,12 +63,62 @@ An offer assembled from solutions and terms for one site, planned for a later ph
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
 
 **Deposit**:
-The part of a proposal's total due on signing, with the rest due on completion. The owner states it either as a whole percent of the total (50% unless changed; 0% and 100% are allowed) or as a set amount that stays as typed when the total changes, and never more than the total. The proposal only states these payment terms; payments are not recorded.
+The part of a proposal's total due on signing, with the rest due on completion. The owner states it either as a whole percent of the total (50% unless changed; 0% and 100% are allowed) or as a set amount that stays as typed when the total changes, and never more than the total. The deposit invoice bills it when the customer approves.
 _Avoid_: Down payment, retainer
 
 **Balance**:
-What is left of a proposal's total after the Deposit, due on completion.
+What is left of a proposal's total after the Deposit, due on completion. The final invoice bills it, less anything else invoiced in between.
 _Avoid_: Final payment, remainder
+
+**Invoice**:
+A request for payment that belongs to one approved proposal: its deposit invoice, its final invoice, or another invoice the owner types. A draft, sent or declined proposal has none. An invoice is a draft until sent, then sent, and void if it was wrong; whether it is paid is read from its payment, not a state of its own.
+_Avoid_: Bill, statement, receipt
+
+**Deposit invoice**:
+The invoice made and sent by itself when the customer approves a proposal, for exactly the Deposit they signed for. Never a draft, and its amount is never changed. A proposal with a 0% Deposit gets none.
+
+**Final invoice**:
+The invoice the owner raises by saying the job is done. It starts with one line, the proposal's total less everything already invoiced on it, and the owner may add lines for materials that came in under or over and for approved extras before sending. One per proposal.
+_Avoid_: Balance invoice, closing invoice, progress invoice
+
+**Invoice line**:
+One entry on an invoice: a description and an amount, which may be negative for a credit. The deposit invoice has one fixed line, the final invoice starts with its balance line, and any other invoice's lines are all typed by the owner.
+_Avoid_: Line item (a solution's, which carries a cost the customer never sees)
+
+**Draft invoice**:
+A final or typed invoice the owner is still putting together: its lines can change, it has no invoice number and the customer cannot see it. Deleting it leaves no trace.
+_Avoid_: Pending invoice, unsent invoice
+
+**Send (an invoice)**:
+Emailing a draft invoice to the customer as a private link. Its lines, amounts, invoice number, date, customer name, site address, Proposal ID and the email address it went to are fixed as they stand. The paper's date is the day it was sent.
+_Avoid_: Issue, post, raise (which is making one)
+
+**Invoice number**:
+`INV-` and a count that runs across the whole business from `INV-1001`, given when the invoice is sent and never reused or reset. A draft has none and a void invoice keeps its own, so the sequence has no gaps. Printed beside the Proposal ID.
+_Avoid_: Invoice ID, reference
+
+**Due date**:
+The day an invoice was sent: every invoice is due on receipt and the paper says so. Overdue is read against it.
+_Avoid_: Net 30, payment deadline, terms (which are the contract conditions)
+
+**Void**:
+The owner cancelling a sent invoice that was wrong, with an optional short reason the customer never sees. Refused while the invoice is marked paid. The invoice keeps its number and stays in the list struck through, its link shows the paper stamped VOID, and nobody is emailed. A voided deposit invoice is not made again; the owner types a new invoice if the money should still be billed.
+_Avoid_: Cancel, delete (a draft is deleted, a sent invoice is voided), withdraw, credit note, reverse
+
+**Re-send (an invoice)**:
+Emailing a sent invoice again, to the customer's current email address, with a fresh link; the old link stops working. Nothing on the invoice changes, not even its date.
+
+**Payment**:
+The record that a sent invoice's money arrived: the day it arrived and who recorded it, the owner by hand or, later, the app from an online payment. Never edited: the owner takes one back by marking the invoice unpaid. A record the app wrote cannot be taken back by hand.
+_Avoid_: Transaction, receipt, paid tick (it is a record, not a flag on the invoice)
+
+**Mark paid**:
+The owner recording a payment on a sent invoice, with the day the money arrived, today unless changed. Mark unpaid removes it. An invoice for a credit is marked paid once the owner has refunded it by hand.
+_Avoid_: Settle, close, reconcile
+
+**Standing**:
+What an invoice reads about its money: Unpaid, Paid, or Overdue when still unpaid more than seven days after the day it was sent. Read from its payment each time, never stored. A void invoice has none, and an invoice for $0 reads Paid from the moment it is sent.
+_Avoid_: Status (which is draft, sent or void), state, paid flag
 
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
