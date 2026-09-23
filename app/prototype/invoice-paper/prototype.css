@@ -1,5 +1,5 @@
 /* PROTOTYPE (issue #68): throwaway. What the invoice paper needs beyond
- * app/proposal-paper.css: its title, the Amount Due block pulled in under the
+ * app/proposal-paper.css: the Amount Due block pulled in under the
  * lines, the stamp, and the variant switcher. */
 
 /* The stamp is placed against the sheet, in the empty right half of the
@@ -8,14 +8,8 @@
   position: relative;
 }
 
-.ip-title {
-  font-size: 13.5pt;
-  font-weight: bold;
-  margin: 4pt 0 0;
-}
-
 .ip-facts {
-  margin-top: 6pt;
+  margin-top: 4pt;
 }
 
 .ip-lines td:first-child {
@@ -59,9 +53,9 @@
   right: 0.75in;
   transform: rotate(-12deg);
   padding: 6pt 18pt 8pt;
-  border: 3.5pt solid #b91c1c;
+  border: 3.5pt solid #15803d;
   border-radius: 6pt;
-  color: #b91c1c;
+  color: #15803d;
   font: bold 36pt/1 Tinos, "Times New Roman", Times, serif;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -82,8 +76,8 @@
 }
 
 .ip-stamp-void {
-  color: #444;
-  border-color: #444;
+  color: #b91c1c;
+  border-color: #b91c1c;
 }
 
 /* ── The variant switcher: chrome, never part of the paper ────────────── */

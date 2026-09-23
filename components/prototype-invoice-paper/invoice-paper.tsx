@@ -2,8 +2,10 @@
 // settled on "Decide the invoice paper content and the invoice emails" (#66),
 // drawn with the proposal paper's own classes (app/proposal-paper.css) and a
 // few of its own (app/prototype/invoice-paper/prototype.css): one sheet, the
-// letterhead on top, the cover block in the proposal's idiom, the lines, the
-// Amount Due under the proposal's double rule, How to pay, and one line
+// letterhead on top, the cover block in the proposal's idiom, the lines
+// before tax, then Subtotal, Sales Tax and Amount Due under the proposal's
+// double rule (Washington wants the tax stated separately, RCW 82.08.050;
+// the owner asked for it on 2026-09-23), How to pay, and one line
 // placing the invoice under the proposal's signed Terms. A PAID or VOID stamp
 // lies across the sheet once the owner has marked it.
 
@@ -12,7 +14,7 @@ import { formatCentsExact } from "@/lib/money";
 import { paperSerifStack } from "@/lib/paper-fonts";
 import { paperDate } from "@/lib/proposal-paper";
 
-import { amountDueCents, type PaperInvoice } from "./fixtures";
+import { amountDueCents, subtotalCents, taxCents, type PaperInvoice } from "./fixtures";
 
 export function InvoicePaper({
   invoice,
@@ -38,8 +40,6 @@ export function InvoicePaper({
       <section className="pd-page ip-page">
         <Letterhead />
 
-        <div className="ip-title">Invoice {invoice.number}</div>
-
         <CoverBlock invoice={invoice} />
 
         <table className="pd-qty ip-lines">
@@ -62,6 +62,14 @@ export function InvoicePaper({
         <div className="pd-grand ip-due">
           <table className="pd-grand-table">
             <tbody>
+              <tr>
+                <th scope="row">Subtotal</th>
+                <td>{formatCentsExact(subtotalCents(invoice))}</td>
+              </tr>
+              <tr>
+                <th scope="row">{taxLabel(invoice.taxRate)}</th>
+                <td>{formatCentsExact(taxCents(invoice))}</td>
+              </tr>
               <tr className="pd-grand-total">
                 <th scope="row">Amount Due</th>
                 <td className="ip-amount">{formatCentsExact(due)}</td>
@@ -126,6 +134,7 @@ function Letterhead() {
 // invoice's facts in it.
 function CoverBlock({ invoice }: { invoice: PaperInvoice }) {
   const rows: { label: string; values: string[]; spaced?: boolean }[] = [
+    { label: "Invoice", values: [invoice.number] },
     { label: "Date Sent", values: [paperDate(invoice.sentAt)] },
     { label: "Due", values: ["On receipt"] },
     { label: "Bill To", values: [invoice.customerName], spaced: true },
@@ -151,6 +160,12 @@ function CoverBlock({ invoice }: { invoice: PaperInvoice }) {
       </tbody>
     </table>
   );
+}
+
+// The proposal paper's tax label (components/proposal-paper.tsx, taxLabel).
+function taxLabel(rate: number): string {
+  const percent = (rate * 100).toLocaleString("en-US", { maximumFractionDigits: 4 });
+  return `Sales Tax (${percent}%)`;
 }
 
 // The sheet's footer for a browser's print: the invoice number on the left and

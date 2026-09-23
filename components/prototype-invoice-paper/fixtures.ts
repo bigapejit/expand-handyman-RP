@@ -14,7 +14,11 @@ export type PaperInvoice = {
   site: { street: string; city: string };
   proposalCode: string;
   proposalName: string;
+  // Pre-tax lines. Washington requires the sales tax stated separately on an
+  // invoice (RCW 82.08.050), so the paper sums them, adds the proposal's
+  // frozen rate, and shows Amount Due, as the proposal's Grand Total does.
   lines: InvoiceLine[];
+  taxRate: number;
   // The owner-set Zelle email (#62).
   zelleEmail: string;
   // The day the money arrived, once marked paid (#65).
@@ -23,8 +27,16 @@ export type PaperInvoice = {
   voidedOn?: number;
 };
 
-export function amountDueCents(invoice: PaperInvoice): number {
+export function subtotalCents(invoice: PaperInvoice): number {
   return invoice.lines.reduce((sum, line) => sum + line.cents, 0);
+}
+
+export function taxCents(invoice: PaperInvoice): number {
+  return Math.round(subtotalCents(invoice) * invoice.taxRate);
+}
+
+export function amountDueCents(invoice: PaperInvoice): number {
+  return subtotalCents(invoice) + taxCents(invoice);
 }
 
 const proposal = {
@@ -33,11 +45,12 @@ const proposal = {
   proposalCode: "3107KAUFFMAN-P1",
   proposalName: "Kitchen faucet and hallway repair",
   zelleEmail: "pay@expandhandyman.com",
+  taxRate: 0.087,
 };
 
-// $4,000.00 + 8.7% tax = $4,348.00; a 50% Deposit is $2,174.00.
-const totalCents = 434_800;
-const depositCents = 217_400;
+// $4,000.00 before tax; a 50% Deposit is $2,000.00 before tax.
+const jobCents = 400_000;
+const depositCents = 200_000;
 
 const deposit: PaperInvoice = {
   ...proposal,
@@ -45,28 +58,24 @@ const deposit: PaperInvoice = {
   kind: "deposit",
   sentAt: Date.UTC(2026, 8, 23, 17, 42, 10),
   lines: [
-    {
-      description: `Deposit for Proposal ${proposal.proposalCode} (50% of $4,348.00)`,
-      cents: depositCents,
-    },
+    { description: `Deposit (50%) for ${proposal.proposalName}`, cents: depositCents },
   ],
 };
 
-// The final invoice as the owner sent it: the balance line the app prefilled,
-// then two lines they typed, one a credit.
+// The final invoice as the owner sent it: the job at its proposed price less
+// the deposit already invoiced, both prefilled, then two lines they typed,
+// one a credit.
 const final: PaperInvoice = {
   ...proposal,
   number: "INV-1002",
   kind: "final",
   sentAt: Date.UTC(2026, 9, 14, 21, 5, 0),
   lines: [
-    {
-      description: `Balance of Proposal ${proposal.proposalCode}, $4,348.00 less $2,174.00 invoiced`,
-      cents: totalCents - depositCents,
-    },
+    { description: proposal.proposalName, cents: jobCents },
+    { description: "Less deposit invoiced (INV-1001)", cents: -depositCents },
     {
       description: "Material allowance credit: kitchen faucet came in under",
-      cents: -8_640,
+      cents: -8_000,
     },
     {
       description: "Approved extra: replace corroded P-trap under the kitchen sink",
