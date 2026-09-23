@@ -674,6 +674,23 @@ describe("Proposal views", () => {
     });
   });
 
+  test("a view's closing beacon still counts after its link is withdrawn", async () => {
+    vi.setSystemTime(new Date("2026-09-23T10:00:00Z"));
+    const { t, owner, liveToken, sendable } = fixture();
+    const { customerId, proposalId } = await sendable();
+    await owner.action(api.proposals.send, { proposalId });
+    const token = await liveToken(customerId, proposalId);
+    const viewId = await t.mutation(api.signingLinks.opened, { token });
+    vi.setSystemTime(new Date("2026-09-23T10:00:15Z"));
+    await owner.mutation(api.proposals.withdraw, { proposalId });
+    // The page swaps to "no longer live" and sends what it had read.
+    await t.fetch("/seen", {
+      method: "POST",
+      body: JSON.stringify({ viewId, token, kind: "proposal" }),
+    });
+    expect((await t.run((ctx) => ctx.db.get(viewId!)))?.viewedMs).toBe(15_000);
+  });
+
   test("the staff paper writes nothing to the view log", async () => {
     const { t, owner, sendable } = fixture();
     const { proposalId } = await sendable();

@@ -32,6 +32,10 @@ export function useViewHeartbeat<ViewId extends string>(
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", close);
+      // The page can go without the tab going: a link withdrawn or re-sent
+      // while it is open swaps it for "no longer live". The time since the
+      // last heartbeat was still read, so it is sent now.
+      close();
     };
   }, [view, seen, token, kind]);
 }
