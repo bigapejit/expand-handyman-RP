@@ -42,7 +42,7 @@ This adds a table and two indexes, so run `npx convex deploy --yes` after mergin
 
 ## Frozen customer details
 
-A document is a snapshot. Issuing its signing link copies the customer's name onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again. Documents issued before Sites also copied the customer's one free-text address; they keep showing it in the editor header and on the signing page, and a withdrawn one drops it with the rest of the copy.
+A document is a snapshot. Issuing its signing link copies the customer's name onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again. Documents issued before Sites also copied the customer's one free-text address; they keep showing it in the document editor's header, and a withdrawn one drops it with the rest of the copy.
 
 Documents issued before this change carry no copy, and until they are backfilled they still follow a renamed customer. Run the one-off backfill immediately after `npx convex deploy --yes`:
 
@@ -50,7 +50,7 @@ Documents issued before this change carry no copy, and until they are backfilled
 npx convex run --prod migrations:backfillCustomerDetails
 ```
 
-It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Three tests in `tests/signing.test.ts` cover the frozen issued document, the live draft and the backfill.
+It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Five tests in `tests/signing.test.ts` cover the frozen issued document, the site text kept by documents issued before Sites, edits reaching only drafts, the live draft and the backfill.
 
 ## Sites and address lookup
 
@@ -78,4 +78,4 @@ Customers created before Sites carry one free-text address in `customers.site`. 
 npx convex run --prod migrations:sitesFromCustomers
 ```
 
-It prints `{ migrated: [{ customer, site }], failed: [{ customer, site, reason }] }`, where `site` is the new site's name for a migrated customer and the original text for a failed one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Eight tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
+It prints `{ migrated: [{ customer, site }], failed: [{ customer, address, reason }] }`: the site name each migrated customer now has, and the original text of each address that failed. A customer who already had that site, added by hand, is listed as migrated to it and gets no second one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Eight tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.

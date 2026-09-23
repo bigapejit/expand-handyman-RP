@@ -6,7 +6,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { customerDetails } from "./documents";
-import { insertSite, place } from "./sites";
+import { findSite, insertSite, place } from "./sites";
 import {
   LookupFailed,
   MAX_LOOKUP,
@@ -14,7 +14,6 @@ import {
   placesKey,
   suggestAddresses,
 } from "../lib/places";
-import { sameUnit } from "../lib/sites";
 
 // One transaction can only read and write so much, so the backfill takes a
 // bounded page at a time. Freezing a document removes it from the next page,
@@ -47,7 +46,7 @@ export const backfillCustomerDetails = internalMutation({
 
 type Report = {
   migrated: { customer: string; site: string }[];
-  failed: { customer: string; site: string; reason: string }[];
+  failed: { customer: string; address: string; reason: string }[];
 };
 
 // One-off. Customers from before Sites carry one free-text address. Each goes
@@ -64,7 +63,8 @@ export const sitesFromCustomers = internalAction({
     const legacy = await ctx.runQuery(internal.migrations.legacyAddresses, {});
     const outcomes = [];
     for (const customer of legacy) {
-      const text = customer.site.trim();
+      const text = customer.address.trim();
+      // A blank address has nothing to look up; it is only cleared.
       outcomes.push({
         ...customer,
         ...(text ? await resolve(key, text) : {}),
@@ -92,13 +92,15 @@ async function resolve(key: string, text: string) {
   }
 }
 
+// Every customer fits one run: there are two, and moveOntoSites writes them all
+// in one transaction.
 export const legacyAddresses = internalQuery({
   args: {},
   handler: async (ctx) =>
     (await ctx.db.query("customers").take(1000)).flatMap((c) =>
       c.site === undefined
         ? []
-        : [{ customerId: c._id, name: c.name, site: c.site }],
+        : [{ customerId: c._id, name: c.name, address: c.site }],
     ),
 });
 
@@ -110,7 +112,7 @@ export const moveOntoSites = internalMutation({
       v.object({
         customerId: v.id("customers"),
         name: v.string(),
-        site: v.string(),
+        address: v.string(),
         found: v.optional(v.object({ address: place, unit: v.string() })),
         reason: v.optional(v.string()),
       }),
@@ -124,14 +126,7 @@ export const moveOntoSites = internalMutation({
       if (o.found) {
         const { address, unit } = o.found;
         // Added by hand on the Sites tab before this ran: nothing to create.
-        const existing = (
-          await ctx.db
-            .query("sites")
-            .withIndex("by_customer_place", (q) =>
-              q.eq("customerId", customer._id).eq("placeId", address.placeId),
-            )
-            .collect()
-        ).find((s) => sameUnit(s.addressLine2, unit));
+        const existing = await findSite(ctx, customer._id, address.placeId, unit);
         const siteId =
           existing?._id ??
           (await insertSite(ctx, customer._id, address, {
@@ -141,7 +136,7 @@ export const moveOntoSites = internalMutation({
         const site = await ctx.db.get(siteId);
         report.migrated.push({ customer: o.name, site: site!.name });
       } else if (o.reason) {
-        report.failed.push({ customer: o.name, site: o.site, reason: o.reason });
+        report.failed.push({ customer: o.name, address: o.address, reason: o.reason });
       }
       // Rewritten without the legacy field, which the schema then drops.
       await ctx.db.replace(customer._id, {

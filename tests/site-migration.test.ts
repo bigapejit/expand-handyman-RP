@@ -168,17 +168,17 @@ describe("migrations.sitesFromCustomers", () => {
       expect.arrayContaining([
         {
           customer: "Nobody Known",
-          site: "Behind the old mill",
+          address: "Behind the old mill",
           reason: "Google found no match.",
         },
         {
           customer: "Several Places",
-          site: "Main St",
+          address: "Main St",
           reason: "Google found 3 matches.",
         },
         {
           customer: "Only A Street",
-          site: "Fourth Plain Blvd",
+          address: "Fourth Plain Blvd",
           reason: expect.stringContaining("no street address"),
         },
       ]),
