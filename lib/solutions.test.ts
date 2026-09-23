@@ -371,7 +371,7 @@ describe("The Material Allowance field", () => {
   // The live price only takes an allowance the save would keep: blank, "0",
   // cents, or anything that is not a figure yet add nothing while typing.
   it("reads nothing from a field that is not an allowance yet", () => {
-    for (const typed of ["", "  ", "0", "12.50", "-5", "abc"])
+    for (const typed of ["", "  ", "0", "12.50", "12.999", "-5", "abc"])
       expect(readMaterialAllowanceField(typed)).toBeUndefined();
   });
 
@@ -398,6 +398,9 @@ describe("The Material Allowance field", () => {
   it("passes an amount that is not an allowance through to be refused", () => {
     expect(materialAllowanceToStore("12.50", null)).toBe(1_250);
     expect(materialAllowanceToStore("0", 130_000)).toBe(0);
+    // Not rounded to the cent first, or "12.999" would be stored as $13.
+    expect(materialAllowanceToStore("12.999", null)).not.toBe(1_300);
+    expect(materialAllowanceToStore("12.999", 1_300)).not.toBeUndefined();
   });
 });
 

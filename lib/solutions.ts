@@ -157,16 +157,17 @@ export function readQuantity(raw: string): number {
   return readTypedNumber(raw);
 }
 
-// Money typed by hand, as whole cents. "$1,250.50", "1250.5", and
+// A unit cost typed by hand, as whole cents. "$1,250.50", "1250.5", and
 // " 1250.50 " are the same money.
-function readTypedCents(raw: string): number {
+export function readUnitCostCents(raw: string): number {
   return Math.round(readTypedNumber(raw) * 100);
 }
 
-// A unit cost is that money, named separately for the same reason a quantity
-// is.
-export function readUnitCostCents(raw: string): number {
-  return readTypedCents(raw);
+// An allowance typed by hand, in cents but deliberately not rounded to one:
+// "12.999" has to reach the fault as the fraction it is rather than as $13.
+// Whole dollars times 100 are exact, so "$1,300.00" is still 130,000.
+function readAllowanceCents(raw: string): number {
+  return readTypedNumber(raw) * 100;
 }
 
 // The rows that are Line Items yet. A row with no name is not one — it is
@@ -244,7 +245,7 @@ export function materialAllowanceField(materialAllowanceCents: number): string {
 // the Solution at an amount that could never be stored.
 export function readMaterialAllowanceField(raw: string): number | undefined {
   if (raw.trim() === "") return undefined;
-  const cents = readTypedCents(raw);
+  const cents = readAllowanceCents(raw);
   return materialAllowanceFault(cents) === null ? cents : undefined;
 }
 
@@ -258,7 +259,7 @@ export function materialAllowanceToStore(
   stored: number | null,
 ): number | null | undefined {
   if (typed.trim() === "") return stored === null ? undefined : null;
-  const cents = readTypedCents(typed);
+  const cents = readAllowanceCents(typed);
   return cents === stored ? undefined : cents;
 }
 
