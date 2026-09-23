@@ -5,6 +5,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { customerDetails } from "./documents";
 import { findSite, insertSite, place } from "./sites";
 import {
@@ -94,12 +95,16 @@ async function resolve(key: string, text: string) {
   }
 }
 
-// Every customer fits one run: there are two, and moveOntoSites writes them all
-// in one transaction.
+// The free-text address customers had before Sites. The schema no longer
+// declares it, so only a deployment the migration has not yet run on holds it.
+type LegacyCustomer = Doc<"customers"> & { site?: string };
+
+// Every customer fits one run: there are a handful, and moveOntoSites writes
+// them all in one transaction.
 export const legacyAddresses = internalQuery({
   args: {},
   handler: async (ctx) =>
-    (await ctx.db.query("customers").take(1000)).flatMap((c) =>
+    (await ctx.db.query("customers").take(1000)).flatMap((c: LegacyCustomer) =>
       c.site === undefined
         ? []
         : [{ customerId: c._id, name: c.name, address: c.site }],
@@ -140,7 +145,7 @@ export const moveOntoSites = internalMutation({
       } else if (o.reason) {
         report.failed.push({ customer: o.name, address: o.address, reason: o.reason });
       }
-      // Rewritten without the legacy field, which the schema then drops.
+      // Rewritten without the legacy field, which the schema no longer declares.
       await ctx.db.replace(customer._id, {
         name: customer.name,
         email: customer.email,

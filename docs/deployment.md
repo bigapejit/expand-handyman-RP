@@ -66,11 +66,11 @@ npx convex env set GOOGLE_MAPS_API_KEY <key>
 npx convex env set --prod GOOGLE_MAPS_API_KEY <key>
 ```
 
-Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites keep their old address text until the one-off migration moves it onto sites.
+Without it the address box says "Address lookup is not set up". This adds the `sites` table and a placeholder `proposals` table, so run `npx convex deploy --yes` after merging. Customers added before Sites kept their old address text until the one-off migration below moved it onto sites.
 
 ## Moving legacy addresses onto Sites
 
-Customers created before Sites carry one free-text address in `customers.site`. A one-off action looks each non-empty one up through the same Places calls as the address box. When Google suggests exactly one place and that place is a street address, it becomes the customer's site; anything else creates no site and is reported with the original text, so the owner can add it by hand on the customer's Sites tab. Every lookup runs before anything is written, so a Google or network fault changes nothing and the run can simply be repeated. Each customer's legacy address is cleared as it is reported, which is what lets the schema drop the field.
+Customers created before Sites carried one free-text address in `customers.site`. A one-off action looks each non-empty one up through the same Places calls as the address box. When Google suggests exactly one place and that place is a street address, it becomes the customer's site; anything else creates no site and is reported with the original text, so the owner can add it by hand on the customer's Sites tab. Every lookup runs before anything is written, so a Google or network fault changes nothing and the run can simply be repeated. Each customer's legacy address is cleared as it is reported, which is what lets the schema drop the field.
 
 `GOOGLE_MAPS_API_KEY` must be set on the deployment first (see above). Then:
 
@@ -79,3 +79,5 @@ npx convex run --prod migrations:sitesFromCustomers
 ```
 
 It prints `{ migrated: [{ customer, site }], failed: [{ customer, address, reason }] }`: the site name each migrated customer now has, and the original text of each address that failed. A customer who already had that site, added by hand, is listed as migrated to it and gets no second one. Keep that output: after the run the failed addresses exist nowhere else. A second run finds nothing to do. Nine tests in `tests/site-migration.test.ts` cover it with stubbed Places responses.
+
+Once it has run on a deployment, that deployment holds no legacy addresses and the schema no longer declares `customers.site`. Convex refuses a schema that existing rows break, so a deployment the migration has not run on cannot take the schema without the field. Run the migration there first, from a build that still declares the field: pushing the schema drop before it would fail, and on production that fails the Vercel build, which runs `convex deploy`.
