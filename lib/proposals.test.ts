@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dollarsField,
   moveInOrder,
   otherSentLabel,
   proposalActivity,
@@ -8,12 +9,12 @@ import {
   proposalDecidedLine,
   proposalPanelHref,
   proposalStateLabel,
+  readDollarsField,
   readPercentField,
   readTaxRateField,
   reorder,
   sentLine,
   solutionPickLabel,
-  splitFieldValue,
   taxRateField,
   taxSourceLine,
 } from "./proposals";
@@ -170,17 +171,36 @@ describe("The rate field", () => {
   });
 });
 
-describe("The two linked percent fields", () => {
-  it("shows the deposit and the remainder", () => {
-    expect(splitFieldValue(25)).toEqual({ deposit: "25", final: "75" });
-  });
-
+describe("The Deposit fields", () => {
   it("reads a whole percent, and nothing else", () => {
     expect(readPercentField("25")).toBe(25);
     expect(readPercentField(" 25 ")).toBe(25);
     expect(readPercentField("")).toBeNull();
     expect(readPercentField("25.5")).toBeNull();
     expect(readPercentField("abc")).toBeNull();
+  });
+
+  it("reads a dollar figure however it is written, in cents", () => {
+    expect(readDollarsField("1500")).toBe(150_000);
+    expect(readDollarsField(" $1,500 ")).toBe(150_000);
+    expect(readDollarsField("1,500.5")).toBe(150_050);
+    expect(readDollarsField("0.29")).toBe(29);
+    expect(readDollarsField("0")).toBe(0);
+  });
+
+  it("waits on anything that is not yet a figure", () => {
+    expect(readDollarsField("")).toBeNull();
+    expect(readDollarsField("$")).toBeNull();
+    expect(readDollarsField("1500.")).toBeNull();
+    expect(readDollarsField("15.005")).toBeNull();
+    expect(readDollarsField("-100")).toBeNull();
+    expect(readDollarsField("abc")).toBeNull();
+  });
+
+  it("shows a set amount grouped, with cents only where there are some", () => {
+    expect(dollarsField(150_000)).toBe("1,500");
+    expect(dollarsField(150_050)).toBe("1,500.50");
+    expect(dollarsField(0)).toBe("0");
   });
 });
 

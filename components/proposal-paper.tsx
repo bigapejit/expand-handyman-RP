@@ -21,7 +21,12 @@ import {
   type PaperSignature,
   type PaperSolution,
 } from "@/lib/proposal-paper";
-import { splitPayment, type ProposalTax } from "@/lib/proposal-pricing";
+import {
+  paymentRows,
+  splitPayment,
+  storedDeposit,
+  type ProposalTax,
+} from "@/lib/proposal-pricing";
 
 // One proposal as paper: the **Proposal paper** (CONTEXT.md). FRSG's
 // components/roof-report/proposal-document.tsx copied line for line, with the
@@ -349,7 +354,7 @@ function SolutionBlock({ solution }: { solution: PaperSolution }) {
 // where tax is charged, the Grand Total under a double rule, and the
 // Estimator's signature under it.
 function GrandTotal({ proposal }: { proposal: PaperProposal }) {
-  const payment = splitPayment(proposal.totalCents, proposal.depositPercent);
+  const payments = paymentRows(splitPayment(proposal.totalCents, storedDeposit(proposal)));
   const taxed = proposal.tax.source !== "none";
   const estimator = proposal.estimator.name;
 
@@ -357,18 +362,12 @@ function GrandTotal({ proposal }: { proposal: PaperProposal }) {
     <div className="pd-grand">
       <table className="pd-grand-table">
         <tbody>
-          {payment.depositPercent > 0 ? (
-            <tr>
-              <th scope="row">{payment.depositPercent}% due on signing</th>
-              <td>{formatCentsExact(payment.depositCents)}</td>
+          {payments.map((payment) => (
+            <tr key={payment.label}>
+              <th scope="row">{payment.label}</th>
+              <td>{formatCentsExact(payment.cents)}</td>
             </tr>
-          ) : null}
-          {payment.finalPercent > 0 ? (
-            <tr>
-              <th scope="row">{payment.finalPercent}% due on completion</th>
-              <td>{formatCentsExact(payment.finalCents)}</td>
-            </tr>
-          ) : null}
+          ))}
           {taxed ? (
             <tr>
               <th scope="row">Subtotal</th>

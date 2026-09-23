@@ -1,6 +1,6 @@
 // The money on a Proposal, and the words that go with it (CONTEXT.md,
-// **Proposal** / **Deposit**). Ported from FRSG's shared/proposal-pricing.ts
-// without its recipient blockers: Expand has one recipient, the customer. A
+// **Proposal** / **Deposit** / **Balance**). Ported from FRSG's
+// shared/proposal-pricing.ts without its recipient blockers: Expand has one recipient, the customer. A
 // Solution's price arrives already decided by lib/solution-pricing.ts —
 // nothing here reaches into a cost buildup — and this module adds the three
 // things a Proposal contributes: what its Solutions come to, what tax the
@@ -18,6 +18,7 @@
 // row, the panel, and the Proposals page all have to call a Proposal the same
 // thing.
 
+import { formatCentsExact } from "./money";
 import type { SolutionPrice } from "./solution-pricing";
 
 // The rate a Proposal charges, and where it came from. `source` is the whole
@@ -77,53 +78,114 @@ export function proposalMoney(
 // Expand's default, in whole percent: half on signing, half on completion.
 export const DefaultDepositPercent = 50;
 
-// What the customer pays and when. Two payments and no more — there are no
-// progress payments and no retainage (CONTEXT.md, **Deposit**).
-export type PaymentSplit = {
+// The part of the total due on signing, as the owner stated it: a whole
+// percent of the total, or a set amount in cents that stays as typed when the
+// total moves (CONTEXT.md, **Deposit**).
+export type Deposit =
+  | { kind: "percent"; percent: number }
+  | { kind: "amount"; cents: number };
+
+// A Deposit as a proposal stores it. The percent is always there — it is the
+// one a proposal goes back to when the owner switches away from a set amount —
+// and a set amount, where there is one, overrides it. Every proposal and every
+// frozen offer from before set amounts existed is therefore a percent Deposit
+// as it stands.
+export function storedDeposit(stored: {
   depositPercent: number;
-  finalPercent: number;
+  depositCents?: number;
+}): Deposit {
+  return stored.depositCents === undefined
+    ? { kind: "percent", percent: stored.depositPercent }
+    : { kind: "amount", cents: stored.depositCents };
+}
+
+// What the customer pays and when. Two payments and no more — there are no
+// progress payments and no retainage (CONTEXT.md, **Deposit**, **Balance**).
+export type PaymentSplit = {
+  deposit: Deposit;
   depositCents: number;
-  finalCents: number;
+  balanceCents: number;
 };
 
-// The deposit is the percentage; the final payment is whatever is left. Taking
-// the remainder rather than applying a second percentage is what makes the two
-// figures the customer reads add up to the one they owe, at every split and on
-// every odd cent.
-export function splitPayment(
-  totalCents: number,
-  depositPercent: number,
-): PaymentSplit {
-  const depositCents = Math.round((totalCents * depositPercent) / 100);
+// The Balance is whatever the Deposit leaves. Taking the remainder rather than
+// applying a second percentage is what makes the two figures the customer
+// reads add up to the one they owe, at every split and on every odd cent. A
+// set amount above the total leaves a Balance below zero; Send refuses that
+// (`depositBlockers`), so only a draft can hold one.
+export function splitPayment(totalCents: number, deposit: Deposit): PaymentSplit {
+  const depositCents =
+    deposit.kind === "percent"
+      ? Math.round((totalCents * deposit.percent) / 100)
+      : deposit.cents;
 
-  return {
-    depositPercent,
-    finalPercent: 100 - depositPercent,
-    depositCents,
-    finalCents: totalCents - depositCents,
-  };
+  return { deposit, depositCents, balanceCents: totalCents - depositCents };
+}
+
+// The two payment rows as the proposal paper labels them. A percent keeps the
+// wording it always had; a set amount names the Deposit and the Balance,
+// because a percent worked back from a typed figure is not one anybody chose.
+export function paymentRowLabels(deposit: Deposit): { deposit: string; balance: string } {
+  return deposit.kind === "percent"
+    ? {
+        deposit: `${deposit.percent}% due on signing`,
+        balance: `${100 - deposit.percent}% due on completion`,
+      }
+    : { deposit: "Deposit due on signing", balance: "Balance due on completion" };
+}
+
+// The rows the paper prints: a payment of nothing is left off, so 0% and 100%
+// — and a set amount of $0 or of the whole total — print one payment.
+export function paymentRows(split: PaymentSplit): { label: string; cents: number }[] {
+  const labels = paymentRowLabels(split.deposit);
+  const none =
+    split.deposit.kind === "percent"
+      ? { deposit: split.deposit.percent === 0, balance: split.deposit.percent === 100 }
+      : { deposit: split.depositCents === 0, balance: split.balanceCents === 0 };
+  return [
+    ...(none.deposit ? [] : [{ label: labels.deposit, cents: split.depositCents }]),
+    ...(none.balance ? [] : [{ label: labels.balance, cents: split.balanceCents }]),
+  ];
 }
 
 // The Payment Terms in the customer's own words. At either end there is only
 // one payment, and saying "0% on completion" would describe a payment that
 // never happens.
-export function paymentTermsSentence(depositPercent: number): string {
-  if (depositPercent === 100) return "One payment on signing";
-  if (depositPercent === 0) return "One payment on completion";
-  return `${depositPercent}% on signing, ${100 - depositPercent}% on completion`;
+export function paymentTermsSentence(split: PaymentSplit): string {
+  const { deposit } = split;
+  if (deposit.kind === "percent") {
+    if (deposit.percent === 100) return "One payment on signing";
+    if (deposit.percent === 0) return "One payment on completion";
+    return `${deposit.percent}% on signing, ${100 - deposit.percent}% on completion`;
+  }
+  if (split.depositCents === 0) return "One payment on completion";
+  if (split.balanceCents === 0) return "One payment on signing";
+  return `${formatCentsExact(split.depositCents)} on signing, the balance on completion`;
 }
 
 // Every way a Proposal's own figures can fail to be figures, named once here
 // so the mutation that refuses one and the panel that words the refusal cannot
 // drift apart — the same division lib/solution-pricing.ts keeps around a
 // Line Item.
-export type ProposalFault = "deposit_percent_invalid" | "tax_rate_invalid";
+export type ProposalFault =
+  | "deposit_percent_invalid"
+  | "deposit_amount_invalid"
+  | "deposit_over_total"
+  | "tax_rate_invalid";
 
 // Whole percent, and both ends included: 0 and 100 are real Payment Terms.
 export function depositPercentFault(percent: number): ProposalFault | null {
   if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
     return "deposit_percent_invalid";
   }
+  return null;
+}
+
+// Whole cents, nothing below zero, and never more than the proposal comes to
+// as the owner sets it (CONTEXT.md, **Deposit**). A total that later drops
+// below a set amount is Send's to refuse, not this: the amount stays as typed.
+export function depositCentsFault(cents: number, totalCents: number): ProposalFault | null {
+  if (!Number.isSafeInteger(cents) || cents < 0) return "deposit_amount_invalid";
+  if (cents > totalCents) return "deposit_over_total";
   return null;
 }
 
@@ -139,6 +201,10 @@ export function proposalFaultMessage(fault: ProposalFault): string {
   switch (fault) {
     case "deposit_percent_invalid":
       return "The deposit must be a whole percent between 0 and 100.";
+    case "deposit_amount_invalid":
+      return "A set deposit is a dollar figure of $0 or more, such as 1,500.";
+    case "deposit_over_total":
+      return "The deposit can't be more than the proposal's total.";
     case "tax_rate_invalid":
       return "A sales tax rate is a decimal of the whole, such as 0.089 for 8.9%.";
   }
@@ -152,6 +218,7 @@ export type SendBlocker =
   | "no_solutions"
   | "unpriced_solution"
   | "no_tax_rate"
+  | "deposit_over_total"
   | "no_email";
 
 // Every reason at once, in the order they read: what the Proposal is missing,
@@ -175,6 +242,14 @@ export function sendBlockers(
   return blockers;
 }
 
+// A set Deposit stays as typed, so a total that drops after it was set can
+// leave the proposal asking for more on signing than it costs. Asked apart
+// from `sendBlockers` because it needs the total, which a Draft works out and
+// a frozen offer keeps.
+export function depositBlockers(split: PaymentSplit): SendBlocker[] {
+  return split.balanceCents < 0 ? ["deposit_over_total"] : [];
+}
+
 // FRSG asked this of each chosen Contact. Expand's one recipient is the
 // customer, so the question is whether their record holds an address to send
 // to (lib/customer.ts, `sendableEmail`). Kept apart from `sendBlockers`
@@ -191,6 +266,8 @@ export function sendBlockerMessage(blocker: SendBlocker): string {
       return "A Solution in this Proposal has no price.";
     case "no_tax_rate":
       return "This Washington Site has no sales tax rate yet.";
+    case "deposit_over_total":
+      return "The deposit is more than this Proposal's total.";
     case "no_email":
       return "The customer has no email address to send it to.";
   }

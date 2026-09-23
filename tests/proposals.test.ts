@@ -304,7 +304,7 @@ describe("proposals.update", () => {
       title: "Option A",
       notes: "Excludes permits.",
       depositPercent: 100,
-      payment: { depositPercent: 100, finalPercent: 0 },
+      payment: { deposit: { kind: "percent", percent: 100 }, balanceCents: 0 },
     });
     await owner.mutation(api.proposals.update, { proposalId, name: " ", notes: "" });
     expect(await read(customerId, proposalId)).toMatchObject({
@@ -324,6 +324,77 @@ describe("proposals.update", () => {
     await expect(
       owner.mutation(api.proposals.update, { proposalId, taxRate: 8.9 }),
     ).rejects.toThrow("decimal of the whole");
+  });
+
+  test("sets the deposit as an amount, and going back finds the percent it kept", async () => {
+    const { owner, customer, site, solution, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const deck = await solution(siteId, "Deck repair", 100_000);
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [deck],
+      depositPercent: 30,
+    });
+
+    // $1,100 and 8.9% tax is $1,197.90.
+    await owner.mutation(api.proposals.update, { proposalId, depositCents: 50_000 });
+    expect(await read(customerId, proposalId)).toMatchObject({
+      depositPercent: 30,
+      payment: {
+        deposit: { kind: "amount", cents: 50_000 },
+        depositCents: 50_000,
+        balanceCents: 69_790,
+      },
+    });
+
+    await owner.mutation(api.proposals.update, { proposalId, depositPercent: 30 });
+    expect(await read(customerId, proposalId)).toMatchObject({
+      payment: {
+        deposit: { kind: "percent", percent: 30 },
+        depositCents: 35_937,
+        balanceCents: 83_853,
+      },
+    });
+  });
+
+  test("refuses a set amount past the total, below zero, or named with a percent", async () => {
+    const { owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [await solution(siteId, "Deck repair", 100_000)],
+    });
+
+    await expect(
+      owner.mutation(api.proposals.update, { proposalId, depositCents: 119_791 }),
+    ).rejects.toThrow("more than the proposal's total");
+    for (const depositCents of [-1, 12.5])
+      await expect(
+        owner.mutation(api.proposals.update, { proposalId, depositCents }),
+      ).rejects.toThrow("dollar figure");
+    await expect(
+      owner.mutation(api.proposals.update, { proposalId, depositPercent: 50, depositCents: 100 }),
+    ).rejects.toThrow("not both");
+    // The whole total is one payment on signing, and allowed.
+    await owner.mutation(api.proposals.update, { proposalId, depositCents: 119_790 });
+  });
+
+  // Judged on what this same edit leaves, so a set amount typed with a new
+  // solution is not refused against the total from before it.
+  test("measures a set amount against the solutions picked in the same edit", async () => {
+    const { owner, customer, site, solution, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [await solution(siteId, "Deck repair", 100_000)],
+      depositCents: 100_000,
+    });
+    expect((await read(customerId, proposalId)).payment.depositCents).toBe(100_000);
   });
 
   test("an override keeps the location code and drops the quarter", async () => {
@@ -441,6 +512,24 @@ describe("proposals.duplicate", () => {
       expect((await read(customerId, original)).state).toBe(state);
     },
   );
+
+  test("copies a set Deposit", async () => {
+    const { owner, customer, site, solution, create, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const original = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId: original,
+      solutionIds: [await solution(siteId, "Deck", 100_000)],
+      depositCents: 40_000,
+    });
+
+    const copy = await owner.mutation(api.proposals.duplicate, { proposalId: original });
+    expect(await read(customerId, copy)).toMatchObject({
+      depositPercent: 50,
+      payment: { deposit: { kind: "amount", cents: 40_000 } },
+    });
+  });
 
   test("turns away anyone who is not the owner", async () => {
     const { stranger, customer, site, create } = fixture();

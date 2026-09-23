@@ -21,7 +21,12 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import { WashingtonNoticeToCustomer, type ProposalTerm } from "./expand-business";
-import { paymentTermsSentence, type ProposalTax } from "./proposal-pricing";
+import {
+  paymentTermsSentence,
+  splitPayment,
+  storedDeposit,
+  type ProposalTax,
+} from "./proposal-pricing";
 import { isWashingtonRegion } from "./wa-sales-tax";
 
 // RCW 18.27.114(1)(a): residential work priced at $1,000 or more. FRSG's
@@ -116,6 +121,10 @@ export type SealedProposalInput = {
     taxCents: number;
     totalCents: number;
     depositPercent: number;
+    // A set Deposit. Absent on a percent one, which leaves it out of the
+    // sealed document altogether, so a percent proposal seals exactly as it
+    // did before set amounts existed.
+    depositCents?: number;
     terms: ProposalTerm[];
     tax: ProposalTax;
     // The Notes and exclusions the letter printed: contract text, so inside
@@ -149,7 +158,10 @@ export function sealProposal(input: SealedProposalInput): SealedProposal {
     totalCents: input.offer.totalCents,
     tax: input.offer.tax,
     depositPercent: input.offer.depositPercent,
-    paymentTerms: paymentTermsSentence(input.offer.depositPercent),
+    depositCents: input.offer.depositCents,
+    paymentTerms: paymentTermsSentence(
+      splitPayment(input.offer.totalCents, storedDeposit(input.offer)),
+    ),
     terms: input.offer.terms,
     notes: input.offer.notes,
   });

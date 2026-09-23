@@ -237,6 +237,27 @@ describe("the sealed copy", () => {
 
   it("leaves an absent optional field out rather than writing null", () => {
     expect(sealProposal(input).document).not.toContain("notes");
+    expect(sealProposal(input).document).not.toContain("depositCents");
     expect(sealProposal(input).document).not.toContain("null");
+  });
+
+  // A set Deposit is Payment Terms the customer agreed to, so it is inside
+  // what the fingerprint covers, in figures and in words.
+  it("seals a set Deposit, and changes when it does", () => {
+    const set: SealedProposalInput = {
+      ...input,
+      offer: { ...input.offer, depositCents: 20_000 },
+    };
+    const larger: SealedProposalInput = {
+      ...input,
+      offer: { ...input.offer, depositCents: 25_000 },
+    };
+
+    expect(JSON.parse(sealProposal(set).document)).toMatchObject({
+      depositCents: 20_000,
+      paymentTerms: "$200.00 on signing, the balance on completion",
+    });
+    expect(sealProposal(set).fingerprint).not.toBe(sealProposal(input).fingerprint);
+    expect(sealProposal(set).fingerprint).not.toBe(sealProposal(larger).fingerprint);
   });
 });

@@ -37,6 +37,9 @@ export type PaperProposal = {
   taxCents: number;
   totalCents: number;
   depositPercent: number;
+  // A set Deposit, which overrides the percent (lib/proposal-pricing.ts,
+  // `storedDeposit`).
+  depositCents?: number;
   // The customer's answer, once given: an approved proposal carries its
   // signature, which the signed copy prints, and a declined one the day.
   signature?: PaperSignature;

@@ -63,14 +63,18 @@ An offer assembled from solutions and terms for one site, planned for a later ph
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
 
 **Deposit**:
-The whole percent of a proposal's total due on signing, with the rest due on completion. 50% unless the owner changes it on that proposal; 0% and 100% are allowed. The proposal only states these payment terms; payments are not recorded.
+The part of a proposal's total due on signing, with the rest due on completion. The owner states it either as a whole percent of the total (50% unless changed; 0% and 100% are allowed) or as a set amount that stays as typed when the total changes, and never more than the total. The proposal only states these payment terms; payments are not recorded.
 _Avoid_: Down payment, retainer
+
+**Balance**:
+What is left of a proposal's total after the Deposit, due on completion.
+_Avoid_: Final payment, remainder
 
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
 
 **Send**:
-Offering a draft proposal to the customer by email. Its solutions, prices, tax, terms, notes, Proposal ID, Estimator, customer name, site address and the email address it went to are fixed as they stand, so later edits to a solution, the customer or the site change only drafts. Refused while the proposal has no solutions, has an unpriced solution, has no tax rate, or the customer has no email address. An email that fails to go out does not undo the send.
+Offering a draft proposal to the customer by email. Its solutions, prices, tax, terms, notes, Proposal ID, Estimator, customer name, site address and the email address it went to are fixed as they stand, so later edits to a solution, the customer or the site change only drafts. Refused while the proposal has no solutions, has an unpriced solution, has no tax rate, asks for a Deposit larger than its total, or the customer has no email address. An email that fails to go out does not undo the send.
 _Avoid_: Issue, publish
 
 **Withdraw**:
