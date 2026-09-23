@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
@@ -29,7 +29,6 @@ import {
   lineItemUnitLabel,
   type LineItemUnit,
 } from "@/lib/line-item-units";
-import type { SolutionLineItem } from "@/lib/solution-pricing";
 import {
   blankLineItemDraft,
   draftPrice,
@@ -51,12 +50,7 @@ import { cn, errorMessage } from "@/lib/utils";
 
 type Solution = FunctionReturnType<typeof api.solutions.forCustomer>[number];
 type CatalogSuggestion = FunctionReturnType<typeof api.catalog.suggestions>[number];
-type SolutionPatch = {
-  title?: string;
-  description?: string;
-  lineItems?: SolutionLineItem[];
-  markupPercent?: number;
-};
+type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId">;
 
 // The customer's Solutions tab, ported from FRSG's site-solutions.tsx one level
 // up: every solution across the customer's sites, each tagged with its site.
@@ -305,12 +299,18 @@ function LineItemTable({
   const nextKey = useRef(0);
 
   // Stored only when the table says something different and whole. A refusal
-  // puts the table back to the lines the solution still holds.
+  // puts the table back to the lines the solution still holds; a save marks
+  // every named row stored, so emptying one later waits as a retyped name
+  // rather than deleting the line.
   const commit = async (rows: LineItemDraft[]) => {
     const lineItems = lineItemsToStore(rows);
     if (lineItems === null) return;
     if (sameLineItems(lineItems, solution.lineItems)) return;
-    if (!(await onSave({ lineItems }))) setDrafts(draftsFromLineItems(solution.lineItems));
+    if (await onSave({ lineItems }))
+      setDrafts((current) =>
+        current.map((row) => (row.name.trim() ? { ...row, stored: true } : row)),
+      );
+    else setDrafts(draftsFromLineItems(solution.lineItems));
   };
 
   const editRow = (index: number, patch: Partial<LineItemDraft>) => {

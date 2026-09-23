@@ -202,9 +202,8 @@ export function markupField(markupPercent: number): string {
   return String(markupPercent);
 }
 
-// A whole percent as typed, or nothing yet — the same rule the Proposal's
-// Payment Terms split keeps (`readPercentField`), because a fraction of a
-// percent is not a Markup Expand sets. The ceiling is the mutation's own
+// A whole percent as typed, or nothing yet, because a fraction of a percent
+// is not a Markup Expand sets. The ceiling is the mutation's own
 // (`MaxSolutionMarkupPercent`, shared rather than repeated), so the field
 // snaps back rather than sending a figure that could only come back refused.
 export function readMarkupField(raw: string): number | null {
@@ -225,7 +224,7 @@ export function markupToStore(typed: string, stored: number): number | null {
 }
 
 // Moving a row past its neighbour. Past either end is simply nothing
-// happening, exactly as reordering the Solutions themselves is.
+// happening.
 export function moveDraft(
   drafts: readonly LineItemDraft[],
   index: number,

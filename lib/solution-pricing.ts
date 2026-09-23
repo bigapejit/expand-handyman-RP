@@ -86,7 +86,7 @@ export type SolutionLineItem = {
 // The customer-facing half of a Line Item: what it is, how much of it, and
 // what that counts. No unit cost and no line cost — those are internal to
 // Expand (CONTEXT.md, **Line Item**) — which is exactly why this is the shape
-// Send freezes onto a Proposal and the Proposal Document prints.
+// Send freezes onto a Proposal and the proposal paper prints.
 export type OfferedLineItem = {
   name: string;
   quantity: number;
