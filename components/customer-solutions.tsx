@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
@@ -561,6 +561,8 @@ function MobileLabel({ label, children }: { label: string; children: ReactNode }
 
 // The name field, with names used before offered under it. The Catalog is
 // asked only while the field has the cursor and only about what has been typed.
+// Focus stays in the field: the arrow keys move through the suggestions, Enter
+// takes one and Escape puts the list away, as a combobox does.
 function LineItemNameField({
   value,
   onChange,
@@ -572,7 +574,10 @@ function LineItemNameField({
   onCommit: () => void;
   onTake: (suggestion: CatalogSuggestion) => void;
 }) {
+  const listId = useId();
   const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [active, setActive] = useState(-1);
   const prefix = value.trim();
   const matches = useQuery(
     api.catalog.suggestions,
@@ -582,40 +587,90 @@ function LineItemNameField({
   const offered = (matches ?? []).filter(
     (match) => match.name.toLowerCase() !== prefix.toLowerCase(),
   );
+  const open = focused && !dismissed && offered.length > 0;
+  const highlighted = open && active < offered.length ? active : -1;
+
+  const take = (suggestion: CatalogSuggestion) => {
+    onTake(suggestion);
+    setDismissed(true);
+    setActive(-1);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!open) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const last = offered.length - 1;
+      setActive(
+        event.key === "ArrowDown"
+          ? highlighted >= last ? 0 : highlighted + 1
+          : highlighted <= 0 ? last : highlighted - 1,
+      );
+    } else if (event.key === "Enter" && highlighted >= 0) {
+      event.preventDefault();
+      take(offered[highlighted]);
+    } else if (event.key === "Escape") {
+      // Closes the list, not the panel around it.
+      event.preventDefault();
+      event.stopPropagation();
+      setDismissed(true);
+    }
+  };
 
   return (
     <div className="relative">
       <Input
         aria-label="Line item name"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
         value={value}
         placeholder="What this line is"
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setDismissed(false);
+          setActive(-1);
+        }}
+        onKeyDown={onKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);
+          setActive(-1);
           onCommit();
         }}
         className="w-full bg-white"
       />
-      {focused && offered.length > 0 ? (
-        <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border bg-white shadow-lg">
-          {offered.map((match) => (
-            <li key={match.name}>
-              <button
-                type="button"
-                // Taken on mouse-down, because the blur that closes this list
-                // would otherwise land first.
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onTake(match);
-                }}
-                className="flex w-full items-center justify-between gap-4 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-              >
-                <span className="truncate">{match.name}</span>
-                <span className="shrink-0 text-xs text-slate-500 tabular-nums">
-                  {unitCostField(match.lastUnitCostCents) || "—"} / {match.lastUnit}
-                </span>
-              </button>
+      {open ? (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Line items used before"
+          className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border bg-white shadow-lg"
+        >
+          {offered.map((match, index) => (
+            <li
+              key={match.name}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === highlighted}
+              // Taken on mouse-down, because the blur that closes this list
+              // would otherwise land first.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                take(match);
+              }}
+              onMouseEnter={() => setActive(index)}
+              className={cn(
+                "flex w-full cursor-pointer items-center justify-between gap-4 px-3 py-1.5 text-sm",
+                index === highlighted && "bg-slate-100",
+              )}
+            >
+              <span className="truncate">{match.name}</span>
+              <span className="shrink-0 text-xs text-slate-500 tabular-nums">
+                {unitCostField(match.lastUnitCostCents) || "—"} / {match.lastUnit}
+              </span>
             </li>
           ))}
         </ul>
