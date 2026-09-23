@@ -173,6 +173,9 @@ export const list = query({
   },
 });
 
+// How many decided proposals the Dashboard shows, FRSG's figure.
+const DashboardDecidedLimit = 8;
+
 // The Dashboard's Proposals card, ported from FRSG's `dashboardForStaff`: what
 // is out with a customer across every site, the one waiting longest first and
 // each saying whether the customer has opened its current link, then the few
@@ -183,8 +186,6 @@ export const list = query({
 // on. The decided ones are read whole and cut in memory, because the index
 // orders them by when they were sent and the card wants when they were
 // decided; that costs the offers made, never the drafts.
-const DashboardDecidedLimit = 8;
-
 export const dashboard = query({
   args: {},
   handler: async (ctx) => {
@@ -224,10 +225,10 @@ export const dashboard = query({
       }),
     );
     const decidedRows = await Promise.all(
-      decided.map(async ({ proposal, decidedAt }) => {
+      decided.map(async ({ proposal, decidedAt: at }) => {
         const row = await dashboardRow(ctx, proposal);
         if (!row) return null;
-        return { ...row, state: proposal.state as "approved" | "declined", decidedAt };
+        return { ...row, state: proposal.state as "approved" | "declined", decidedAt: at };
       }),
     );
     return {
