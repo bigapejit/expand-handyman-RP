@@ -71,37 +71,45 @@ What is left of a proposal's total after the Deposit, due on completion.
 _Avoid_: Final payment, remainder
 
 **Invoice**:
-A request for payment that belongs to one approved proposal: a deposit invoice, a progress invoice or a balance invoice. A draft, sent or declined proposal has none. A new invoice may be raised while an earlier one is unpaid.
+A request for payment that belongs to one approved proposal: a deposit invoice, an advance invoice, a progress invoice or the final invoice. A draft, sent or declined proposal has none. A new invoice may be raised while an earlier one is unpaid.
 _Avoid_: Bill, statement, receipt
 
 **Deposit invoice**:
-The invoice made by itself when the customer approves a proposal, for exactly the Deposit they signed for. Its amount is never changed. A proposal with a 0% Deposit gets none.
+The invoice made by itself when the customer approves a proposal, for exactly the Deposit they signed for. Its amount is never changed. A proposal with a 0% Deposit gets none. Counts as money On account.
 
-**Progress invoice**:
-An invoice for an amount the owner types, raised any time between the deposit and the balance, with a note and the solutions it marks as done. Never more than what is Left to bill. A solution is marked done on one invoice only; marking done a solution that has a material allowance settles that allowance on the same invoice.
+**Advance invoice**:
+An invoice for a set amount the owner types, asked for ahead of any solution being done, for when a long job needs money before its first solution is finished. Never more than what is Left to bill. Counts as money On account.
 _Avoid_: Partial invoice, interim invoice
 
-**Balance invoice**:
-The last invoice of a proposal, made when the owner presses Invoice the balance, for everything Left to bill: it settles every allowance not yet settled and carries the approved extras. One per proposal. When it would be $0 none is made and the proposal is simply Fully billed. It can be negative only when the customer already paid more than the settled total, which is a credit the owner refunds by hand.
-_Avoid_: Final invoice, closing invoice
+**On account**:
+Everything invoiced ahead of work done, the deposit and any advances, whether paid yet or not. Taken off the progress and final invoices, oldest first, until used up, and printed on each as "less on account".
+_Avoid_: Credit (which is what the customer is owed back), prepayment
+
+**Progress invoice**:
+An invoice for the solutions the owner ticks as done, each at the price the customer signed for, with any material allowance replaced by its settlement; nothing is typed but real materials costs. A solution is ticked on one invoice only. Whatever is On account comes off it. Made even when nothing is left due, as the record of what was done.
+_Avoid_: Partial invoice, interim invoice, per-solution invoice
+
+**Final invoice**:
+The progress invoice that ticks the last solution done. It also carries the approved extras and, when more was On account than the work came to, shows the credit the owner owes back and refunds by hand. One per proposal.
+_Avoid_: Balance invoice, closing invoice, final payment (a payment is money in, not the request)
 
 **Left to bill**:
-The proposal's total, less every unsettled material allowance, plus the real cost of every settled one, less everything already invoiced. A progress invoice never goes past it.
+The price of every solution not yet ticked done, less its unsettled material allowance, plus the real cost of every settled one, less what is On account and not yet used up. An advance invoice never goes past it.
 _Avoid_: Remaining, outstanding (which is about payment, not billing)
 
 **Allowance settlement**:
-Replacing a material allowance with what its materials really cost, once that solution is done. Printed on the invoice that settles it as the allowance, the real cost and the difference either way. The written approval the Terms require before going over is the owner's to hold; nothing checks it.
+Replacing a material allowance with what its materials really cost, typed when its solution is ticked done. Printed on that invoice as the allowance, the real cost and the difference either way; a credit when under, an overage when over. The written approval the Terms require before going over is the owner's to hold; nothing checks it.
 _Avoid_: Reconciliation, true-up
 
 **Approved extra**:
-Work outside the signed proposal that the customer approved in writing under the Terms' Changes clause, billed on the balance invoice as a description and an amount. It never changes the proposal's total.
+Work outside the signed proposal that the customer approved in writing under the Terms' Changes clause, billed on the final invoice as a description and an amount. It never changes the proposal's total.
 _Avoid_: Change order, add-on, upcharge
 
 **Adjustment**:
 An allowance settlement or an approved extra: the lines that move an invoice away from the signed price.
 
 **Fully billed**:
-A proposal whose balance invoice exists, or whose balance came to $0. Nothing more is invoiced on it: a forgotten extra means voiding the balance invoice and making it again, and a change found later is a new proposal.
+A proposal whose final invoice exists. Nothing more is invoiced on it: a forgotten extra means voiding the final invoice and making it again, and a change found later is a new proposal.
 _Avoid_: Closed, complete, paid (payment is a different question)
 
 **Proposal ID**:
