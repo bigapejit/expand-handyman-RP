@@ -6,10 +6,10 @@ const zone = "America/Los_Angeles";
 const now = new Date("2026-09-23T16:00:00Z").getTime();
 const at = (iso: string) => new Date(iso).getTime();
 
-describe("When a document's link was issued", () => {
+describe("When a document's link was created", () => {
   test("reads to the minute", () => {
     expect(issuedLine(at("2026-09-01T17:05:00Z"), "en-US", zone)).toBe(
-      "Issued Sep 1, 2026, 10:05 AM",
+      "Link created Sep 1, 2026, 10:05 AM",
     );
   });
 });

@@ -65,10 +65,21 @@ export const dashboard = query({
   args: {},
   handler: async (ctx) => {
     await requireOwner(ctx);
-    const documents = await ctx.db.query("documents").order("desc").take(500);
+    const byStatus = (status: Doc<"documents">["status"]) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_status", (q) => q.eq("status", status));
+    // Everything out for signature, however old: those are the ones to chase.
+    const waiting = [
+      ...(await byStatus("ready").collect()),
+      ...(await byStatus("viewed").collect()),
+    ];
+    const answered = [
+      ...(await byStatus("signed").order("desc").take(200)),
+      ...(await byStatus("declined").order("desc").take(200)),
+    ];
     const out = await Promise.all(
-      documents
-        .filter((d) => d.status === "ready" || d.status === "viewed")
+      waiting
         .sort((a, b) => (a.issuedAt ?? 0) - (b.issuedAt ?? 0))
         .map(async (d) => {
           const views = (
@@ -91,12 +102,11 @@ export const dashboard = query({
         }),
     );
     const decided = await Promise.all(
-      documents
-        .flatMap((d) =>
-          d.status === "signed" || d.status === "declined"
-            ? [{ d, decidedAt: (d.signedAt ?? d.declinedAt) as number }]
-            : [],
-        )
+      answered
+        .map((d) => ({
+          d,
+          decidedAt: d.signedAt ?? d.declinedAt ?? d._creationTime,
+        }))
         .sort((a, b) => b.decidedAt - a.decidedAt)
         .slice(0, 8)
         .map(async ({ d, decidedAt }) => ({

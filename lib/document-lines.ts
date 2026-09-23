@@ -1,5 +1,5 @@
 // How a document out with a customer reads on a Dashboard row: when its link
-// went out, whether the customer has opened it, and how it was answered. Each
+// was created, whether the customer has opened it, and how it was answered. Each
 // takes the locale and time zone so a test can pin them; the app passes neither
 // and gets the owner's own.
 
@@ -12,21 +12,21 @@ export function issuedLine(issuedAt: number, locale?: string, timeZone?: string)
     minute: "2-digit",
     timeZone,
   }).format(issuedAt);
-  return `Issued ${when}`;
+  return `Link created ${when}`;
 }
 
-// "Opened twice, last Tuesday": how keen the customer is and how recently,
-// which is what decides whether to chase them today.
+// "Opened twice, last Tuesday": the customer's views of the current link, and
+// how recently, which is what decides whether to chase them today.
 export function openedLine(
   count: number,
-  lastOpenedAt: number | undefined,
+  lastViewedAt: number | undefined,
   now: number,
   locale?: string,
   timeZone?: string,
 ) {
-  if (count === 0 || lastOpenedAt === undefined) return "Not opened";
+  if (count === 0 || lastViewedAt === undefined) return "Not opened";
   const times = count === 1 ? "once" : count === 2 ? "twice" : `${count} times`;
-  return `Opened ${times}, ${dayPhrase(lastOpenedAt, now, locale, timeZone)}`;
+  return `Opened ${times}, ${dayPhrase(lastViewedAt, now, locale, timeZone)}`;
 }
 
 export function decidedLine(

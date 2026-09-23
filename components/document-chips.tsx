@@ -1,6 +1,7 @@
+import type { Doc } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
-export type DocumentStatus = "draft" | "ready" | "viewed" | "signed" | "declined";
+export type DocumentStatus = Doc<"documents">["status"];
 
 export const documentStatusLabels: Record<DocumentStatus, string> = {
   draft: "Draft",

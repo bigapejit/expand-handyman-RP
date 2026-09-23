@@ -40,7 +40,7 @@ export function AddCustomerDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add customer</DialogTitle>
-          <DialogDescription>One customer, one service address.</DialogDescription>
+          <DialogDescription>Who they are and how to reach them.</DialogDescription>
         </DialogHeader>
         <CustomerForm busy={busy} setBusy={setBusy} onSaved={onClose} />
       </DialogContent>
@@ -73,7 +73,7 @@ export function UploadPdfDialog({
           <DialogTitle>{adding ? "Add customer" : "Upload a document"}</DialogTitle>
           <DialogDescription>
             {adding
-              ? "One customer, one service address."
+              ? "Who they are and how to reach them."
               : "Choose a PDF to prepare for a customer signature."}
           </DialogDescription>
         </DialogHeader>

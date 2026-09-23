@@ -160,4 +160,14 @@ describe("Dashboard documents", () => {
       signerName: "Ada L",
     });
   });
+
+  test("dates an answer with no recorded time by when the document was created", async () => {
+    const f = setup();
+    const ada = await customer(f, "Ada");
+    const id = await document(f, ada, "Legacy", "a".repeat(64));
+    await f.t.run((ctx) => ctx.db.patch(id, { status: "signed" }));
+    const created = (await f.t.run((ctx) => ctx.db.get(id)))!._creationTime;
+    const board = await f.owner.query(api.documents.dashboard, {});
+    expect(board.decided[0]).toMatchObject({ _id: id, decidedAt: created });
+  });
 });

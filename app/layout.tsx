@@ -4,8 +4,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "./providers";
 import "./globals.css";
 
-// Every staff page is behind Clerk and reads live Convex data, so nothing is
-// prerendered, and the SidePanel's useSearchParams needs no per-route boundary.
+// Every page reads live Clerk and Convex data, so nothing is prerendered, and
+// the SidePanel's useSearchParams needs no per-route Suspense boundary.
 export const dynamic = "force-dynamic";
 
 const geistSans = Geist({ variable: "--font-sans", subsets: ["latin"] });

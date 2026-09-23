@@ -115,7 +115,8 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
     );
   if (!doc) return <p className="p-10">Document not found.</p>;
   return (
-    <div>
+    // Full page: bleeds past the shell's content padding, as before the shell.
+    <div className="-m-8">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-5 md:px-8">
         <div>
           <Link
