@@ -11,3 +11,4 @@ public/pdfjs/
 public/pdf.worker.min.mjs
 
 .vercel
+.claude/worktrees/
