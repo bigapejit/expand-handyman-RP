@@ -129,8 +129,11 @@ export function addressFromPlace(place: Place): PlaceAddress {
   };
 }
 
+/** Google did not answer, as opposed to answering with no usable address. */
+export class LookupFailed extends Error {}
+
 function lookupFailed(response: Response) {
-  return new Error(
+  return new LookupFailed(
     `Google address lookup failed (HTTP ${response.status}). Try again.`,
   );
 }
