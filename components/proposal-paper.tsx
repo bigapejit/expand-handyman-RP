@@ -202,8 +202,8 @@ function Letter({ proposal }: { proposal: PaperProposal }) {
       <p>
         We would like to thank you for the opportunity to provide you with this proposal. The
         total cost for the work detailed in the following proposal is{" "}
-        <span className="pd-total">{formatCentsExact(proposal.totalCents)}</span>.{" "}
-        {taxSentence(proposal)}
+        <span className="pd-total">{totalPhrase(proposal)}</span>.
+        {taxNotYetIncluded(proposal) ? " Sales tax is not yet included." : null}
       </p>
       <p>
         This proposal covers {joinTitles(proposal.solutions.map((solution) => solution.title))} at{" "}
@@ -637,10 +637,16 @@ function joinTitles(titles: string[]): string {
   return `${titles.slice(0, -1).join(", ")} and ${titles.at(-1)}`;
 }
 
-function taxSentence(proposal: PaperProposal): string {
-  if (proposal.tax.source === "none") return "No sales tax applies at this property.";
-  if (proposal.taxCents === 0) return "Sales tax is not yet included.";
-  return `This includes ${formatCentsExact(proposal.taxCents)} in Washington sales tax.`;
+// The total reads "including taxes" once tax is settled: charged, or none
+// due at the property. A Washington draft with no rate yet can't claim that,
+// so it shows the bare total and says the tax is still to come.
+function taxNotYetIncluded(proposal: PaperProposal): boolean {
+  return proposal.tax.source !== "none" && proposal.taxCents === 0;
+}
+
+function totalPhrase(proposal: PaperProposal): string {
+  const total = formatCentsExact(proposal.totalCents);
+  return taxNotYetIncluded(proposal) ? total : `${total} including taxes`;
 }
 
 function taxLabel(tax: ProposalTax): string {
