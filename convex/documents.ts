@@ -58,6 +58,60 @@ export const list = query({
     );
   },
 });
+// The Dashboard's Documents card: what is out with a customer, the one waiting
+// longest first, then the few most recently answered. Opens are counted on the
+// current link only, so a withdrawn and reissued document starts unopened.
+export const dashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    const documents = await ctx.db.query("documents").order("desc").take(500);
+    const out = await Promise.all(
+      documents
+        .filter((d) => d.status === "ready" || d.status === "viewed")
+        .sort((a, b) => (a.issuedAt ?? 0) - (b.issuedAt ?? 0))
+        .map(async (d) => {
+          const views = (
+            await ctx.db
+              .query("documentViews")
+              .withIndex("by_document_viewer", (q) =>
+                q.eq("documentId", d._id).eq("viewer", "customer"),
+              )
+              .collect()
+          ).filter((view) => view.token === d.token);
+          return {
+            _id: d._id,
+            title: d.title,
+            customerName: (await customerDetails(ctx, d)).customerName,
+            issuedAt: d.issuedAt,
+            // A first view from before the view log existed is one open.
+            customerViews: views.length || (d.viewedAt ? 1 : 0),
+            lastViewedAt: views.at(-1)?.openedAt ?? d.viewedAt,
+          };
+        }),
+    );
+    const decided = await Promise.all(
+      documents
+        .flatMap((d) =>
+          d.status === "signed" || d.status === "declined"
+            ? [{ d, decidedAt: (d.signedAt ?? d.declinedAt) as number }]
+            : [],
+        )
+        .sort((a, b) => b.decidedAt - a.decidedAt)
+        .slice(0, 8)
+        .map(async ({ d, decidedAt }) => ({
+          _id: d._id,
+          title: d.title,
+          customerName: (await customerDetails(ctx, d)).customerName,
+          status: d.status as "signed" | "declined",
+          decidedAt,
+          signerName: d.signerName,
+          declineReason: d.declineReason,
+        })),
+    );
+    return { out, decided };
+  },
+});
 export const customers = query({
   args: {},
   handler: async (ctx) => {

@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PdfViewer } from "./pdf-viewer";
-import { Status } from "./dashboard";
+import { DocumentStatusChip } from "./document-chips";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -115,11 +115,11 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
     );
   if (!doc) return <p className="p-10">Document not found.</p>;
   return (
-    <main>
+    <div>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-5 md:px-8">
         <div>
           <Link
-            href="/"
+            href="/documents"
             className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground"
           >
             <ArrowLeft size={13} />
@@ -127,7 +127,7 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold">{doc.title}</h1>
-            <Status status={doc.status} />
+            <DocumentStatusChip status={doc.status} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {doc.customerName} · {doc.site}
@@ -592,6 +592,6 @@ export function DocumentEditor({ id }: { id: Id<"documents"> }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </div>
   );
 }
