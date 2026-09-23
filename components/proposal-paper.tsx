@@ -1,6 +1,5 @@
 import {
   ExpandBusiness,
-  ExpandProposalTerms,
   letterheadContactLines,
 } from "@/lib/expand-business";
 import { formatCentsExact } from "@/lib/money";
@@ -58,7 +57,7 @@ export function ProposalPaper({ proposal }: { proposal: PaperProposal }) {
         </section>
       ))}
 
-      <TermsPage />
+      <TermsPage terms={proposal.terms} />
     </article>
   );
 }
@@ -323,14 +322,15 @@ function GrandTotal({ proposal }: { proposal: PaperProposal }) {
 
 // Expand's own sheet, which FRSG's paper has none of: the **Terms** in full,
 // letterhead on top, after the Grand Total. The id is what "Read the Terms"
-// scrolls to.
-function TermsPage() {
+// scrolls to. The wording is the proposal's own: frozen at Send, so a later
+// change to the Terms never rewrites what a customer was offered.
+function TermsPage({ terms }: { terms: PaperProposal["terms"] }) {
   return (
     <section className="pd-page" id="terms">
       <Letterhead />
       <div className="pd-terms-head">Terms and Conditions</div>
       <ol className="pd-terms-list">
-        {ExpandProposalTerms.map(([heading, body], index) => (
+        {terms.map(({ heading, body }, index) => (
           <li key={heading}>
             <b>
               {index + 1}. {heading}

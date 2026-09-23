@@ -22,9 +22,9 @@ export async function getPdf(
     );
   return new Uint8Array(await res.arrayBuffer());
 }
-export function sendSeenBeacon(viewId: string, token: string) {
+export function sendSeenBeacon(viewId: string, token: string, kind?: "proposal") {
   const url = new URL("/seen", convexSite()).toString();
-  const body = JSON.stringify({ viewId, token });
+  const body = JSON.stringify(kind ? { viewId, token, kind } : { viewId, token });
   // A plain string keeps sendBeacon a CORS simple request, so there is no preflight.
   if (typeof navigator.sendBeacon === "function")
     navigator.sendBeacon(url, body);

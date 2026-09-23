@@ -8,6 +8,10 @@ export function cn(...inputs: ClassValue[]) {
 // Uncaught Error: <message>  at handler ... Called by client`. Keep the message.
 export function errorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Something went wrong. Please try again.";
+  // A refusal that names its reasons (a ConvexError) carries the sentence to
+  // show in its data, which may still be JSON after passing through an action.
+  const said = refusalMessage((error as { data?: unknown }).data);
+  if (said) return said;
   const thrown = /Uncaught Error: ([\s\S]*?)(?:\n\s*at |\s*Called by client|$)/.exec(
     error.message,
   );
@@ -26,4 +30,15 @@ export function duration(ms: number) {
   if (!hours) return `${minutes} min`;
   const rest = minutes % 60;
   return `${hours} hr${rest ? ` ${rest} min` : ""}`;
+}
+function refusalMessage(data: unknown): string | null {
+  let read = data;
+  try {
+    while (typeof read === "string") read = JSON.parse(read);
+  } catch {
+    return typeof data === "string" ? data : null;
+  }
+  const message =
+    typeof read === "object" && read !== null ? (read as { message?: unknown }).message : null;
+  return typeof message === "string" && message ? message : null;
 }

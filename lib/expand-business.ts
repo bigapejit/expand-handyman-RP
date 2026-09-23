@@ -14,6 +14,9 @@ export const ExpandBusiness = {
   serviceArea: "Vancouver, WA - Clark County",
   phone: "(564) 203-8721",
   email: "contact@expandhandyman.com",
+  // Who proposal emails come from: the mailbox verified in Resend. Replies go
+  // to `email` above.
+  emailFrom: "Expand Handyman <proposals@expandhandyman.com>",
   fedId: "42-3846714",
   waUbi: "606 261 044",
   // The UBI stands in the registration slot until the L&I contractor
@@ -83,6 +86,14 @@ export const ExpandProposalTerms: readonly (readonly [string, string])[] = [
     "This proposal, its accepted solutions, Payment Terms, Notes and exclusions, and these Terms are the whole agreement and replace any earlier discussion.",
   ],
 ];
+
+// The Terms as a proposal carries them: Send freezes this list, so the wording
+// a customer signs under never moves with a later commit here.
+export type ProposalTerm = { heading: string; body: string };
+
+export function proposalTerms(): ProposalTerm[] {
+  return ExpandProposalTerms.map(([heading, body]) => ({ heading, body }));
+}
 
 // Which wording of the Notice to Customer a signature acknowledged. Bumped
 // whenever the notice text or the facts it is filled from change, so an old
