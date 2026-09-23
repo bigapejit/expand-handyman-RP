@@ -5,9 +5,10 @@
 // letterhead on top, the cover block in the proposal's idiom, the lines
 // before tax, then Subtotal, Sales Tax and Amount Due under the proposal's
 // double rule (Washington wants the tax stated separately, RCW 82.08.050;
-// the owner asked for it on 2026-09-23), How to pay, and one line
-// placing the invoice under the proposal's signed Terms. A PAID or VOID stamp
-// lies across the sheet once the owner has marked it.
+// the owner asked for it on 2026-09-23), and How to pay. The Terms line and
+// the second "Due on receipt" came off on the owner's second look: the cover
+// block already says Due: On receipt. A PAID or VOID stamp lies across the
+// sheet once the owner has marked it.
 
 import { ExpandBusiness, letterheadContactLines } from "@/lib/expand-business";
 import { formatCentsExact } from "@/lib/money";
@@ -81,7 +82,6 @@ export function InvoicePaper({
         <div className="ip-pay">
           <div className="pd-scope-label">HOW TO PAY</div>
           <div className="pd-scope">
-            <p>Due on receipt.</p>
             <p>
               Zelle: send to {invoice.zelleEmail}. The payment shows as{" "}
               {ExpandBusiness.letterheadName}.
@@ -89,10 +89,6 @@ export function InvoicePaper({
             <p>Check: payable to {ExpandBusiness.letterheadName}, handed to us in person.</p>
           </div>
         </div>
-
-        <p className="ip-terms">
-          Subject to the Terms and Conditions of Proposal {invoice.proposalCode} as signed.
-        </p>
 
         {invoice.paidOn !== undefined ? (
           <div className="ip-stamp ip-stamp-paid" aria-label={`Paid ${paperDate(invoice.paidOn)}`}>

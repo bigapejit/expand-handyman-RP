@@ -45,12 +45,6 @@
   margin-bottom: 2pt;
 }
 
-.ip-terms {
-  margin-top: 32pt;
-  font-size: 9.5pt;
-  color: #333;
-}
-
 /* A voided invoice asks for nothing. */
 .ip-void .ip-amount {
   text-decoration: line-through;
