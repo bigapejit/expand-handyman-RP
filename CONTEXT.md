@@ -70,6 +70,40 @@ _Avoid_: Down payment, retainer
 What is left of a proposal's total after the Deposit, due on completion.
 _Avoid_: Final payment, remainder
 
+**Invoice**:
+A request for payment that belongs to one approved proposal: a deposit invoice, a progress invoice or a balance invoice. A draft, sent or declined proposal has none. A new invoice may be raised while an earlier one is unpaid.
+_Avoid_: Bill, statement, receipt
+
+**Deposit invoice**:
+The invoice made by itself when the customer approves a proposal, for exactly the Deposit they signed for. Its amount is never changed. A proposal with a 0% Deposit gets none.
+
+**Progress invoice**:
+An invoice for an amount the owner types, raised any time between the deposit and the balance, with a note and the solutions it marks as done. Never more than what is Left to bill. A solution is marked done on one invoice only; marking done a solution that has a material allowance settles that allowance on the same invoice.
+_Avoid_: Partial invoice, interim invoice
+
+**Balance invoice**:
+The last invoice of a proposal, made when the owner presses Invoice the balance, for everything Left to bill: it settles every allowance not yet settled and carries the approved extras. One per proposal. When it would be $0 none is made and the proposal is simply Fully billed. It can be negative only when the customer already paid more than the settled total, which is a credit the owner refunds by hand.
+_Avoid_: Final invoice, closing invoice
+
+**Left to bill**:
+The proposal's total, less every unsettled material allowance, plus the real cost of every settled one, less everything already invoiced. A progress invoice never goes past it.
+_Avoid_: Remaining, outstanding (which is about payment, not billing)
+
+**Allowance settlement**:
+Replacing a material allowance with what its materials really cost, once that solution is done. Printed on the invoice that settles it as the allowance, the real cost and the difference either way. The written approval the Terms require before going over is the owner's to hold; nothing checks it.
+_Avoid_: Reconciliation, true-up
+
+**Approved extra**:
+Work outside the signed proposal that the customer approved in writing under the Terms' Changes clause, billed on the balance invoice as a description and an amount. It never changes the proposal's total.
+_Avoid_: Change order, add-on, upcharge
+
+**Adjustment**:
+An allowance settlement or an approved extra: the lines that move an invoice away from the signed price.
+
+**Fully billed**:
+A proposal whose balance invoice exists, or whose balance came to $0. Nothing more is invoiced on it: a forgotten extra means voiding the balance invoice and making it again, and a change found later is a new proposal.
+_Avoid_: Closed, complete, paid (payment is a different question)
+
 **Proposal ID**:
 The site name and the proposal's number, joined as `<Site name>-P<number>`, counted separately for each site and never reused. Fixed when the proposal is sent, so a later address correction never changes an ID the customer already holds.
 
