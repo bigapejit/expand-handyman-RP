@@ -69,6 +69,10 @@ export const frozenProposal = v.object({
   taxCents: v.number(),
   totalCents: v.number(),
   depositPercent: v.number(),
+  // A set Deposit, overriding the percent (lib/proposal-pricing.ts,
+  // `storedDeposit`). Absent on a percent Deposit, and on every proposal sent
+  // before set amounts existed.
+  depositCents: v.optional(v.number()),
   tax: proposalTax,
   terms: v.array(v.object({ heading: v.string(), body: v.string() })),
   notes: v.optional(v.string()),
@@ -184,7 +188,11 @@ export default defineSchema({
     // In the order the proposal offers them.
     solutionIds: v.array(v.id("solutions")),
     recommended: v.boolean(),
+    // The Deposit (CONTEXT.md): the percent is always kept, so switching back
+    // from a set amount finds the one the owner last chose; a set amount, when
+    // there is one, overrides it.
     depositPercent: v.number(),
+    depositCents: v.optional(v.number()),
     tax: proposalTax,
     notes: v.optional(v.string()),
     // Written by Send and dropped by Withdraw. A Re-send keeps both: the

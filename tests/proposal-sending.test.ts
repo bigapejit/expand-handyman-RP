@@ -189,6 +189,52 @@ describe("proposals.send", () => {
     );
   });
 
+  // A set Deposit stays as typed, so taking a solution off can leave the
+  // proposal asking for more on signing than it costs.
+  test("refuses a set Deposit larger than the total, and the panel says so first", async () => {
+    const { owner, customer, site, solution, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const gate = await solution(siteId, "Fix gate", 25_000);
+    const fence = await solution(siteId, "Paint fence", 25_000);
+    const proposalId = await owner.action(api.proposals.create, { siteId });
+    // $1,197.90 with both solutions, so $1,000 on signing is allowed.
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [gate, fence],
+      depositCents: 100_000,
+    });
+    // $598.95 with one, and the $1,000 stays as typed.
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [gate] });
+
+    expect(await read(customerId, proposalId)).toMatchObject({
+      payment: { deposit: { kind: "amount", cents: 100_000 }, balanceCents: -40_105 },
+      sendBlockers: ["deposit_over_total"],
+    });
+    expect(await refusal(owner.action(api.proposals.send, { proposalId }))).toMatchObject(
+      { code: "deposit_over_total", message: "The deposit is more than this Proposal's total." },
+    );
+  });
+
+  test("freezes a set Deposit, which the paper and the customer's link then carry", async () => {
+    const { t, owner, sendable, liveToken } = fixture();
+    const { customerId, proposalId } = await sendable();
+    await owner.mutation(api.proposals.update, { proposalId, depositCents: 20_000 });
+    await owner.action(api.proposals.send, { proposalId });
+
+    const frozen = (await t.run((ctx) => ctx.db.get(proposalId)))?.frozen;
+    // The percent is kept beside it, for a Withdraw that hands the draft back.
+    expect(frozen).toMatchObject({ depositPercent: 50, depositCents: 20_000 });
+    expect(await owner.query(api.proposals.paper, { proposalId })).toMatchObject({
+      depositPercent: 50,
+      depositCents: 20_000,
+    });
+    const token = await liveToken(customerId, proposalId);
+    expect((await t.query(api.signingLinks.page, { token }))?.paper).toMatchObject({
+      depositCents: 20_000,
+    });
+  });
+
   test("the panel is told the same reasons before Send is pressed", async () => {
     const { owner, read, sendable } = fixture();
     const { customerId, proposalId } = await sendable("");

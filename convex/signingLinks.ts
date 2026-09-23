@@ -165,6 +165,7 @@ export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
     taxCents: frozen.taxCents,
     totalCents: frozen.totalCents,
     depositPercent: frozen.depositPercent,
+    ...(frozen.depositCents === undefined ? {} : { depositCents: frozen.depositCents }),
     ...decision(proposal),
   };
 }

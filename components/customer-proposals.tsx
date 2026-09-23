@@ -37,17 +37,23 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatCents } from "@/lib/money";
 import { pdfCopyStateFor } from "@/lib/pdf-copy";
-import { paymentTermsSentence, type PaymentSplit } from "@/lib/proposal-pricing";
 import {
+  paymentRowLabels,
+  proposalFaultMessage,
+  splitPayment,
+  type Deposit,
+} from "@/lib/proposal-pricing";
+import {
+  dollarsField,
   moveInOrder,
   ProposalPanelParam,
   proposalPaperHref,
   proposalStateLabel,
+  readDollarsField,
   readPercentField,
   readTaxRateField,
   reorder,
   solutionPickLabel,
-  splitFieldValue,
   taxRateField,
   taxSourceLine,
 } from "@/lib/proposals";
@@ -342,17 +348,7 @@ function ProposalPanel({
           <OfferedSolutions proposal={proposal} />
         )}
 
-        <MoneyReadout
-          proposal={proposal}
-          editable={isDraft}
-          onRate={(taxRate) => save({ taxRate })}
-        />
-
-        <PaymentTerms
-          split={proposal.payment}
-          editable={isDraft}
-          onSplit={(depositPercent) => save({ depositPercent })}
-        />
+        <MoneyBlock proposal={proposal} editable={isDraft} save={save} />
 
         <RecommendedToggle
           recommended={proposal.recommended}
@@ -588,37 +584,191 @@ function SolutionPicker({
   );
 }
 
-// Subtotal, sales tax, total. The tax row is absent altogether outside
-// Washington — not zero, absent — and where it is charged it says which rate
-// and where that rate came from.
-function MoneyReadout({
+// The Money block, in the order the proposal paper prints it: the Deposit and
+// the Balance, then subtotal, sales tax and total. Each payment row is labelled
+// exactly as the paper will label it, so the block is also the preview. The
+// tax row is absent altogether outside Washington — not zero, absent — and
+// where it is charged it says which rate and where that rate came from.
+//
+// The Deposit is a whole percent or a set amount (CONTEXT.md, **Deposit**).
+// The rows follow the field as it is typed; leaving the field is what saves
+// it, as everywhere in the panel, and switching kinds saves at once, because
+// there is nothing half-typed about a switch.
+function MoneyBlock({
   proposal,
   editable,
-  onRate,
+  save,
 }: {
   proposal: Proposal;
   editable: boolean;
-  onRate: (rate: number) => Promise<boolean>;
+  save: (patch: ProposalPatch) => Promise<boolean>;
 }) {
+  const saved = proposal.payment.deposit;
+  const totalCents = proposal.money.totalCents;
+  const [kind, setKind] = useState<Deposit["kind"]>(saved.kind);
+  const [percent, setPercent] = useState(String(proposal.depositPercent));
+  const [dollars, setDollars] = useState(saved.kind === "amount" ? dollarsField(saved.cents) : "");
+  const [depositFault, setDepositFault] = useState("");
   const [rate, setRate] = useState(taxRateField(proposal.tax.rate));
   const source = taxSourceLine(proposal.tax);
   const taxed = proposal.tax.source !== "none";
 
-  const commit = () => {
+  // The Deposit as the field reads right now, or nothing while it is not yet
+  // a figure. A panel that cannot edit shows only what was saved.
+  const typedPercent = readPercentField(percent);
+  const typedCents = readDollarsField(dollars);
+  const deposit: Deposit | null = !editable
+    ? saved
+    : kind === "percent"
+      ? typedPercent === null || typedPercent > 100
+        ? null
+        : { kind: "percent", percent: typedPercent }
+      : typedCents === null
+        ? null
+        : { kind: "amount", cents: typedCents };
+  const split = deposit ? splitPayment(totalCents, deposit) : null;
+  const labels = deposit
+    ? paymentRowLabels(deposit)
+    : kind === "percent"
+      ? { deposit: "—% due on signing", balance: "—% due on completion" }
+      : paymentRowLabels({ kind: "amount", cents: 0 });
+  const overTotal = split !== null && split.balanceCents < 0;
+
+  // A percent the field cannot make whole snaps back to the one saved.
+  const commitPercent = () => {
+    if (typedPercent === null || typedPercent > 100) {
+      setPercent(String(proposal.depositPercent));
+      return;
+    }
+    if (saved.kind === "percent" && typedPercent === saved.percent) return;
+    void save({ depositPercent: typedPercent }).then((ok) => {
+      if (!ok) setPercent(String(proposal.depositPercent));
+    });
+  };
+
+  // So does a set amount that is not a figure, or that asks for more than the
+  // proposal comes to. The server refuses the second too; it is caught here so
+  // the reason sits beside the field rather than at the top of the panel.
+  const commitDollars = () => {
+    const back = saved.kind === "amount" ? dollarsField(saved.cents) : "";
+    if (typedCents === null) {
+      setDollars(back);
+      return;
+    }
+    if (typedCents > totalCents) {
+      setDepositFault(proposalFaultMessage("deposit_over_total"));
+      setDollars(back);
+      return;
+    }
+    setDollars(dollarsField(typedCents));
+    if (saved.kind === "amount" && typedCents === saved.cents) return;
+    void save({ depositCents: typedCents }).then((ok) => {
+      if (!ok) setDollars(back);
+    });
+  };
+
+  // A set amount starts from what the percent comes to, so the owner edits a
+  // figure rather than facing an empty box; going back to a percent finds the
+  // one the proposal kept.
+  const switchTo = (next: Deposit["kind"]) => {
+    if (next === kind) return;
+    setDepositFault("");
+    setKind(next);
+    if (next === "amount") {
+      const cents = splitPayment(totalCents, {
+        kind: "percent",
+        percent: proposal.depositPercent,
+      }).depositCents;
+      setDollars(dollarsField(cents));
+      void save({ depositCents: cents }).then((ok) => {
+        if (!ok) setKind("percent");
+      });
+    } else {
+      setPercent(String(proposal.depositPercent));
+      void save({ depositPercent: proposal.depositPercent }).then((ok) => {
+        if (!ok) setKind("amount");
+      });
+    }
+  };
+
+  const commitRate = () => {
     const typed = readTaxRateField(rate);
     if (typed === null || typed === proposal.tax.rate) {
       setRate(taxRateField(proposal.tax.rate));
       return;
     }
-    void onRate(typed).then((saved) => {
-      if (!saved) setRate(taxRateField(proposal.tax.rate));
+    void save({ taxRate: typed }).then((ok) => {
+      if (!ok) setRate(taxRateField(proposal.tax.rate));
     });
   };
 
   return (
     <div className="space-y-2">
       <FieldHeading>Money</FieldHeading>
-      <dl className="space-y-1 rounded-xl border px-3 py-3 text-sm">
+      <dl className="space-y-2 rounded-xl border px-3 py-3 text-sm">
+        <div className="flex items-start justify-between gap-4">
+          <dt className="min-w-0 text-slate-900">
+            <span>{labels.deposit}</span>
+            {editable ? (
+              <span className="mt-0.5 flex gap-1 text-xs">
+                {(["percent", "amount"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={kind === option}
+                    onClick={() => switchTo(option)}
+                    className={cn(
+                      "rounded px-1.5 py-0.5",
+                      kind === option
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                    )}
+                  >
+                    {option === "percent" ? "% of total" : "Set amount"}
+                  </button>
+                ))}
+              </span>
+            ) : null}
+          </dt>
+          <dd className="flex shrink-0 items-center gap-2">
+            {editable && kind === "percent" ? (
+              <>
+                <Input
+                  aria-label="Deposit, percent of the total"
+                  inputMode="numeric"
+                  value={percent}
+                  onChange={(event) => setPercent(event.target.value)}
+                  onBlur={commitPercent}
+                  className="w-20 bg-white text-right"
+                />
+                <span className="w-3 text-xs text-slate-400">%</span>
+              </>
+            ) : null}
+            {editable && kind === "amount" ? (
+              <>
+                <span className="text-xs text-slate-400">$</span>
+                <Input
+                  aria-label="Deposit, set amount"
+                  inputMode="decimal"
+                  value={dollars}
+                  onChange={(event) => {
+                    setDollars(event.target.value);
+                    setDepositFault("");
+                  }}
+                  onBlur={commitDollars}
+                  className="w-[5.75rem] bg-white text-right"
+                />
+              </>
+            ) : null}
+            <PaymentAmount cents={split?.depositCents ?? null} over={overTotal} />
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-b pb-2">
+          <dt className="text-slate-900">{labels.balance}</dt>
+          <dd>
+            <PaymentAmount cents={overTotal ? null : (split?.balanceCents ?? null)} />
+          </dd>
+        </div>
         <div className="flex justify-between gap-6 text-slate-500">
           <dt>Subtotal</dt>
           <dd className="tabular-nums">{formatCents(proposal.money.subtotalCents)}</dd>
@@ -646,7 +796,7 @@ function MoneyReadout({
                   placeholder="0.0"
                   value={rate}
                   onChange={(event) => setRate(event.target.value)}
-                  onBlur={commit}
+                  onBlur={commitRate}
                   className="w-20 bg-white text-right"
                 />
               ) : (
@@ -654,131 +804,49 @@ function MoneyReadout({
                   {rate || "—"}
                 </span>
               )}
-              <span className="text-xs text-slate-400">%</span>
+              <span className="w-3 text-xs text-slate-400">%</span>
               <span className="w-24 text-right tabular-nums text-slate-900">
                 {formatCents(proposal.money.taxCents)}
               </span>
             </dd>
           </div>
         ) : null}
-        <div className="flex justify-between gap-6 border-t pt-1 font-semibold text-slate-900">
+        <div className="flex justify-between gap-6 border-t pt-2 font-semibold text-slate-900">
           <dt>Total</dt>
-          <dd className="tabular-nums">{formatCents(proposal.money.totalCents)}</dd>
+          <dd className="tabular-nums">{formatCents(totalCents)}</dd>
         </div>
       </dl>
+      {depositFault ? (
+        <p role="alert" className="text-xs text-red-700">
+          {depositFault}
+        </p>
+      ) : overTotal ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          The deposit is more than the total of {formatCents(totalCents)} now. Lower it
+          before sending.
+        </p>
+      ) : editable ? (
+        <p className="text-xs text-slate-500">
+          The paper prints these rows as they read here, leaving off a payment of $0.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-// The two linked percent fields. Only the deposit is ever stored: the final
-// payment is what is left, so typing into either field is typing the same one
-// figure from a different end (CONTEXT.md, **Deposit**).
-function PaymentTerms({
-  split,
-  editable,
-  onSplit,
-}: {
-  split: PaymentSplit;
-  editable: boolean;
-  onSplit: (depositPercent: number) => Promise<boolean>;
-}) {
-  const { depositPercent, depositCents, finalCents } = split;
-  const [fields, setFields] = useState(() => splitFieldValue(depositPercent));
-
-  // Linked: the other field follows on every keystroke. A half-typed field has
-  // no other end yet and leaves its partner blank rather than guessing.
-  const type = (typed: string, end: "deposit" | "final") => {
-    const percent = readPercentField(typed);
-    const other = percent === null || percent > 100 ? "" : String(100 - percent);
-    setFields(
-      end === "deposit" ? { deposit: typed, final: other } : { deposit: other, final: typed },
-    );
-  };
-
-  // Anything the field cannot make a whole percent of snaps back to the split
-  // the proposal still has.
-  const commit = (percent: number | null) => {
-    if (percent === null || percent > 100 || percent === depositPercent) {
-      setFields(splitFieldValue(depositPercent));
-      return;
-    }
-    void onSplit(percent).then((saved) => {
-      if (!saved) setFields(splitFieldValue(depositPercent));
-    });
-  };
-
+// A payment's figure. One of $0 is struck through, because the paper leaves
+// that row off; one past the total is marked as the fault it is.
+function PaymentAmount({ cents, over = false }: { cents: number | null; over?: boolean }) {
   return (
-    <div className="space-y-2">
-      <FieldHeading>Payment terms</FieldHeading>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <PercentField
-          id="proposal-deposit"
-          label="Deposit, on signing"
-          value={fields.deposit}
-          amount={depositCents}
-          editable={editable}
-          onChange={(deposit) => type(deposit, "deposit")}
-          onCommit={() => commit(readPercentField(fields.deposit))}
-        />
-        <PercentField
-          id="proposal-final"
-          label="Final, on completion"
-          value={fields.final}
-          amount={finalCents}
-          editable={editable}
-          onChange={(final) => type(final, "final")}
-          onCommit={() => {
-            const typed = readPercentField(fields.final);
-            commit(typed === null || typed > 100 ? null : 100 - typed);
-          }}
-        />
-      </div>
-      <p className="text-xs text-slate-500">{paymentTermsSentence(depositPercent)}</p>
-    </div>
-  );
-}
-
-function PercentField({
-  id,
-  label,
-  value,
-  amount,
-  editable,
-  onChange,
-  onCommit,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  amount: number;
-  editable: boolean;
-  onChange: (value: string) => void;
-  onCommit: () => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <div className="flex items-center gap-2">
-        {editable ? (
-          <Input
-            id={id}
-            inputMode="numeric"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            onBlur={onCommit}
-            className="w-20 bg-white text-right"
-          />
-        ) : (
-          <span className="w-20 text-right tabular-nums text-slate-900">
-            {value}
-          </span>
-        )}
-        <span className="text-xs text-slate-400">%</span>
-        <span className="flex-1 text-right tabular-nums text-slate-900">
-          {formatCents(amount)}
-        </span>
-      </div>
-    </div>
+    <span
+      className={cn(
+        "w-24 text-right tabular-nums text-slate-900",
+        cents === 0 && "text-slate-400 line-through",
+        over && "text-red-700",
+      )}
+    >
+      {cents === null ? "—" : formatCents(cents)}
+    </span>
   );
 }
 

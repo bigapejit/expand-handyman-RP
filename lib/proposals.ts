@@ -152,18 +152,6 @@ export function readTaxRateField(raw: string): number | null {
   return Number((percent / 100).toFixed(6));
 }
 
-// The two linked percent fields: one figure, shown twice. The final payment is
-// never typed independently — it is what is left.
-export function splitFieldValue(depositPercent: number): {
-  deposit: string;
-  final: string;
-} {
-  return {
-    deposit: String(depositPercent),
-    final: String(100 - depositPercent),
-  };
-}
-
 // A whole percent as typed, or nothing yet. A fraction of a percent is not a
 // split Expand offers, so it is refused here rather than being rounded into
 // one nobody chose.
@@ -171,6 +159,23 @@ export function readPercentField(raw: string): number | null {
   const trimmed = raw.trim();
   if (!/^\d{1,3}$/.test(trimmed)) return null;
   return Number(trimmed);
+}
+
+// A set Deposit as typed, in cents, or nothing yet: "$1,500", "1500" and
+// "1,500.50" are figures; a blank, letters or a third decimal place are not.
+export function readDollarsField(raw: string): number | null {
+  const trimmed = raw.trim().replace(/^\$/, "").replace(/,/g, "").trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  return Math.round(Number(trimmed) * 100);
+}
+
+// A set Deposit as its field shows it: grouped, with cents only where there
+// are some, and no dollar sign, which sits outside the field.
+export function dollarsField(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", {
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 // A row dropped somewhere else in the list. A drop naming no row, or naming

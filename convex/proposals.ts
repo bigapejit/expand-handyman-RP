@@ -42,6 +42,8 @@ import { signingUrl } from "../lib/signing-link";
 import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
+  depositBlockers,
+  depositCentsFault,
   depositPercentFault,
   proposalDisplayName,
   proposalFaultMessage,
@@ -50,6 +52,7 @@ import {
   sendBlockerMessage,
   sendBlockers,
   splitPayment,
+  storedDeposit,
   taxRateFault,
   type ProposalFault,
   type SendBlocker,
@@ -130,6 +133,7 @@ export const forCustomer = query({
                             read.solutions.map((solution) => solution.priceCents),
                             proposal.tax,
                           ),
+                          ...depositBlockers(read.payment),
                           ...recipientBlockers(customerEmail),
                         ]
                       : [],
@@ -347,6 +351,7 @@ export const paper = query({
       tax: proposal.tax,
       ...money,
       depositPercent: proposal.depositPercent,
+      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
       unpricedSolutions: prices.filter((price) => price === null).length,
     };
   },
@@ -460,8 +465,9 @@ export const storeLookedUpRate = internalMutation({
 });
 
 // One edit of one draft: what it is called, which solutions it offers and in
-// what order, its Notes and exclusions, the deposit, and a rate typed by hand.
-// Only what is named changes.
+// what order, its Notes and exclusions, the Deposit, and a rate typed by hand.
+// Only what is named changes. The Deposit is named one way or the other: a
+// percent puts the proposal back on a percent, a set amount overrides it.
 export const update = mutation({
   args: {
     proposalId: v.id("proposals"),
@@ -469,6 +475,8 @@ export const update = mutation({
     solutionIds: v.optional(v.array(v.id("solutions"))),
     notes: v.optional(v.string()),
     depositPercent: v.optional(v.number()),
+    // Whole cents.
+    depositCents: v.optional(v.number()),
     // A decimal of the whole, the way DOR states one. Typing a rate is what
     // makes it an override, so there is no separate source argument.
     taxRate: v.optional(v.number()),
@@ -486,9 +494,13 @@ export const update = mutation({
     // Whitespace is not a Notes and exclusions block: an emptied field puts
     // the proposal back to printing nothing there.
     if (a.notes !== undefined) patch.notes = optionalText(a.notes, NotesMaxLength);
+    if (a.depositPercent !== undefined && a.depositCents !== undefined)
+      throw new Error("Set the deposit as a percent or as an amount, not both.");
     if (a.depositPercent !== undefined) {
       refuse(depositPercentFault(a.depositPercent));
       patch.depositPercent = a.depositPercent;
+      // Patching a field to undefined is what removes it.
+      patch.depositCents = undefined;
     }
     if (a.taxRate !== undefined) {
       if (proposal.tax.source === "none")
@@ -504,6 +516,17 @@ export const update = mutation({
           ? {}
           : { locationCode: proposal.tax.locationCode }),
       };
+    }
+    // Measured against the total this same edit leaves, so a set amount typed
+    // alongside a change of solutions or rate is judged on what they come to.
+    if (a.depositCents !== undefined) {
+      const edited = { ...proposal, ...patch };
+      const money = proposalMoney(
+        (await liveSolutions(ctx, edited)).map(priceStoredSolution),
+        edited.tax,
+      );
+      refuse(depositCentsFault(a.depositCents, money.totalCents));
+      patch.depositCents = a.depositCents;
     }
 
     await ctx.db.patch(proposal._id, { ...patch, updatedAt: Date.now() });
@@ -552,6 +575,7 @@ export const duplicate = mutation({
       solutionIds: solutions.flatMap((solution) => (solution ? [solution._id] : [])),
       recommended: false,
       depositPercent: proposal.depositPercent,
+      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
       tax: proposal.tax,
       ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
       createdAt: now,
@@ -601,8 +625,10 @@ function proposalForOwner(
     notes: offer.notes ?? null,
     tax: offer.tax,
     money: offer.money,
+    // The percent the proposal keeps even under a set amount, for switching
+    // back to it.
     depositPercent: offer.depositPercent,
-    payment: splitPayment(offer.money.totalCents, offer.depositPercent),
+    payment: splitPayment(offer.money.totalCents, storedDeposit(offer)),
   };
 }
 
@@ -630,6 +656,7 @@ function liveOffer(
       proposal.tax,
     ),
     depositPercent: proposal.depositPercent,
+    depositCents: proposal.depositCents,
   };
 }
 
@@ -649,6 +676,7 @@ function frozenOffer(frozen: FrozenProposal) {
       totalCents: frozen.totalCents,
     },
     depositPercent: frozen.depositPercent,
+    depositCents: frozen.depositCents,
   };
 }
 
@@ -731,6 +759,10 @@ export const sendWithLink = internalMutation({
       solution,
       price: priceStoredSolution(solution),
     }));
+    const money = proposalMoney(
+      priced.map(({ price }) => price),
+      proposal.tax,
+    );
     const sentTo = sendableEmail(customer.email);
     // The same questions the button asks, asked again here, because a stale
     // panel is exactly how an unpriced solution would otherwise reach a
@@ -740,6 +772,7 @@ export const sendWithLink = internalMutation({
         priced.map(({ price }) => price?.priceCents ?? null),
         proposal.tax,
       ),
+      ...depositBlockers(splitPayment(money.totalCents, storedDeposit(proposal))),
       ...recipientBlockers(sentTo),
     ]);
     // Refused above; this only tells the type checker so.
@@ -768,11 +801,9 @@ export const sendWithLink = internalMutation({
           materialAllowanceCents: solution.materialAllowanceCents,
         };
       }),
-      ...proposalMoney(
-        priced.map(({ price }) => price),
-        proposal.tax,
-      ),
+      ...money,
       depositPercent: proposal.depositPercent,
+      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
       tax: proposal.tax,
       terms: proposalTerms(),
       // The draft's own text, copied like everything else here. It stays on
