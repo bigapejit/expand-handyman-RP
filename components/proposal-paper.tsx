@@ -239,7 +239,7 @@ function SolutionBlock({ solution }: { solution: PaperSolution }) {
       <div className="pd-solution-head">
         <span>{solution.title}</span>
       </div>
-      {solution.lineItems.length > 0 ? (
+      {solution.lineItems.length > 0 || solution.allowanceCents !== undefined ? (
         <table className="pd-qty">
           <thead>
             <tr>
@@ -254,6 +254,14 @@ function SolutionBlock({ solution }: { solution: PaperSolution }) {
                 <td className="pd-amount">{quantityLabel(line.quantity, line.unit)}</td>
               </tr>
             ))}
+            {/* PROTOTYPE (material allowance): the one dollar figure inside a
+                solution, printed where a quantity would be. */}
+            {solution.allowanceCents !== undefined ? (
+              <tr>
+                <td>Material allowance</td>
+                <td className="pd-amount">{formatCentsExact(solution.allowanceCents)}</td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       ) : null}

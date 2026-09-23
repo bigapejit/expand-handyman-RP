@@ -43,6 +43,8 @@ export type PaperSolution = {
   title: string;
   scopeOfWork: string;
   lineItems: OfferedLineItem[];
+  // PROTOTYPE (material allowance): whole-dollar cents, absent when none.
+  allowanceCents?: number;
 };
 
 // How long the letter says the offer stands. Wording only: nothing expires by
@@ -96,7 +98,8 @@ export function solutionLines(solution: PaperSolution): number {
     (total, line) => total + Math.ceil(line.length / 122),
     0,
   );
-  return 3 + scope + 2 + Math.ceil(solution.lineItems.length * 1.3) + 7;
+  const rows = solution.lineItems.length + (solution.allowanceCents === undefined ? 0 : 1);
+  return 3 + scope + 2 + Math.ceil(rows * 1.3) + 7;
 }
 
 /**
