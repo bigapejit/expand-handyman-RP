@@ -1,7 +1,8 @@
 // How a document out with a customer reads on a Dashboard row: when its link
 // was created, whether the customer has opened it, and how it was answered. Each
 // takes the locale and time zone so a test can pin them; the app passes neither
-// and gets the owner's own.
+// and gets the owner's own. The Dashboard's Proposals card says whether a
+// proposal was opened with the same `openedLine`.
 
 export function issuedLine(issuedAt: number, locale?: string, timeZone?: string) {
   const when = new Intl.DateTimeFormat(locale, {

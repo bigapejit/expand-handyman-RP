@@ -46,6 +46,35 @@ export function proposalPaperHref(proposalId: string): string {
   return `/proposals/${proposalId}/paper`;
 }
 
+// How a proposal reads on a Dashboard row, as FRSG words it: when a waiting one
+// was sent, and how and when a decided one was answered. The locale and time
+// zone are for tests to pin; the app passes neither and gets the owner's own.
+export function sentLine(sentAt: number, locale?: string, timeZone?: string): string {
+  const when = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(sentAt);
+  return `Sent ${when}`;
+}
+
+export function proposalDecidedLine(
+  decided: { state: "approved" | "declined"; decidedAt: number },
+  locale?: string,
+  timeZone?: string,
+): string {
+  const day = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(decided.decidedAt);
+  return `${proposalStateLabel(decided.state)} ${day}`;
+}
+
 // What a customer's row on the Customers list says about their proposals: the
 // Sent ones waiting on them first, since those are the ones to chase; else how
 // the last decided one went; else the drafts being written; else nothing yet.
@@ -54,24 +83,17 @@ export type ProposalActivity =
   | { kind: "decided"; state: "approved" | "declined" }
   | { kind: "quiet"; label: string };
 
-export function proposalActivity(
-  proposals: readonly {
-    state: ProposalState;
-    updatedAt: number;
-    approvedAt?: number;
-    declinedAt?: number;
-  }[],
-): ProposalActivity {
+// A proposal as the hint weighs it: its state, and when it was decided, which
+// only a decided one has.
+export type ProposalOutcome = { state: ProposalState; decidedAt: number | null };
+
+export function proposalActivity(proposals: readonly ProposalOutcome[]): ProposalActivity {
   const sent = proposals.filter((proposal) => proposal.state === "sent").length;
   if (sent > 0) return { kind: "awaiting", label: `${sent} awaiting a signature` };
 
-  // By when the decision was made: a later edit to a decided proposal, such as
-  // its Recommended mark, touches `updatedAt` and says nothing about the answer.
-  const decidedAt = (proposal: (typeof proposals)[number]) =>
-    proposal.approvedAt ?? proposal.declinedAt ?? proposal.updatedAt;
   const decided = proposals
     .filter((proposal) => proposal.state === "approved" || proposal.state === "declined")
-    .sort((left, right) => decidedAt(right) - decidedAt(left))[0];
+    .sort((left, right) => (right.decidedAt ?? 0) - (left.decidedAt ?? 0))[0];
   if (decided?.state === "approved" || decided?.state === "declined")
     return { kind: "decided", state: decided.state };
 

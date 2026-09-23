@@ -17,6 +17,8 @@ import { lookUpSiteTax } from "./salesTax";
 import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
+  customerViewsOfLink,
+  decidedAt,
   endSigningLinks,
   firstCustomerView,
   liveLinkForToken,
@@ -194,6 +196,91 @@ export const list = query({
     return rows;
   },
 });
+
+// How many decided proposals the Dashboard shows, FRSG's figure.
+const DashboardDecidedLimit = 8;
+
+// The Dashboard's Proposals card, ported from FRSG's `dashboardForStaff`: what
+// is out with a customer across every site, the one waiting longest first and
+// each saying whether the customer has opened its current link, then the few
+// most recently decided, latest decision first. Every row is past Send, so it
+// reads the frozen offer and the customer's name as sent.
+//
+// The Sent list is unbounded on purpose: every one is a customer being waited
+// on. The decided ones are read whole and cut in memory, because the index
+// orders them by when they were sent and the card wants when they were
+// decided; that costs the offers made, never the drafts.
+export const dashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    const inState = (state: Doc<"proposals">["state"]) =>
+      ctx.db.query("proposals").withIndex("by_state_sent", (q) => q.eq("state", state));
+    const [sent, approved, declined] = await Promise.all([
+      inState("sent").order("asc").collect(),
+      inState("approved").collect(),
+      inState("declined").collect(),
+    ]);
+    const decided = (
+      await Promise.all(
+        [...approved, ...declined].map(async (proposal) => ({
+          proposal,
+          decidedAt: await decidedAt(ctx, proposal),
+        })),
+      )
+    )
+      .sort((x, y) => y.decidedAt - x.decidedAt)
+      .slice(0, DashboardDecidedLimit);
+
+    const awaitingRows = await Promise.all(
+      sent.map(async (proposal) => {
+        const row = await dashboardRow(ctx, proposal);
+        if (!row) return null;
+        const live = (await signingLinksForProposal(ctx, proposal._id)).find(
+          (link) => link.endedAt === undefined,
+        );
+        return {
+          ...row,
+          sentAt: proposal.sentAt ?? proposal.updatedAt,
+          ...(live
+            ? await customerViewsOfLink(ctx, live.token)
+            : { customerViews: 0, lastViewedAt: null }),
+        };
+      }),
+    );
+    const decidedRows = await Promise.all(
+      decided.map(async ({ proposal, decidedAt: at }) => {
+        const row = await dashboardRow(ctx, proposal);
+        if (!row) return null;
+        return { ...row, state: proposal.state as "approved" | "declined", decidedAt: at };
+      }),
+    );
+    return {
+      awaiting: awaitingRows.filter((row) => row !== null),
+      decided: decidedRows.filter((row) => row !== null),
+    };
+  },
+});
+
+// A Dashboard row's name for a proposal past Send, and where it opens. A site
+// with a proposal cannot be deleted, so a missing one is data gone wrong, and
+// the row is left out rather than pointing nowhere.
+async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
+  const site = await ctx.db.get(proposal.siteId);
+  if (!site || !proposal.frozen) return null;
+  const offer = frozenOffer(proposal.frozen);
+  return {
+    proposalId: proposal._id,
+    customerId: site.customerId,
+    customerName: proposal.frozen.customerName,
+    code: offer.code,
+    title: proposalDisplayName(
+      proposal.name,
+      offer.solutions.map((solution) => solution.title),
+    ),
+    totalCents: offer.money.totalCents,
+  };
+}
 
 // The staff paper: a proposal as its **Proposal paper**, for the owner to read
 // before sending or after. A draft is laid out from its live solutions as if

@@ -299,6 +299,37 @@ export async function customerViewedLink(ctx: QueryCtx, token: string): Promise<
   return view !== null;
 }
 
+// The customer's opens of one link, for the Dashboard's "Opened twice, last
+// Tuesday": how many, and the latest. Owner previews never count.
+export async function customerViewsOfLink(
+  ctx: QueryCtx,
+  token: string,
+): Promise<{ customerViews: number; lastViewedAt: number | null }> {
+  const views = await ctx.db
+    .query("proposalViews")
+    .withIndex("by_token_viewer", (q) => q.eq("token", token).eq("viewer", "customer"))
+    .collect();
+  return { customerViews: views.length, lastViewedAt: views.at(-1)?.openedAt ?? null };
+}
+
+// When a decided proposal was decided: the stamp Approve or Decline wrote.
+// Not `updatedAt`, which a Recommended mark set later moves too. A decided
+// proposal without its stamp falls back to the moment the link that carried
+// the answer ended, then to its last change.
+export async function decidedAt(ctx: QueryCtx, proposal: Doc<"proposals">): Promise<number> {
+  const stamped =
+    proposal.state === "approved"
+      ? proposal.approvedAt
+      : proposal.state === "declined"
+        ? proposal.declinedAt
+        : undefined;
+  if (stamped !== undefined) return stamped;
+  const answered = (await signingLinksForProposal(ctx, proposal._id)).find(
+    (link) => link.endedReason === proposal.state && link.endedAt !== undefined,
+  );
+  return answered?.endedAt ?? proposal.updatedAt;
+}
+
 // What became of the email that carried the link, written back by the
 // scheduled send. It never touches the proposal or the link's own life: the
 // offer was made the moment Send committed.
