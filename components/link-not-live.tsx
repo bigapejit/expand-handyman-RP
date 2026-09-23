@@ -1,7 +1,7 @@
-// What a signing link says once it opens nothing: withdrawn, replaced by a
-// re-send, or never a link at all. It never says why: that is Expand's to
-// tell the customer, not a URL's.
-export function LinkNotLive({ what }: { what: "document" | "proposal" }) {
+// What a signing or invoice link says once it opens nothing: withdrawn,
+// replaced by a re-send, or never a link at all. It never says why: that is
+// Expand's to tell the customer, not a URL's.
+export function LinkNotLive({ what }: { what: "document" | "proposal" | "invoice" }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center gap-3 px-6 py-16">
       <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">
@@ -11,8 +11,9 @@ export function LinkNotLive({ what }: { what: "document" | "proposal" }) {
         This link is no longer live
       </h1>
       <p className="text-sm leading-relaxed text-stone-600">
-        The {what} it opened is no longer waiting on your answer. Contact
-        Expand Handyman for a current link.
+        {what === "invoice"
+          ? "Contact Expand Handyman for a current link to this invoice."
+          : `The ${what} it opened is no longer waiting on your answer. Contact Expand Handyman for a current link.`}
       </p>
     </main>
   );

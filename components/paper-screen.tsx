@@ -52,10 +52,42 @@ export function PaperScreen({
   // Who foots the printed sheets (proposal-paper.tsx).
   footer?: PaperFooter;
 }) {
+  const pdfState = pdfCopyStateFor(paper.state);
+  const title = paperTitle(paper.number, paper.name);
+
+  return (
+    <PaperFrame
+      top={
+        download && pdfState ? (
+          <PaperTopWithDownload title={title} source={download} state={pdfState} strip={strip} />
+        ) : (
+          <PaperTop title={title}>
+            <Strip strip={strip} />
+          </PaperTop>
+        )
+      }
+      bar={bar}
+    >
+      <ProposalPaper proposal={paper} pending={pending} footer={footer} />
+    </PaperFrame>
+  );
+}
+
+// The screen itself, whatever paper it carries: the top bar, the sheets
+// fitted to the width, and the sign bar when there is one. The invoice link
+// draws the invoice paper in it (components/invoice-link-page.tsx).
+export function PaperFrame({
+  top,
+  bar,
+  children,
+}: {
+  top: ReactNode;
+  bar?: ReactNode;
+  children: ReactNode;
+}) {
   const { scale, sheetsRef, naturalHeight } = usePaperFit();
   const ready = usePaperReady();
   const scaled = scale < 1;
-  const pdfState = pdfCopyStateFor(paper.state);
 
   return (
     <div
@@ -63,18 +95,7 @@ export function PaperScreen({
       data-paper={ready ? "ready" : "loading"}
       style={{ ["--paper-scale" as string]: String(scale) }}
     >
-      {download && pdfState ? (
-        <PaperTopWithDownload
-          title={paperTitle(paper.number, paper.name)}
-          source={download}
-          state={pdfState}
-          strip={strip}
-        />
-      ) : (
-        <PaperTop title={paperTitle(paper.number, paper.name)}>
-          <Strip strip={strip} />
-        </PaperTop>
-      )}
+      {top}
 
       <div className="paper-sheets" ref={sheetsRef}>
         <div
@@ -84,7 +105,7 @@ export function PaperScreen({
           // one frame of a slightly long page and never a short one.
           style={scaled && naturalHeight !== null ? { height: naturalHeight * scale } : undefined}
         >
-          <ProposalPaper proposal={paper} pending={pending} footer={footer} />
+          {children}
         </div>
       </div>
 
@@ -133,7 +154,7 @@ export function PaperLoading() {
   );
 }
 
-function PaperTop({
+export function PaperTop({
   title,
   actions,
   children,
