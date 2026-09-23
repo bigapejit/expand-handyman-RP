@@ -3,10 +3,9 @@ import { action, internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
-import { checkedSession } from "./places";
+import { lookUpPlace } from "./places";
 import { insertSite, place } from "./sites";
 import { parseCustomer } from "../lib/customer";
-import { placeAddress, placesKey } from "../lib/places";
 
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
 
@@ -37,11 +36,7 @@ export const add = action({
     await requireOwner(ctx);
     const customer = parseCustomer(a);
     const found = a.firstSite
-      ? await placeAddress(
-          placesKey(),
-          a.firstSite.placeId,
-          checkedSession(a.firstSite.sessionToken),
-        )
+      ? await lookUpPlace(a.firstSite.placeId, a.firstSite.sessionToken)
       : undefined;
     return ctx.runMutation(internal.customers.insert, { ...customer, place: found });
   },

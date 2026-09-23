@@ -4,6 +4,7 @@ import { requireOwner } from "./auth";
 import {
   MAX_LOOKUP,
   MIN_LOOKUP,
+  placeAddress,
   placesKey,
   suggestAddresses,
 } from "../lib/places";
@@ -20,7 +21,12 @@ export const suggest = action({
   },
 });
 
-export function checkedSession(sessionToken: string) {
+/** The details call that closes a lookup, made by every action that saves a site. */
+export function lookUpPlace(placeId: string, sessionToken: string | undefined) {
+  return placeAddress(placesKey(), placeId, checkedSession(sessionToken ?? ""));
+}
+
+function checkedSession(sessionToken: string) {
   if (!/^[\w-]{8,100}$/.test(sessionToken))
     throw new Error("Invalid address lookup session.");
   return sessionToken;

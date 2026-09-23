@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/combobox";
 import { api } from "@/convex/_generated/api";
 import { errorMessage } from "@/lib/utils";
-import type { PlaceSuggestion } from "@/lib/places";
+import { MIN_LOOKUP, type PlaceSuggestion } from "@/lib/places";
 
 const DEBOUNCE_MS = 250;
 export const PICK_ADDRESS = "Pick an address from the list.";
@@ -38,7 +38,6 @@ export function AddressCombobox({
   value,
   onChange,
   onTyped,
-  placeholder = "Start typing the street address",
   disabled,
   invalid,
 }: {
@@ -48,7 +47,6 @@ export function AddressCombobox({
   onChange: (place: PlaceSuggestion | null) => void;
   /** Whether the box holds text, picked or not. */
   onTyped?: (typed: boolean) => void;
-  placeholder?: string;
   disabled?: boolean;
   invalid?: boolean;
 }) {
@@ -70,7 +68,7 @@ export function AddressCombobox({
   function lookUp(input: string) {
     clearTimeout(timer.current);
     const request = ++latest.current;
-    if (input.trim().length < 3) {
+    if (input.trim().length < MIN_LOOKUP) {
       setResults([]);
       setSearching(false);
       return;
@@ -95,7 +93,7 @@ export function AddressCombobox({
   const status = searching
     ? "Searching…"
     : error ||
-      (text.trim().length < 3 ? "Keep typing the street address." : "No matching US address.");
+      (text.trim().length < MIN_LOOKUP ? "Keep typing the street address." : "No matching US address.");
 
   return (
     <Combobox
@@ -121,7 +119,7 @@ export function AddressCombobox({
     >
       <ComboboxInput
         id={id}
-        placeholder={placeholder}
+        placeholder="Start typing the street address"
         showTrigger={false}
         aria-invalid={invalid || undefined}
         autoComplete="off"

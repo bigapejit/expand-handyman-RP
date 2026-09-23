@@ -9,8 +9,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
-import { checkedSession } from "./places";
-import { placeAddress, placesKey } from "../lib/places";
+import { lookUpPlace } from "./places";
 import {
   createSiteName,
   parseSiteDetails,
@@ -87,11 +86,7 @@ export const add = action({
   handler: async (ctx, a): Promise<Id<"sites">> => {
     await requireOwner(ctx);
     parseSiteDetails(a);
-    const found = await placeAddress(
-      placesKey(),
-      a.placeId,
-      checkedSession(a.sessionToken),
-    );
+    const found = await lookUpPlace(a.placeId, a.sessionToken);
     return ctx.runMutation(internal.sites.insert, {
       customerId: a.customerId,
       place: found,
@@ -123,11 +118,7 @@ export const update = action({
     await requireOwner(ctx);
     parseSiteDetails(a);
     const found = a.placeId
-      ? await placeAddress(
-          placesKey(),
-          a.placeId,
-          checkedSession(a.sessionToken ?? ""),
-        )
+      ? await lookUpPlace(a.placeId, a.sessionToken)
       : undefined;
     await ctx.runMutation(internal.sites.patch, {
       siteId: a.siteId,

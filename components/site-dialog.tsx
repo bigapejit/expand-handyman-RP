@@ -47,7 +47,9 @@ export function SiteDialog({
 }) {
   const add = useAction(api.sites.add);
   const update = useAction(api.sites.update);
-  const [sessionToken] = useState(newLookupSession);
+  // Saving makes the details call that closes the lookup's session, so a
+  // retry after a failed save starts a new one.
+  const [sessionToken, setSessionToken] = useState(newLookupSession);
   // An existing site starts picked as it stands, so only a re-pick asks Google.
   const [place, setPlace] = useState<PlaceSuggestion | null>(
     site
@@ -112,6 +114,7 @@ export function SiteDialog({
               onClose();
             } catch (err) {
               setError(errorMessage(err));
+              setSessionToken(newLookupSession());
               setBusy(false);
             }
           }}

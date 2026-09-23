@@ -106,7 +106,9 @@ export function CustomerForm({
   );
   const [fieldErrors, setFieldErrors] = useState<CustomerErrors>({});
   const [error, setError] = useState("");
-  const [sessionToken] = useState(newLookupSession);
+  // Saving makes the details call that closes the lookup's session, so a
+  // retry after a failed save starts a new one.
+  const [sessionToken, setSessionToken] = useState(newLookupSession);
   const [firstSite, setFirstSite] = useState<PlaceSuggestion | null>(null);
   const [addressTyped, setAddressTyped] = useState(false);
   const unpicked = !customer && addressTyped && !firstSite;
@@ -139,6 +141,7 @@ export function CustomerForm({
           onSaved(id);
         } catch (err) {
           setError(errorMessage(err));
+          setSessionToken(newLookupSession());
           setBusy(false);
         }
       }}

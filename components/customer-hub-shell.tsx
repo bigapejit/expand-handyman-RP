@@ -66,8 +66,7 @@ export function CustomerHubShell({
 function CustomerTabRow({ customerId }: { customerId: string }) {
   const pathname = usePathname();
   const prefix = `/customers/${customerId}`;
-  const segment =
-    pathname === prefix ? "proposals" : pathname.slice(prefix.length + 1).split("/")[0];
+  const segment = pathname.slice(prefix.length + 1).split("/")[0];
 
   return (
     <nav aria-label="Customer sections" className="border-b">
