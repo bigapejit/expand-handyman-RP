@@ -907,6 +907,24 @@ export const decline = mutation({
   },
 });
 
+// What the customer's page sends with Approve.
+const approveArgs = {
+  token: v.string(),
+  signerName: v.string(),
+  consentTicked: v.boolean(),
+  noticeTicked: v.boolean(),
+  // The versions of the two sentences the page showed beside its ticks. The
+  // signature records the current constants, so a page rendered before a
+  // wording change, or a caller that doesn't say what it showed, is refused
+  // rather than recorded as having agreed to words its signer never read.
+  // The notice's is needed only where the notice applies.
+  consentWordingVersion: v.string(),
+  noticeWordingVersion: v.optional(v.string()),
+  // The signer's browser, as the page reports it. Recorded, never verified:
+  // it is evidence an electronic signature keeps, not a gate.
+  userAgent: v.optional(v.string()),
+};
+
 // **Approve** (CONTEXT.md): the customer's **Signature**, and the moment the
 // agreement forms. Public and token-authenticated, ported from FRSG's
 // `approve`: the signing link is the whole access model, and nobody at Expand
@@ -925,7 +943,7 @@ export const decline = mutation({
 // Send's does; the signature, the invoice and every email land together in
 // `approveWithLink`.
 export const approve = action({
-  args: approveArgs(),
+  args: approveArgs,
   handler: async (ctx, a) => {
     await ctx.runMutation(internal.proposals.approveWithLink, {
       ...a,
@@ -935,7 +953,7 @@ export const approve = action({
 });
 
 export const approveWithLink = internalMutation({
-  args: { ...approveArgs(), invoiceToken: v.string() },
+  args: { ...approveArgs, invoiceToken: v.string() },
   handler: async (ctx, a) => {
     const { link, proposal, site } = await requireLiveLink(ctx, a.token);
     const frozen = proposal.frozen;
@@ -1030,26 +1048,6 @@ export const approveWithLink = internalMutation({
     });
   },
 });
-
-// What the customer's page sends with Approve.
-function approveArgs() {
-  return {
-    token: v.string(),
-    signerName: v.string(),
-    consentTicked: v.boolean(),
-    noticeTicked: v.boolean(),
-    // The versions of the two sentences the page showed beside its ticks. The
-    // signature records the current constants, so a page rendered before a
-    // wording change, or a caller that doesn't say what it showed, is refused
-    // rather than recorded as having agreed to words its signer never read.
-    // The notice's is needed only where the notice applies.
-    consentWordingVersion: v.string(),
-    noticeWordingVersion: v.optional(v.string()),
-    // The signer's browser, as the page reports it. Recorded, never verified:
-    // it is evidence an electronic signature keeps, not a gate.
-    userAgent: v.optional(v.string()),
-  };
-}
 
 // The customer's Decline, from the same link and just as final as their
 // signature. The reason is theirs to give or not; Expand hears either way.

@@ -23,7 +23,7 @@ export type PaperInvoice = {
   zelleEmail: string;
 };
 
-// The top bar over the paper: which invoice, and for which property.
+// The top bar over the paper: which invoice, and at which site.
 export function invoicePaperTitle(paper: Pick<PaperInvoice, "number" | "site">): string {
   return `Invoice ${paper.number} · ${paper.site.street}`;
 }

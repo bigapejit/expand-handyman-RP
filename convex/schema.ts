@@ -280,6 +280,10 @@ export default defineSchema({
     number: v.optional(v.number()),
     sentAt: v.optional(v.number()),
     frozen: v.optional(frozenInvoice),
+    // Written by Void, which keeps the number and the link. The reason is the
+    // owner's and never reaches the customer.
+    voidedAt: v.optional(v.number()),
+    voidReason: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

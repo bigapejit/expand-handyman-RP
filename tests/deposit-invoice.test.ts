@@ -320,6 +320,17 @@ describe("The invoice link", () => {
     expect(page?.paper.zelleEmail).toBe("billing@expandhandyman.com");
   });
 
+  test("a link a re-send has ended is still an invoice's, and opens nothing", async () => {
+    const { t, sent, approve, deliver } = fixture();
+    const { token } = await sent();
+    await approve(token);
+    await deliver();
+    const [link] = await t.run((ctx) => ctx.db.query("invoiceLinks").collect());
+    await t.run((ctx) => ctx.db.patch(link._id, { endedAt: Date.now(), endedReason: "resent" }));
+    expect(await t.query(api.signingLinks.resolve, { token: link.token })).toBe("invoice");
+    expect(await t.query(api.invoiceLinks.page, { token: link.token })).toBeNull();
+  });
+
   test("an unknown token still opens nothing", async () => {
     const { t } = fixture();
     const unknown = "x".repeat(43);

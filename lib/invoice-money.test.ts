@@ -25,7 +25,7 @@ describe("What an invoice adds up to", () => {
     ).toEqual({ subtotalCents: 206_500, taxCents: 17_966, amountDueCents: 224_466 });
   });
 
-  it("rounds the tax to the cent, half away from nothing", () => {
+  it("rounds the tax to the cent, a half cent up", () => {
     // 1,005 × 0.1 is 100.5 cents.
     expect(invoiceMoney([{ description: "Hinge", cents: 1_005 }], 0.1).taxCents).toBe(101);
   });
