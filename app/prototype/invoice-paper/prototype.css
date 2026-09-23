@@ -1,0 +1,123 @@
+/* PROTOTYPE (issue #68): throwaway. What the invoice paper needs beyond
+ * app/proposal-paper.css: its title, the Amount Due block pulled in under the
+ * lines, the stamp, and the variant switcher. */
+
+/* The stamp is placed against the sheet, in the empty right half of the
+   cover block so it hides no figure. */
+.ip-page {
+  position: relative;
+}
+
+.ip-title {
+  font-size: 13.5pt;
+  font-weight: bold;
+  margin: 4pt 0 0;
+}
+
+.ip-facts {
+  margin-top: 6pt;
+}
+
+.ip-lines td:first-child {
+  padding-right: 12pt;
+}
+
+/* The proposal's Grand Total block, closer to the lines it sums. */
+.ip-due {
+  margin-top: 12pt;
+}
+
+.ip-pay {
+  margin-top: 40pt;
+}
+
+.ip-pay .pd-scope {
+  border-bottom: 0;
+}
+
+.ip-pay .pd-scope p {
+  text-align: left;
+  margin-bottom: 2pt;
+}
+
+.ip-terms {
+  margin-top: 32pt;
+  font-size: 9.5pt;
+  color: #333;
+}
+
+/* A voided invoice asks for nothing. */
+.ip-void .ip-amount {
+  text-decoration: line-through;
+  color: #555;
+}
+
+/* ── The stamp ────────────────────────────────────────────────────────── */
+.ip-stamp {
+  position: absolute;
+  top: 2.3in;
+  right: 0.75in;
+  transform: rotate(-12deg);
+  padding: 6pt 18pt 8pt;
+  border: 3.5pt solid #b91c1c;
+  border-radius: 6pt;
+  color: #b91c1c;
+  font: bold 36pt/1 Tinos, "Times New Roman", Times, serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  opacity: 0.78;
+  pointer-events: none;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.ip-stamp small {
+  display: block;
+  margin-top: 3pt;
+  font-size: 11pt;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.ip-stamp-void {
+  color: #444;
+  border-color: #444;
+}
+
+/* ── The variant switcher: chrome, never part of the paper ────────────── */
+.ip-switcher {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 50;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font: 600 13px/1 ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.45);
+  white-space: nowrap;
+}
+
+.ip-switcher button {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 0;
+  background: #333;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media print {
+  .ip-switcher {
+    display: none !important;
+  }
+}
