@@ -2,10 +2,15 @@ import { Suspense } from "react";
 
 import { CustomerProposals } from "@/components/customer-proposals";
 
-export default function Page() {
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ customerId: string }>;
+}) {
+  const { customerId } = await params;
   return (
     <Suspense>
-      <CustomerProposals />
+      <CustomerProposals customerId={customerId} />
     </Suspense>
   );
 }

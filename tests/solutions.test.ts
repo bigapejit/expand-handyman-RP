@@ -53,7 +53,20 @@ function fixture() {
     siteId: Id<"sites">,
     state: "draft" | "sent" | "approved" | "declined",
     solutionIds: Id<"solutions">[],
-  ) => t.run((ctx) => ctx.db.insert("proposals", { siteId, state, solutionIds }));
+  ) =>
+    t.run((ctx) =>
+      ctx.db.insert("proposals", {
+        siteId,
+        number: 1,
+        state,
+        solutionIds,
+        recommended: false,
+        depositPercent: 50,
+        tax: { source: "lookup" },
+        createdAt: 0,
+        updatedAt: 0,
+      }),
+    );
   const list = (customerId: Id<"customers">) =>
     owner.query(api.solutions.forCustomer, { customerId });
   return { t, owner, stranger, customer, site, proposal, list };

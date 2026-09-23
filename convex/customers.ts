@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
 import { insertSite, place } from "./sites";
 import { parseCustomer } from "../lib/customer";
+import { proposalActivity } from "../lib/proposals";
 
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
 
@@ -17,9 +18,21 @@ export const list = query({
     await requireOwner(ctx);
     const customers = await ctx.db.query("customers").order("desc").take(1000);
     const siteCount = new Map<Id<"customers">, number>();
-    for (const site of await ctx.db.query("sites").take(10_000))
+    const customerOfSite = new Map<Id<"sites">, Id<"customers">>();
+    for (const site of await ctx.db.query("sites").take(10_000)) {
       siteCount.set(site.customerId, (siteCount.get(site.customerId) ?? 0) + 1);
-    return customers.map((c) => ({ ...c, siteCount: siteCount.get(c._id) ?? 0 }));
+      customerOfSite.set(site._id, site.customerId);
+    }
+    const proposals = new Map<Id<"customers">, Doc<"proposals">[]>();
+    for (const proposal of await ctx.db.query("proposals").take(10_000)) {
+      const customerId = customerOfSite.get(proposal.siteId);
+      if (customerId) proposals.set(customerId, [...(proposals.get(customerId) ?? []), proposal]);
+    }
+    return customers.map((c) => ({
+      ...c,
+      siteCount: siteCount.get(c._id) ?? 0,
+      proposalActivity: proposalActivity(proposals.get(c._id) ?? []),
+    }));
   },
 });
 

@@ -25,6 +25,17 @@ export const solutionLineItem = v.object({
   unitCostCents: v.number(),
   unit: v.optional(v.string()),
 });
+// The rate a proposal charges and where it came from, as lib/proposal-pricing.ts
+// reads it. `none` is a site outside Washington, which charges no tax; a
+// missing rate under either other source is a Washington site nobody has a
+// rate for yet, which is not a rate of zero. The location code and quarter are
+// DOR's own, kept so the proposal can say which rate it charged.
+export const proposalTax = v.object({
+  source: v.union(v.literal("lookup"), v.literal("override"), v.literal("none")),
+  rate: v.optional(v.number()),
+  locationCode: v.optional(v.string()),
+  period: v.optional(v.string()),
+});
 export default defineSchema({
   customers: defineTable({
     name: v.string(),
@@ -82,18 +93,30 @@ export default defineSchema({
     useCount: v.number(),
     updatedAt: v.number(),
   }).index("by_normalized_name", ["normalizedName"]),
-  // The site, and which solutions a proposal offers in which state, so a site
-  // with proposals refuses to be deleted and a solution in a sent or decided
-  // proposal refuses too. Drafting proposals fills in the rest.
+  // An offer assembled from a site's solutions (CONTEXT.md, **Proposal**):
+  // FRSG's shape keyed to a site. A draft stores its solutions' ids and reads
+  // them live, so nothing about their prices is kept here. Send adds the
+  // frozen offer, its stamp and the decision.
   proposals: defineTable({
     siteId: v.id("sites"),
+    // Issued from the site's `lastProposalNumber`; with the site name it makes
+    // the Proposal ID.
+    number: v.number(),
+    name: v.optional(v.string()),
     state: v.union(
       v.literal("draft"),
       v.literal("sent"),
       v.literal("approved"),
       v.literal("declined"),
     ),
+    // In the order the proposal offers them.
     solutionIds: v.array(v.id("solutions")),
+    recommended: v.boolean(),
+    depositPercent: v.number(),
+    tax: proposalTax,
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   }).index("by_site", ["siteId"]),
   documents: defineTable({
     customerId: v.id("customers"),

@@ -16,6 +16,8 @@ import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as pdfActions from "../pdfActions.js";
 import type * as places from "../places.js";
+import type * as proposals from "../proposals.js";
+import type * as salesTax from "../salesTax.js";
 import type * as sites from "../sites.js";
 import type * as solutions from "../solutions.js";
 
@@ -34,6 +36,8 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   pdfActions: typeof pdfActions;
   places: typeof places;
+  proposals: typeof proposals;
+  salesTax: typeof salesTax;
   sites: typeof sites;
   solutions: typeof solutions;
 }>;
