@@ -63,6 +63,9 @@ export type PaperSolution = {
   title: string;
   scopeOfWork: string;
   lineItems: OfferedLineItem[];
+  // The **Material allowance**, whole-dollar cents: the one dollar figure the
+  // paper prints inside a solution. Absent when the solution has none.
+  materialAllowanceCents?: number;
 };
 
 // How long the letter says the offer stands. Wording only: nothing expires by
@@ -169,14 +172,17 @@ export const SolutionLinesPerSheet = 48;
 export const GrandTotalLines = 14;
 
 // Roughly how many lines a solution's block takes: its title and table head,
-// a line and a bit per line item, its wrapped scope, the SCOPE OF WORK label
-// and the gap that follows the block.
+// a line and a bit per table row (each line item, and the material allowance),
+// its wrapped scope, the SCOPE OF WORK label and the gap that follows the
+// block.
 export function solutionLines(solution: PaperSolution): number {
   const scope = scopeLines(solution.scopeOfWork).reduce(
     (total, line) => total + Math.ceil(line.length / 122),
     0,
   );
-  return 3 + scope + 2 + Math.ceil(solution.lineItems.length * 1.3) + 7;
+  const rows =
+    solution.lineItems.length + (solution.materialAllowanceCents === undefined ? 0 : 1);
+  return 3 + scope + 2 + Math.ceil(rows * 1.3) + 7;
 }
 
 /**

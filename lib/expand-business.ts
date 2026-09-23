@@ -37,9 +37,9 @@ export function letterheadContactLines(): string[] {
   ];
 }
 
-// The **Terms** (CONTEXT.md): the 11 clauses approved on #13, as
-// [heading, body] pairs, printed in full on the paper's Terms and Conditions
-// page.
+// The **Terms** (CONTEXT.md): the 11 clauses approved on #13 and the
+// Material allowance clause added by #56, as [heading, body] pairs, printed in
+// full on the paper's Terms and Conditions page.
 export const ExpandProposalTerms: readonly (readonly [string, string])[] = [
   [
     "Acceptance.",
@@ -64,6 +64,10 @@ export const ExpandProposalTerms: readonly (readonly [string, string])[] = [
   [
     "Materials and permits.",
     "We supply the materials described unless the proposal says you will. Where a permit is required we will say so in the proposal; permit fees are extra unless included.",
+  ],
+  [
+    "Material allowance.",
+    "Where a solution includes a material allowance, that amount is our estimate of what its materials will cost, and it is included in the price. If the materials cost less, we will credit the difference against your final payment. Before buying materials that would go over it, we will tell you the extra cost in writing and go ahead only once you approve it, as under Changes.",
   ],
   [
     "Warranty.",

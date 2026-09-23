@@ -217,6 +217,72 @@ describe("solutions.update", () => {
   });
 });
 
+describe("a solution's material allowance", () => {
+  async function oneSolution() {
+    const f = fixture();
+    const customerId = await f.customer();
+    const siteId = await f.site(customerId, "1215MAIN");
+    const solutionId = await f.owner.mutation(api.solutions.create, { siteId });
+    const read = async () => (await f.list(customerId))[0];
+    return { ...f, solutionId, read };
+  }
+
+  test("has none until one is set", async () => {
+    const { read } = await oneSolution();
+    expect(await read()).toMatchObject({ materialAllowanceCents: null, price: null });
+  });
+
+  test("is added to the price unmarked, and prices a solution with no lines", async () => {
+    const { owner, solutionId, read } = await oneSolution();
+    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 130_000 });
+    expect(await read()).toMatchObject({
+      materialAllowanceCents: 130_000,
+      price: { costCents: 0, priceCents: 130_000, materialAllowanceCents: 130_000 },
+    });
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      lineItems: [{ name: "Labor", quantity: 10, unitCostCents: 6_500, unit: "HR" }],
+    });
+    // $650 of labor at 10% is $715, and the $1,300 goes on top as typed.
+    expect((await read()).price).toEqual({
+      costCents: 65_000,
+      priceCents: 201_500,
+      materialAllowanceCents: 130_000,
+    });
+  });
+
+  test("is cleared by null, which leaves the lines' price alone", async () => {
+    const { t, owner, solutionId, read } = await oneSolution();
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      lineItems: [{ name: "Labor", quantity: 10, unitCostCents: 6_500, unit: "HR" }],
+      materialAllowanceCents: 130_000,
+    });
+    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: null });
+    expect(await read()).toMatchObject({
+      materialAllowanceCents: null,
+      price: { costCents: 65_000, priceCents: 71_500 },
+    });
+    // Absent, not stored as null or zero.
+    const stored = await t.run((ctx) => ctx.db.get(solutionId));
+    expect(stored).not.toHaveProperty("materialAllowanceCents");
+    // An edit that does not name it leaves it as it is.
+    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 50_000 });
+    await owner.mutation(api.solutions.update, { solutionId, title: "Cabinets" });
+    expect((await read()).materialAllowanceCents).toBe(50_000);
+  });
+
+  test("refuses an amount that is not whole dollars from $1, and keeps what was stored", async () => {
+    const { owner, solutionId, read } = await oneSolution();
+    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 130_000 });
+    for (const bad of [0, 50, -100, 130_050])
+      await expect(
+        owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: bad }),
+      ).rejects.toThrow("Material Allowance must be a whole number of dollars, at least $1");
+    expect((await read()).materialAllowanceCents).toBe(130_000);
+  });
+});
+
 describe("the catalog", () => {
   async function saving() {
     const f = fixture();

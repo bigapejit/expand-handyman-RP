@@ -14,13 +14,17 @@ import {
   lineItemsToStore,
   markupField,
   markupToStore,
+  materialAllowanceField,
+  materialAllowanceToStore,
   moveDraft,
   priceReadout,
   readLineItems,
   readMarkupField,
+  readMaterialAllowanceField,
   readQuantity,
   readUnitCostCents,
   sameLineItems,
+  solutionDetailLabel,
   solutionPriceLabel,
   unitCostField,
   type LineItemDraft,
@@ -62,7 +66,24 @@ describe("The cost → Markup → price readout", () => {
       // $154.55, not $154.545: the whole-dollar rounding is inside the Markup
       // line, so cost plus Markup is exactly the price.
       markupAmountLabel: "$154.55",
+      materialAllowanceLabel: null,
       priceLabel: "$1,700",
+    });
+  });
+
+  // The allowance is its own row between the Markup and the price, so the
+  // Markup line still reads only what the percent added to the lines.
+  it("reads the Material Allowance out on its own row, unmarked", () => {
+    expect(
+      priceReadout(
+        { costCents: 154_545, priceCents: 300_000, materialAllowanceCents: 130_000 },
+        en,
+      ),
+    ).toEqual({
+      costLabel: "$1,545.45",
+      markupAmountLabel: "$154.55",
+      materialAllowanceLabel: "$1,300",
+      priceLabel: "$3,000",
     });
   });
 
@@ -325,6 +346,75 @@ describe("The price while the table is being typed", () => {
   it("has no price at all with nothing written down", () => {
     expect(draftPrice([], 10)).toBeNull();
     expect(draftPrice([blankLineItemDraft("new-1")], 10)).toBeNull();
+  });
+
+  it("adds the Material Allowance being typed, and is priced on it alone", () => {
+    expect(draftPrice([draft("Silicone", "1", "500")], 10, 130_000)).toEqual({
+      costCents: 50_000,
+      priceCents: 185_000,
+      materialAllowanceCents: 130_000,
+    });
+    expect(draftPrice([], 10, 130_000)).toMatchObject({ priceCents: 130_000 });
+  });
+});
+
+describe("The Material Allowance field", () => {
+  it("shows whole dollars plainly, with no sign or grouping to type around", () => {
+    expect(materialAllowanceField(130_000)).toBe("1300");
+  });
+
+  it("reads whole dollars however they are typed", () => {
+    for (const typed of ["1300", "1,300", "$1,300", " 1300 ", "1300.00"])
+      expect(readMaterialAllowanceField(typed)).toBe(130_000);
+  });
+
+  // The live price only takes an allowance the save would keep: blank, "0",
+  // cents, or anything that is not a figure yet add nothing while typing.
+  it("reads nothing from a field that is not an allowance yet", () => {
+    for (const typed of ["", "  ", "0", "12.50", "-5", "abc"])
+      expect(readMaterialAllowanceField(typed)).toBeUndefined();
+  });
+
+  it("stores a new or changed amount", () => {
+    expect(materialAllowanceToStore("1300", null)).toBe(130_000);
+    expect(materialAllowanceToStore("$1,500", 130_000)).toBe(150_000);
+  });
+
+  // Emptying the field and leaving it is the same edit as the ✕.
+  it("clears a stored allowance when the field is emptied", () => {
+    expect(materialAllowanceToStore("", 130_000)).toBeNull();
+    expect(materialAllowanceToStore("  ", 130_000)).toBeNull();
+  });
+
+  it("stores nothing from a field nobody really changed", () => {
+    expect(materialAllowanceToStore("1300", 130_000)).toBeUndefined();
+    expect(materialAllowanceToStore("$1,300.00", 130_000)).toBeUndefined();
+    // Added and left empty: there was nothing, and there still is.
+    expect(materialAllowanceToStore("", null)).toBeUndefined();
+  });
+
+  // A figure that is not whole dollars is sent as typed, so the save refuses it
+  // in words rather than the field quietly storing a different amount.
+  it("passes an amount that is not an allowance through to be refused", () => {
+    expect(materialAllowanceToStore("12.50", null)).toBe(1_250);
+    expect(materialAllowanceToStore("0", 130_000)).toBe(0);
+  });
+});
+
+describe("The Solutions list row's detail", () => {
+  it("counts the Line Items", () => {
+    expect(solutionDetailLabel(0, null, en)).toBe("No line items");
+    expect(solutionDetailLabel(1, null, en)).toBe("1 line item");
+    expect(solutionDetailLabel(4, null, en)).toBe("4 line items");
+  });
+
+  it("names a Material Allowance beside them", () => {
+    expect(solutionDetailLabel(4, 130_000, en)).toBe(
+      "4 line items · $1,300 material allowance",
+    );
+    expect(solutionDetailLabel(0, 130_000, en)).toBe(
+      "No line items · $1,300 material allowance",
+    );
   });
 });
 

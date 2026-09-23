@@ -340,6 +340,7 @@ export const paper = query({
         title: solution.title,
         scopeOfWork: solution.description,
         lineItems: offeredLineItems(solution.lineItems),
+        materialAllowanceCents: solution.materialAllowanceCents,
       })),
       ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
       terms: proposalTerms(),
@@ -764,6 +765,7 @@ export const sendWithLink = internalMutation({
           scopeOfWork: solution.description,
           priceCents: price.priceCents,
           lineItems: offeredLineItems(solution.lineItems),
+          materialAllowanceCents: solution.materialAllowanceCents,
         };
       }),
       ...proposalMoney(

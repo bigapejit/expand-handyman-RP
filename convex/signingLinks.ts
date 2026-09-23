@@ -156,6 +156,7 @@ export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
       title: solution.title,
       scopeOfWork: solution.scopeOfWork,
       lineItems: offeredLineItems(solution.lineItems),
+      materialAllowanceCents: solution.materialAllowanceCents,
     })),
     ...(frozen.notes === undefined ? {} : { notes: frozen.notes }),
     terms: frozen.terms,

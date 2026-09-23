@@ -108,6 +108,9 @@ export type SealedProposalInput = {
       // The lines the paper lists under the solution: name, quantity and unit,
       // and no money.
       lineItems: { name: string; quantity: number; unit: string }[];
+      // The material allowance the paper prints under them, where there was
+      // one: part of the price, so inside what the fingerprint covers.
+      materialAllowanceCents?: number;
     }[];
     subtotalCents: number;
     taxCents: number;
