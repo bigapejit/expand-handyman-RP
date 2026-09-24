@@ -199,23 +199,61 @@ describe("a lead event", () => {
   });
 
   test("a late lead for a known Thumbtack customer repoints the placeholder and drops its stand-in", async () => {
-    const { receive, customers, leads, deals } = fixture();
+    const { t, receive, customers, leads, deals } = fixture();
     await receive(leadEvent("700", { customerID: "c-9", phone: "555-000-9999" }));
     // The owner's reply arrives before the lead itself: a business message
     // carries no customer block, so the stand-in is blank.
     await receive(messageEvent("m-1", "Business", "2026-09-23T16:00:00Z", "777"));
     expect(await customers()).toHaveLength(2);
+    // Meanwhile the owner put a site on the stand-in's deal and a proposal
+    // went out from it: both are the stand-in's, not the real customer's.
+    const standIn = (await deals()).find((d) => d.title === "Thumbtack message");
+    if (!standIn) throw new Error("No stand-in deal.");
+    await t.run(async (ctx) => {
+      const siteId = await ctx.db.insert("sites", {
+        customerId: standIn.customerId,
+        name: "1300FRANKLIN",
+        addressLine1: "1300 Franklin St",
+        addressLine2: "",
+        city: "Vancouver",
+        region: "WA",
+        postalCode: "98660",
+        placeId: "place-standin",
+        latitude: 45.63,
+        longitude: -122.67,
+        accessNotes: "",
+        lastProposalNumber: 1,
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      const proposalId = await ctx.db.insert("proposals", {
+        siteId,
+        number: 1,
+        state: "draft",
+        solutionIds: [],
+        recommended: false,
+        depositPercent: 50,
+        tax: { source: "none" },
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      await ctx.db.patch(standIn._id, { siteId, proposalId });
+    });
 
     expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
     const held = await customers();
     expect(held).toHaveLength(1);
     expect(await leads()).toHaveLength(2);
     for (const lead of await leads()) expect(lead.customerId).toBe(held[0]._id);
-    // The placeholder's deal follows its lead to the real customer.
+    // The placeholder's deal follows its lead to the real customer, leaving
+    // the stand-in's site and proposal behind.
     expect((await deals()).map((d) => [d.customerId, d.title])).toEqual([
       [held[0]._id, "Fence Repair"],
       [held[0]._id, "Fence Repair"],
     ]);
+    const moved = (await deals()).find((d) => d._id === standIn._id);
+    expect(moved?.siteId).toBeUndefined();
+    expect(moved?.proposalId).toBeUndefined();
   });
 
   test("arriving twice is a duplicate with one lead", async () => {

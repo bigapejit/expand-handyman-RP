@@ -97,8 +97,13 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
     if (matched && matched !== existing.customerId) {
       await ctx.db.patch(existing._id, { customerId: matched });
       // A site the owner had put on the stand-in's deal is the stand-in's,
-      // and a deal's site must be its own customer's, so the deal leaves it.
-      await ctx.db.patch(deal._id, { customerId: matched, siteId: undefined });
+      // and a deal's site must be its own customer's, so the deal leaves it,
+      // and with it any proposal sent from there.
+      await ctx.db.patch(deal._id, {
+        customerId: matched,
+        siteId: undefined,
+        proposalId: undefined,
+      });
       await dropBareStandIn(ctx, existing.customerId);
     } else await fillPlaceholderCustomer(ctx, existing.customerId, parsed);
     return { outcome: "lead", note: "Filled in a placeholder made by an earlier message." };
