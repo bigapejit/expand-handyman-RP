@@ -499,6 +499,23 @@ describe("board", () => {
     expect(await row(lost)).toMatchObject({ stage: "lost", proposal: null });
   });
 
+  test("moving a deal to another site lets go of the proposal it read", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const here = await site(customerId, "1300 Franklin St");
+    const there = await site(customerId, "88 Main St");
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    await send(here);
+    expect((await row(dealId))?.proposal?.state).toBe("sent");
+    await owner.mutation(api.deals.setSite, { dealId, siteId: there });
+    expect(await row(dealId)).toMatchObject({ site: { siteId: there }, proposal: null });
+  });
+
   test("a lead from before deals is moved too, getting its deal on the way", async () => {
     const { t, owner, customer, site, send, deals } = fixture();
     const customerId = await customer();

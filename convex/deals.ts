@@ -211,7 +211,14 @@ export const setSite = mutation({
     await requireOwner(ctx);
     const deal = await dealOf(ctx, dealId);
     if (siteId) await siteOfCustomer(ctx, siteId, deal.customerId);
-    await ctx.db.patch(deal._id, { siteId: siteId ?? undefined, updatedAt: Date.now() });
+    // A proposal is for a site, so a deal moved to another site lets go of
+    // the one it was reading; the next proposal sent from there is its own.
+    const moved = (siteId ?? undefined) !== deal.siteId;
+    await ctx.db.patch(deal._id, {
+      siteId: siteId ?? undefined,
+      ...(moved ? { proposalId: undefined } : {}),
+      updatedAt: Date.now(),
+    });
   },
 });
 
