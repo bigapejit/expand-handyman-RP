@@ -208,7 +208,8 @@ export const checkoutFor = internalQuery({
 // never taken from the address, and applied through `applyStripeEvent` as if
 // its completion had just arrived, so the paper is right the moment the
 // customer is back, whether or not the webhook has landed yet; whichever
-// comes second finds the work done. A session not yet complete applies
+// comes second finds the work done, but for a card payment's day, which is
+// the webhook's to set (`recordPaid`). A session not yet complete applies
 // nothing, and nor does anything that goes wrong reaching Stripe: the
 // webhook still records the payment.
 export const applyCheckoutReturn = action({
@@ -236,8 +237,9 @@ export const applyCheckoutReturn = action({
       });
     if (session.status !== "complete") return { applied: false };
     // Dated when the customer paid on Stripe's page, which is when Stripe
-    // made the payment intent, not when the page came back: a return
-    // reloaded after midnight must not move the payment's day.
+    // made the payment intent, not when the page came back, perhaps after
+    // midnight. The day stands only until the webhook's completion brings
+    // the payment's own, and a reload never moves it.
     const intent = session.payment_intent;
     const paidAt =
       intent && typeof intent === "object" && typeof intent.created === "number"
@@ -394,13 +396,24 @@ async function applySession(
     at: event.created * 1000,
     day: stripeEventDay(event.created),
   };
+  // Stripe's own events carry their `evt_` id; the completion the success
+  // return makes up from the session it read back has none.
+  const byWebhook = event.eventId !== null;
   switch (event.type) {
     case "completed":
       await acceptedAtCompletion(ctx, payment);
-      // A card's money is in at once; a bank's is on its way until the bank
-      // confirms it, unless the payment intent, when the success return read
-      // it, has already failed.
-      if (session.paymentStatus === "paid") return recordPaid(ctx, payment);
+      // A card's money is in at once. A bank's is on its way until the bank
+      // confirms it, and only `async_payment_succeeded` says so (spec #121,
+      // the events table): a bank session the success return reads back
+      // already paid, the bank having confirmed before that event landed, is
+      // still written on its way, or left as it is if the event came first,
+      // and the event, when it lands, writes it paid on its own day. Nothing
+      // when the payment intent, as the success return read it, has already
+      // failed.
+      if (session.paymentStatus === "paid")
+        return method === "bank"
+          ? recordOnItsWay(ctx, payment)
+          : recordPaid(ctx, payment, byWebhook);
       if (
         session.paymentStatus === "unpaid" &&
         (session.paymentIntentStatus === null || session.paymentIntentStatus === "processing")
@@ -408,7 +421,7 @@ async function applySession(
         return recordOnItsWay(ctx, payment);
       return;
     case "async_succeeded":
-      return recordPaid(ctx, payment);
+      return recordPaid(ctx, payment, byWebhook);
     case "async_failed":
       return recordReturned(ctx, payment, failureReason ?? session.failureMessage ?? undefined);
   }
@@ -464,7 +477,20 @@ function paymentsForIntent(ctx: QueryCtx, paymentIntentId: string) {
 // void or already paid, because money that moved is never hidden; never
 // twice for one payment intent; and never for a payment already gone back,
 // which a late delivery must not bring back to life.
-async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
+//
+// That event is the webhook's: `checkout.session.completed` for a card,
+// `async_payment_succeeded` for a bank. The success return tells a card's
+// completion too, sooner, and dates it by when Stripe made the payment
+// intent, which is when the customer first submitted on Stripe's page: a
+// moment before the completion, or much longer before when a declined card
+// was tried again, and across Pacific midnight a day before. So the return
+// only writes a day where the payment has none yet, to stamp the paper the
+// moment the customer is back, and never moves one; the webhook's event sets
+// its own day whenever the payment reads another, and the PDF copy of the
+// old stamp goes with it. Only one event confirms a payment intent, and a
+// redelivery is dropped by its id before it reaches here, so the day is the
+// same whichever of the two landed first.
+async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts, byWebhook: boolean) {
   const row = await rowForSession(ctx, payment);
   if (row && Ended.has(row.status)) return;
   const [existing] = await paymentsForIntent(ctx, payment.paymentIntentId);
@@ -487,17 +513,7 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
       paymentId,
     });
   if (!existing) await paperChanged(ctx, payment.invoice);
-  else if (payment.method === "card" && payment.day < existing.receivedOn) {
-    // A card's money is confirmed by its completion, which both the webhook
-    // and the success return tell, each reading that moment a few seconds
-    // apart: the webhook by the event's time, the return by when Stripe made
-    // the payment intent, just before. Across Pacific midnight the two fall
-    // on different days, and the paper must not carry whichever request won
-    // the race, so the earlier day wins, as `acceptedAtCompletion` only ever
-    // moves the row's time earlier: it is the first moment anyone saw the
-    // money. A later day never moves it on. A bank's money is confirmed only
-    // by its own event, days after the completion the return reads, so a
-    // bank payment keeps the day it was written with.
+  else if (byWebhook && existing.receivedOn !== payment.day) {
     await ctx.db.patch(existing._id, { receivedOn: payment.day });
     await paperChanged(ctx, payment.invoice);
   }

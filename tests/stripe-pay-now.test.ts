@@ -1484,7 +1484,8 @@ describe("The success return", () => {
   // A card paid two seconds before midnight in Vancouver, whose completion
   // Stripe stamped two seconds after it: the return reads the payment
   // intent's making, the webhook the event's, and the two fall on either
-  // side of the day.
+  // side of the day. The webhook's completion is the event that confirms a
+  // card, so its day is the payment's.
   const acrossMidnight = {
     id: "pi_test_1",
     object: "payment_intent",
@@ -1493,7 +1494,7 @@ describe("The success return", () => {
   };
   const completedAt = pdt(9, 2, 0, 0) + 2_000;
 
-  test("landing after the webhook across midnight, moves the payment back to the day the customer paid and lets the PDF copy go", async () => {
+  test("landing after the webhook across midnight, keeps the day of the webhook's completion, and the PDF copy with it", async () => {
     const {
       t,
       apply,
@@ -1509,51 +1510,60 @@ describe("The success return", () => {
     const { invoiceId, token } = await approved();
     vi.setSystemTime(completedAt);
     await apply(event("checkout.session.completed", session(invoiceId)));
-    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-02" }]);
     const storageId = await pdfCopy(invoiceId, "paid");
 
     sessions.set("cs_test_1", session(invoiceId, { payment_intent: acrossMidnight }));
     await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
 
-    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-01" }]);
+    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-02" }]);
     expect(await stripeRows()).toMatchObject([
       { status: "paid", acceptedAt: acrossMidnight.created * 1000 },
     ]);
     expect(invoiceLinkStrip((await page(token))?.paper.stamp ?? null)?.body).toBe(
-      "Paid on 9/1/2026. Thank you.",
+      "Paid on 9/2/2026. Thank you.",
     );
-    expect(await pdfCopyKept(invoiceId, storageId)).toBe(false);
+    expect(await pdfCopyKept(invoiceId, storageId)).toBe(true);
   });
 
-  test("landing before the webhook across midnight, keeps the day the customer paid when the webhook's later day comes, and the PDF copy with it", async () => {
+  test("landing before the webhook across midnight, stamps the paper at once and gives way to the webhook's day when it comes, letting the PDF copy go once", async () => {
     const { t, apply, event, session, approved, paymentsOf, page, pdfCopy, pdfCopyKept } =
       fixture();
     const { invoiceId, token } = await approved();
     vi.setSystemTime(completedAt - 1_000);
     sessions.set("cs_test_1", session(invoiceId, { payment_intent: acrossMidnight }));
     await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
-    const storageId = await pdfCopy(invoiceId, "paid");
+    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-01" }]);
+    const firstCopy = await pdfCopy(invoiceId, "paid");
 
     vi.setSystemTime(completedAt);
-    await apply(event("checkout.session.completed", session(invoiceId)));
+    const completed = event("checkout.session.completed", session(invoiceId));
+    await apply(completed);
 
-    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-01" }]);
+    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-02" }]);
     expect(invoiceLinkStrip((await page(token))?.paper.stamp ?? null)?.body).toBe(
-      "Paid on 9/1/2026. Thank you.",
+      "Paid on 9/2/2026. Thank you.",
     );
-    expect(await pdfCopyKept(invoiceId, storageId)).toBe(true);
+    expect(await pdfCopyKept(invoiceId, firstCopy)).toBe(false);
+
+    // Delivered again, or told again under another event, or the return
+    // reloaded: the day is already the webhook's, and nothing moves.
+    const secondCopy = await pdfCopy(invoiceId, "paid");
+    const { updatedAt } = (await t.run((ctx) => ctx.db.get(invoiceId)))!;
+    vi.setSystemTime(completedAt + 60_000);
+    await apply(completed);
+    await apply({ ...completed, id: "evt_test_again" });
+    await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
+
+    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-02" }]);
+    expect(await pdfCopyKept(invoiceId, secondCopy)).toBe(true);
+    expect((await t.run((ctx) => ctx.db.get(invoiceId)))?.updatedAt).toBe(updatedAt);
   });
 
-  test("reloaded after the bank confirmed, keeps the day the bank confirmed, not the day the customer pressed Pay", async () => {
-    const { t, apply, event, bankSession, approved, paymentsOf } = fixture();
+  test("reading a bank session back after the bank confirmed but before its event landed, still reads Payment on its way, and the event dates it paid", async () => {
+    const { t, apply, event, bankSession, approved, paymentsOf, stripeRows, page } = fixture();
     const { invoiceId, token } = await approved();
-    await apply(event("checkout.session.completed", bankSession(invoiceId)));
-    vi.setSystemTime(pdt(9, 3));
-    const confirmed = bankSession(invoiceId, { payment_status: "paid" });
-    await apply(event("checkout.session.async_payment_succeeded", confirmed));
-
-    sessions.set("cs_test_1", {
-      ...confirmed,
+    const confirmed = bankSession(invoiceId, {
+      payment_status: "paid",
       payment_intent: {
         id: "pi_test_1",
         object: "payment_intent",
@@ -1561,8 +1571,34 @@ describe("The success return", () => {
         created: seconds(pdt(9, 1)),
       },
     });
+    sessions.set("cs_test_1", confirmed);
+    vi.setSystemTime(pdt(9, 2));
+    await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
+
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([{ status: "on_its_way", acceptedAt: pdt(9, 1) }]);
+    expect(await page(token)).toMatchObject({
+      paper: { stamp: null },
+      stripe: { kind: "on_its_way", acceptedOn: "2026-09-01" },
+    });
+
+    vi.setSystemTime(pdt(9, 3));
+    await apply(
+      event(
+        "checkout.session.async_payment_succeeded",
+        bankSession(invoiceId, { payment_status: "paid" }),
+      ),
+    );
+    expect(await paymentsOf(invoiceId)).toMatchObject([
+      { receivedOn: "2026-09-03", method: "bank" },
+    ]);
+    expect((await page(token))?.paper.stamp).toEqual({ kind: "paid", day: "2026-09-03" });
+
+    // A reload once it is paid leaves it as the bank's event wrote it.
+    vi.setSystemTime(pdt(9, 4));
     await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
     expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-03" }]);
+    expect(await stripeRows()).toMatchObject([{ status: "paid" }]);
   });
 
   test("reads a bank session back as Payment on its way", async () => {
