@@ -350,6 +350,50 @@ describe("What Send freezes", () => {
     });
   });
 
+  // The draft's paper and the one Send freezes are one answer read twice, so
+  // they agree on every field but the state and the sent date.
+  test("the draft's paper is the paper Send freezes, field for field", async () => {
+    vi.setSystemTime(new Date("2026-09-23T17:00:00Z"));
+    const { t, owner, solution, sendable, liveToken } = fixture();
+    const { siteId, solutionId, proposalId } = await sendable();
+    // Everything an offer can carry: two solutions, one priced by an
+    // allowance alone, notes and a set Deposit.
+    const cabinets = await solution(siteId, "Cabinet panels");
+    await owner.mutation(api.solutions.update, {
+      solutionId: cabinets,
+      materialAllowanceCents: 130_000,
+    });
+    await owner.mutation(api.proposals.update, {
+      proposalId,
+      solutionIds: [solutionId, cabinets],
+      notes: "Gate hardware extra.",
+      depositCents: 20_000,
+    });
+    const draft = await owner.query(api.proposals.paper, { proposalId });
+    // A solution with no allowance reads as having none, as does every
+    // proposal frozen before allowances existed.
+    expect(draft?.solutions[0]).not.toHaveProperty("materialAllowanceCents");
+    expect(draft?.solutions[1]).toMatchObject({ materialAllowanceCents: 130_000 });
+    expect(draft?.terms.map((term) => term.heading).slice(5, 7)).toEqual([
+      "Materials and permits.",
+      "Material allowance.",
+    ]);
+
+    await owner.action(api.proposals.send, { proposalId });
+
+    const frozen = (await t.run((ctx) => ctx.db.get(proposalId)))?.frozen;
+    // The percent is kept beside a set amount, for a Withdraw that hands the
+    // draft back.
+    expect(frozen).toMatchObject({ depositPercent: 50, depositCents: 20_000 });
+    const sent = await owner.query(api.proposals.paper, { proposalId });
+    expect(sent).toEqual({ ...draft, state: "sent", sentAt: Date.now() });
+    const token = await liveToken(proposalId);
+    expect((await t.query(api.signingLinks.page, { token }))?.paper).toEqual({
+      ...sent,
+      unpricedSolutions: undefined,
+    });
+  });
+
   test("keeps no line item costs in the frozen offer", async () => {
     const { t, owner, sendable } = fixture();
     const { proposalId } = await sendable();
