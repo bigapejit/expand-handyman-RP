@@ -134,7 +134,24 @@ function fixture() {
         updatedAt,
       }),
     );
-  return { t, owner, stranger, customer, addSite, proposal };
+  // A photo as the Photos tab saves one: two JPEGs up first, then the row.
+  // convex-test keeps no content type on a stored file, so the one the
+  // browser's upload names is written on after.
+  const jpeg = (content: string) =>
+    t.run(async (ctx) => {
+      const id = await ctx.storage.store(new Blob([content], { type: "image/jpeg" }));
+      await ctx.db.patch(id as never, { contentType: "image/jpeg" } as never);
+      return id;
+    });
+  const photo = async (siteId: Id<"sites">, name: string) =>
+    owner.mutation(api.photos.add, {
+      siteId,
+      fullId: await jpeg(`${name} full`),
+      thumbId: await jpeg(`${name} thumb`),
+      width: 2000,
+      height: 1500,
+    });
+  return { t, owner, stranger, customer, addSite, proposal, photo };
 }
 
 const calls = () => google.mock.calls.map(([input]) => new URL(String(input)));
@@ -369,6 +386,28 @@ describe("sites.remove", () => {
     ]);
     const solutions = await t.run((ctx) => ctx.db.query("solutions").collect());
     expect(solutions.map((solution) => solution.siteId)).toEqual([kept]);
+  });
+
+  test("deletes the site's photos and both files of each, and no other site's", async () => {
+    const { t, owner, customer, addSite, photo } = fixture();
+    const customerId = await customer();
+    const siteId = await addSite(customerId);
+    const kept = await addSite(customerId, "place-main");
+    await photo(siteId, "porch");
+    await photo(siteId, "gutter");
+    const keptPhoto = await photo(kept, "deck");
+    const files = await t.run(async (ctx) =>
+      (await ctx.db.query("photos").collect()).flatMap((row) => [row.fullId, row.thumbId]),
+    );
+    await owner.mutation(api.sites.remove, { siteId });
+    const left = await t.run((ctx) => ctx.db.query("photos").collect());
+    expect(left.map((row) => row._id)).toEqual([keptPhoto]);
+    const urls = await t.run((ctx) => Promise.all(files.map((id) => ctx.storage.getUrl(id))));
+    // Four files went with the site; the kept photo's two are still served.
+    expect(urls.filter((url) => url === null)).toHaveLength(4);
+    expect(await owner.query(api.photos.forSite, { siteId: kept })).toMatchObject([
+      { _id: keptPhoto, thumbUrl: expect.any(String), fullUrl: expect.any(String) },
+    ]);
   });
 
   test("refuses while the site has any proposal, a draft included", async () => {
@@ -791,6 +830,24 @@ describe("sites.list", () => {
     expect(rows.map((row) => row.siteId)).toEqual([older, newer]);
   });
 
+  test("moves a site up when a photo is added to it", async () => {
+    const { t, owner, customer, addSite, photo } = fixture();
+    const maria = await customer();
+    const older = await addSite(maria, "place-94th");
+    const newer = await addSite(maria, "place-main");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(older, { updatedAt: 1_000 });
+      await ctx.db.patch(newer, { updatedAt: 2_000 });
+    });
+    await photo(older, "porch");
+    const [added] = await owner.query(api.photos.forSite, { siteId: older });
+    const rows = await owner.query(api.sites.list, {});
+    expect(rows.map((row) => [row.siteId, row.lastActivity])).toEqual([
+      [older, added.addedAt],
+      [newer, 2_000],
+    ]);
+  });
+
   test("is empty with no sites", async () => {
     const { owner, customer } = fixture();
     await customer();
@@ -806,7 +863,7 @@ describe("sites.list", () => {
 
 describe("sites.get", () => {
   test("reads the header: the address over two lines, whose it is, access notes and each tab's count", async () => {
-    const { t, owner, customer, addSite, proposal } = fixture();
+    const { t, owner, customer, addSite, proposal, photo } = fixture();
     const customerId = await customer();
     const siteId = await addSite(customerId, "place-94th", "Apt 2");
     await owner.action(api.sites.update, {
@@ -818,6 +875,7 @@ describe("sites.get", () => {
     await owner.mutation(api.solutions.create, { siteId, title: "Fence" });
     const first = await proposal(siteId);
     await proposal(siteId);
+    for (const name of ["porch", "gutter", "fence"]) await photo(siteId, name);
     await t.run((ctx) =>
       ctx.db.insert("invoices", {
         proposalId: first,
@@ -835,6 +893,7 @@ describe("sites.get", () => {
     const other = await addSite(customerId, "place-main");
     await owner.mutation(api.solutions.create, { siteId: other, title: "Deck" });
     await proposal(other);
+    await photo(other, "deck");
 
     expect(await owner.query(api.sites.get, { siteId })).toEqual({
       site: expect.objectContaining({ _id: siteId, name: "441094TH", customerId }),
@@ -843,7 +902,7 @@ describe("sites.get", () => {
       customerId,
       customerName: "Maria Delgado",
       accessNotes: "Gate code 1234",
-      counts: { proposals: 2, solutions: 2, photos: 0, invoices: 1 },
+      counts: { proposals: 2, solutions: 2, photos: 3, invoices: 1 },
     });
   });
 

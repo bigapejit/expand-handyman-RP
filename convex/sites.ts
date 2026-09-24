@@ -12,6 +12,7 @@ import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
 import { lookUpDraftTax, resetDraftTax } from "./proposals";
+import { deleteSitePhotos } from "./photos";
 import { deleteSiteSolutions } from "./solutions";
 import { Unknown } from "../lib/expand-business";
 import {
@@ -67,8 +68,9 @@ export const forCustomer = query({
 // The Sites list: every site across every customer, with its street and city
 // lines, whose it is, how many proposals it has and when it was last touched,
 // the one touched most recently first. The page searches the rows itself.
-// Bounded as the Customers list is, and read in two scans rather than a query
-// per site.
+// Bounded as the Customers list is. Proposals are read in one scan rather than
+// a query per site; photos far outnumber them, so each site's newest is read
+// off its index instead.
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -91,6 +93,11 @@ export const list = query({
           (await ctx.db.get(site.customerId))?.name ?? Unknown,
         );
       const held = proposals.get(site._id);
+      const newestPhoto = await ctx.db
+        .query("photos")
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .order("desc")
+        .first();
       rows.push({
         siteId: site._id,
         customerId: site.customerId,
@@ -98,9 +105,13 @@ export const list = query({
         streetLine: siteStreetLine(site),
         cityLine: siteCityLine(site),
         proposalCount: held?.count ?? 0,
-        // The site's own last edit or its proposals' latest, whichever is
-        // newer. A photo's upload time joins them once the site holds photos.
-        lastActivity: Math.max(site.updatedAt, held?.lastEdit ?? 0),
+        // The newest of the site's own last edit, its proposals' latest and
+        // its latest photo's upload.
+        lastActivity: Math.max(
+          site.updatedAt,
+          held?.lastEdit ?? 0,
+          newestPhoto?.addedAt ?? 0,
+        ),
       });
     }
     return rows.sort((x, y) => y.lastActivity - x.lastActivity);
@@ -118,15 +129,16 @@ export const get = query({
     const siteId = ctx.db.normalizeId("sites", a.siteId);
     const site = siteId ? await ctx.db.get(siteId) : null;
     if (!site) return null;
-    const bySite = (table: "proposals" | "solutions" | "invoices") =>
+    const bySite = (table: "proposals" | "solutions" | "photos" | "invoices") =>
       ctx.db
         .query(table)
         .withIndex("by_site", (q) => q.eq("siteId", site._id))
         .collect();
-    const [customer, proposals, solutions, invoices] = await Promise.all([
+    const [customer, proposals, solutions, photos, invoices] = await Promise.all([
       ctx.db.get(site.customerId),
       bySite("proposals"),
       bySite("solutions"),
+      bySite("photos"),
       bySite("invoices"),
     ]);
     return {
@@ -139,9 +151,7 @@ export const get = query({
       counts: {
         proposals: proposals.length,
         solutions: solutions.length,
-        // No site holds a photo until the photos table exists; the count is
-        // read from its site index from then on.
-        photos: 0,
+        photos: photos.length,
         invoices: invoices.length,
       },
     };
@@ -250,7 +260,8 @@ export const patch = internalMutation({
 
 // Delete site, from Edit site on the site page. Refused while the site holds a
 // proposal or an invoice, whatever the dialog showed; otherwise its solutions
-// go with it.
+// go with it, and its photos with both files each, so nothing of it is left in
+// storage.
 export const remove = mutation({
   args: { siteId: v.id("sites") },
   handler: async (ctx, a) => {
@@ -271,6 +282,7 @@ export const remove = mutation({
     });
     if (refusal) throw new Error(refusal);
     await deleteSiteSolutions(ctx, site._id);
+    await deleteSitePhotos(ctx, site._id);
     await ctx.db.delete(site._id);
   },
 });

@@ -410,8 +410,8 @@ function CustomerBox({
 
 // Delete site, at the foot of Edit site. Held back while the site has any
 // proposal or invoice, with the reason beside it; the server refuses as well,
-// whatever this showed. Its solutions go with it, and the owner lands on the
-// Sites list, since the page they were on is gone.
+// whatever this showed. Its solutions and photos go with it, and the owner
+// lands on the Sites list, since the page they were on is gone.
 function DeleteSite({
   site,
   working,
@@ -449,8 +449,9 @@ function DeleteSite({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {siteStreetLine(site)}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The site has no proposals or invoices. Any solutions priced for it are deleted with
-              it. To move it to another customer, delete it here and add it again for them.
+              The site has no proposals or invoices. Any solutions priced for it and any photos
+              taken there are deleted with it. To move it to another customer, delete it here and
+              add it again for them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

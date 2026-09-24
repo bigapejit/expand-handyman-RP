@@ -229,6 +229,7 @@ export function SigningPage({ token }: { token: string }) {
                 new Blob([new Uint8Array(completed)], {
                   type: "application/pdf",
                 }),
+                "application/pdf",
               );
               await finish({
                 token,

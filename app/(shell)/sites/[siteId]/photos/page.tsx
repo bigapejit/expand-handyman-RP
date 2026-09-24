@@ -1,14 +1,12 @@
-import { HubEmpty, HubSection } from "@/components/hub-section";
+import { SitePhotos } from "@/components/site-photos";
+import type { Id } from "@/convex/_generated/dataModel";
 
-// Photos of the site, seen only by the owner. Taking and keeping them comes
-// next; until then the tab says so.
-export default function Page() {
-  return (
-    <HubSection
-      title="Photos"
-      description="Pictures of this site, taken here on your phone. Only you see them."
-    >
-      <HubEmpty>Photos come in the next update.</HubEmpty>
-    </HubSection>
-  );
+// The site layout shows this page only once the id names a site.
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ siteId: string }>;
+}) {
+  const { siteId } = await params;
+  return <SitePhotos siteId={siteId as Id<"sites">} />;
 }
