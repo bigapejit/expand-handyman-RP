@@ -212,8 +212,8 @@ function customerLine({ customer, customerName, to }: OwnerLetter): string {
     case "still_on_its_way":
       return `Another bank payment of ${formatCentsExact(customer.amountCents, "en-US")} accepted ${shortDay(customer.acceptedOn)} is still on its way, so the ${who} was not asked to pay again.`;
     case "voided":
-      return `The invoice was voided meanwhile, so the ${who} was not asked to pay again.`;
+      return `The invoice was voided since, so the ${who} was not asked to pay again.`;
     case "paid":
-      return `Another payment landed meanwhile, so the ${who} was not asked to pay again.`;
+      return `The invoice was paid since, so the ${who} was not asked to pay again.`;
   }
 }

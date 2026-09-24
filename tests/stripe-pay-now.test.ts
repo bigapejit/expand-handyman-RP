@@ -1052,7 +1052,7 @@ describe("A Returned payment", () => {
       [
         "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
         "",
-        "The invoice was voided meanwhile, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+        "The invoice was voided since, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
         "",
         "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
       ].join("\n"),
@@ -1065,7 +1065,7 @@ describe("A Returned payment", () => {
       f.owner.mutation(api.invoices.markPaid, { invoiceId }),
     );
     expect(text).toContain(
-      "Another payment landed meanwhile, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+      "The invoice was paid since, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
     );
   });
 
