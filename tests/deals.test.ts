@@ -516,6 +516,48 @@ describe("board", () => {
     expect(await row(dealId)).toMatchObject({ site: { siteId: there }, proposal: null });
   });
 
+  test("two open jobs at one site each take their own offer, and only the signed one closes", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const first = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const p1 = await send(siteId);
+    vi.advanceTimersByTime(60_000);
+    const second = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    const p2 = await send(siteId);
+    expect(await row(first)).toMatchObject({ stage: "quoted", proposal: { proposalId: p1 } });
+    expect(await row(second)).toMatchObject({ stage: "quoted", proposal: { proposalId: p2 } });
+    await approve(siteId, p2);
+    expect(await row(first)).toMatchObject({ stage: "quoted", proposal: { proposalId: p1, state: "sent" } });
+    expect(await row(second)).toMatchObject({ stage: "won", proposal: { proposalId: p2, state: "approved" } });
+  });
+
+  test("a fresh offer on the only open deal replaces the one still out", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    await send(siteId);
+    vi.advanceTimersByTime(60_000);
+    const p2 = await send(siteId);
+    expect(await row(dealId)).toMatchObject({ stage: "quoted", proposal: { proposalId: p2, state: "sent" } });
+  });
+
   test("a lead from before deals is moved too, getting its deal on the way", async () => {
     const { t, owner, customer, site, send, deals } = fixture();
     const customerId = await customer();

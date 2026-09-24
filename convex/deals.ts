@@ -333,9 +333,39 @@ export async function advanceForSite(
     .query("deals")
     .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
     .collect();
-  for (const deal of deals) {
-    if (!isOpen(deal.stage) || deal.createdAt > sentAt) continue;
-    if (deal.siteId && deal.siteId !== site._id) continue;
+  // The deals this proposal could be for: open, begun before it went out,
+  // at its site or at none yet.
+  const candidates = deals.filter(
+    (deal) =>
+      isOpen(deal.stage) &&
+      deal.createdAt <= sentAt &&
+      (!deal.siteId || deal.siteId === site._id),
+  );
+  // What each candidate already holds: an offer still out (sent) is live; a
+  // withdrawn, declined or already signed one is not (an open deal holding
+  // a signed offer was reopened by hand), and the deal is free for another.
+  const heldState = new Map<Id<"deals">, Doc<"proposals">["state"] | null>();
+  for (const deal of candidates) {
+    const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
+    heldState.set(deal._id, held ? held.state : null);
+  }
+  const holding = (deal: Doc<"deals">) => deal.proposalId === proposal._id;
+  const free = (deal: Doc<"deals">) => {
+    const state = heldState.get(deal._id);
+    return state !== "sent";
+  };
+  const outOnAnother = (deal: Doc<"deals">) => heldState.get(deal._id) === "sent";
+  // Sent: the offer is for the deals with no live offer of their own; two
+  // open jobs at one site each get theirs. With none free, it is a fresh
+  // offer on the deal whose earlier one is still out, and replaces it.
+  // Approved: the customer signed the deal that holds this offer. Nobody
+  // holding it means an older deal from before this was recorded, or two
+  // offers out at once on one deal, which then reads the signed one.
+  let targets =
+    event === "sent" ? candidates.filter(free) : candidates.filter(holding);
+  if (targets.length === 0 && event === "approved") targets = candidates.filter(free);
+  if (targets.length === 0) targets = candidates.filter(outOnAnother);
+  for (const deal of targets) {
     // The deal takes the site if it had none, and remembers this proposal as
     // its own, so the card reads this offer and no later one at the site.
     await ctx.db.patch(deal._id, {
