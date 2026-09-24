@@ -611,6 +611,29 @@ describe("board", () => {
     expect(await row(dealId)).toMatchObject({ stage: "quoted", proposal: { proposalId } });
   });
 
+  test("a proposal made for a deal closed since reads on that deal, which keeps its stage", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    await owner.mutation(api.deals.setStage, { dealId: a, stage: "lost" });
+    const p1 = await send(siteId, a);
+    expect(await row(a)).toMatchObject({ stage: "lost", proposal: { proposalId: p1, state: "sent" } });
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+  });
+
   test("two free jobs at one site: the offer goes to the one touched last, not both", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
