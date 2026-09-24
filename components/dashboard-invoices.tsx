@@ -19,7 +19,7 @@ type OwedRow = Dashboard["overdue"][number];
 // is: what every sent invoice still owed comes to, then the Overdue ones, the
 // longest waited on first, and the Unpaid ones, newest sent first. Paid,
 // draft and void invoices never show. Every row opens the invoice in its
-// panel on its customer's Invoices tab.
+// panel on its site's Invoices tab.
 export function DashboardInvoices() {
   const today = usePacificToday();
   const invoices = useQuery(api.invoices.dashboard, { today });
@@ -43,7 +43,7 @@ export function DashboardInvoices() {
       ) : invoices.overdue.length === 0 && invoices.unpaid.length === 0 ? (
         <Quiet>
           Nothing is owed to you. Invoices come from approved proposals, on a
-          customer&rsquo;s Proposals tab.
+          site&rsquo;s Proposals tab.
         </Quiet>
       ) : (
         <div className="space-y-4">
@@ -83,7 +83,7 @@ function InvoiceList({ rows }: { rows: OwedRow[] }) {
       {rows.map((row) => (
         <li key={row.invoiceId}>
           <Link
-            href={invoicePanelHref(row.customerId, row.invoiceId)}
+            href={invoicePanelHref(row.siteId, row.invoiceId)}
             className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-slate-50"
           >
             <div className="min-w-0 flex-1">

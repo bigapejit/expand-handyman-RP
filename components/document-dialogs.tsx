@@ -52,7 +52,11 @@ export function UploadPdfDialog({
           </DialogDescription>
         </DialogHeader>
         {adding ? (
-          <CustomerForm busy={busy} setBusy={setBusy} onSaved={setCustomerId} />
+          <CustomerForm
+            busy={busy}
+            setBusy={setBusy}
+            onSaved={(saved) => setCustomerId(saved.customerId)}
+          />
         ) : (
           <UploadForm
             customers={customers ?? []}
@@ -100,7 +104,7 @@ function UploadForm({
             !file.name.toLowerCase().endsWith(".pdf")
           )
             throw new Error("Choose a PDF under 20 MB.");
-          const id = await uploadFile(await getUploadUrl(), file);
+          const id = await uploadFile(await getUploadUrl(), file, "application/pdf");
           const docId = await createDocument({
             storageId: id as Id<"_storage">,
             customerId: customerId as Id<"customers">,

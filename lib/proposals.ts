@@ -31,13 +31,15 @@ export function proposalCode(siteName: string, number: number): string {
   return `${siteName}-P${number}`;
 }
 
-// The search parameter the open Proposal rides in on the customer's Proposals
-// tab (side-panel.ts). Named here so the Proposals page and the Dashboard can
+// The search parameter the open Proposal rides in on a Proposals tab
+// (side-panel.ts). Named here so the Proposals page and the Dashboard can
 // point straight at a panel without knowing how the tab spells it.
 export const ProposalPanelParam = "proposal";
 
-export function proposalPanelHref(customerId: string, proposalId: string): string {
-  return panelHref(`/customers/${customerId}/proposals`, "", ProposalPanelParam, proposalId);
+// Where a row off the hub opens a proposal: its panel on its Site's Proposals
+// tab, the page the owner works from.
+export function proposalPanelHref(siteId: string, proposalId: string): string {
+  return panelHref(`/sites/${siteId}/proposals`, "", ProposalPanelParam, proposalId);
 }
 
 // The staff paper: the proposal as its customer will read it, opened from the

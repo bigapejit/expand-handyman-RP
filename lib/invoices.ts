@@ -64,10 +64,10 @@ export function invoiceBadgeLabel(badge: InvoiceBadge): string {
 // Invoices tab and on the Proposals tab alike.
 export const InvoicePanelParam = "invoice";
 
-// Where a row off the hub opens an invoice: its panel on the customer's
-// Invoices tab.
-export function invoicePanelHref(customerId: string, invoiceId: string): string {
-  return panelHref(`/customers/${customerId}/invoices`, "", InvoicePanelParam, invoiceId);
+// Where a row off the hub opens an invoice: its panel on its Site's Invoices
+// tab.
+export function invoicePanelHref(siteId: string, invoiceId: string): string {
+  return panelHref(`/sites/${siteId}/invoices`, "", InvoicePanelParam, invoiceId);
 }
 
 // The staff paper, opened from the panel in a tab of its own.

@@ -128,6 +128,8 @@ describe("The Dashboard's Proposals", () => {
     expect(awaiting.map((row) => row.proposalId)).toEqual([older, newer]);
     expect(awaiting[0]).toEqual({
       proposalId: older,
+      // The site the row opens on.
+      siteId: samSite,
       customerId: sam,
       customerName: "Sam Park",
       code: "4410NE94TH-P1",
@@ -198,6 +200,7 @@ describe("The Dashboard's Proposals", () => {
     expect(rows.map((row) => row.proposalId)).toEqual(decided.slice(2).reverse());
     expect(rows[0]).toEqual({
       proposalId: decided[9],
+      siteId,
       customerId: expect.any(String),
       customerName: "Maria Delgado",
       code: "1300MAIN-P10",

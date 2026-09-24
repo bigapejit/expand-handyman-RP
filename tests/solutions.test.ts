@@ -67,18 +67,16 @@ function fixture() {
         updatedAt: 0,
       }),
     );
-  const list = (customerId: Id<"customers">) =>
-    owner.query(api.solutions.forCustomer, { customerId });
+  const list = (siteId: Id<"sites">) => owner.query(api.solutions.forSite, { siteId });
   return { t, owner, stranger, customer, site, proposal, list };
 }
 
 describe("solutions.create", () => {
   test("starts an untitled, unpriced solution at the chosen site", async () => {
     const { owner, customer, site, list } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1215MAIN");
+    const siteId = await site(await customer(), "1215MAIN");
     const solutionId = await owner.mutation(api.solutions.create, { siteId });
-    expect(await list(customerId)).toEqual([
+    expect(await list(siteId)).toEqual([
       expect.objectContaining({
         _id: solutionId,
         siteId,
@@ -93,25 +91,6 @@ describe("solutions.create", () => {
     ]);
   });
 
-  test("lists every solution across the customer's sites, tagged with the site", async () => {
-    const { owner, customer, site, list } = fixture();
-    const customerId = await customer();
-    const home = await site(customerId, "4410NE94TH");
-    const rental = await site(customerId, "1215MAIN");
-    const elsewhere = await site(await customer("Someone Else"), "77OAK");
-    await owner.mutation(api.solutions.create, { siteId: home, title: "Gutters" });
-    await owner.mutation(api.solutions.create, { siteId: rental, title: "Deck" });
-    await owner.mutation(api.solutions.create, { siteId: home, title: "Fence" });
-    await owner.mutation(api.solutions.create, { siteId: elsewhere, title: "Roof" });
-    expect(
-      (await list(customerId)).map((s) => [s.siteName, s.title]),
-    ).toEqual([
-      ["1215MAIN", "Deck"],
-      ["4410NE94TH", "Gutters"],
-      ["4410NE94TH", "Fence"],
-    ]);
-  });
-
   test("refuses a site that no longer exists", async () => {
     const { t, owner, customer, site } = fixture();
     const siteId = await site(await customer(), "1215MAIN");
@@ -122,14 +101,41 @@ describe("solutions.create", () => {
   });
 });
 
+describe("solutions.forSite", () => {
+  test("lists one site's solutions in the order written, and nothing of the customer's other sites", async () => {
+    const { owner, customer, site, proposal } = fixture();
+    const customerId = await customer();
+    const home = await site(customerId, "4410NE94TH");
+    const rental = await site(customerId, "1215MAIN");
+    const elsewhere = await site(await customer("Someone Else"), "77OAK");
+    const gutters = await owner.mutation(api.solutions.create, { siteId: home, title: "Gutters" });
+    await owner.mutation(api.solutions.create, { siteId: rental, title: "Deck" });
+    const fence = await owner.mutation(api.solutions.create, { siteId: home, title: "Fence" });
+    await owner.mutation(api.solutions.create, { siteId: elsewhere, title: "Roof" });
+    await proposal(home, "sent", [gutters]);
+
+    const tab = await owner.query(api.solutions.forSite, { siteId: home });
+    expect(tab.map((s) => [s._id, s.siteName, s.title, s.deletable])).toEqual([
+      [gutters, "4410NE94TH", "Gutters", false],
+      [fence, "4410NE94TH", "Fence", true],
+    ]);
+  });
+
+  test("has none for a site that is gone", async () => {
+    const { t, owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    await t.run((ctx) => ctx.db.delete(siteId));
+    expect(await owner.query(api.solutions.forSite, { siteId })).toEqual([]);
+  });
+});
+
 describe("solutions.update", () => {
   async function oneSolution() {
     const f = fixture();
-    const customerId = await f.customer();
-    const siteId = await f.site(customerId, "1215MAIN");
+    const siteId = await f.site(await f.customer(), "1215MAIN");
     const solutionId = await f.owner.mutation(api.solutions.create, { siteId });
-    const read = async () => (await f.list(customerId))[0];
-    return { ...f, customerId, siteId, solutionId, read };
+    const read = async () => (await f.list(siteId))[0];
+    return { ...f, siteId, solutionId, read };
   }
 
   test("saves the title and the scope of work, trimmed", async () => {
@@ -220,10 +226,9 @@ describe("solutions.update", () => {
 describe("a solution's material allowance", () => {
   async function oneSolution() {
     const f = fixture();
-    const customerId = await f.customer();
-    const siteId = await f.site(customerId, "1215MAIN");
+    const siteId = await f.site(await f.customer(), "1215MAIN");
     const solutionId = await f.owner.mutation(api.solutions.create, { siteId });
-    const read = async () => (await f.list(customerId))[0];
+    const read = async () => (await f.list(siteId))[0];
     return { ...f, solutionId, read };
   }
 
@@ -375,20 +380,18 @@ describe("the catalog", () => {
 describe("solutions.remove", () => {
   test("deletes a solution and drops it from the draft proposals offering it", async () => {
     const { t, owner, customer, site, proposal, list } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1215MAIN");
+    const siteId = await site(await customer(), "1215MAIN");
     const kept = await owner.mutation(api.solutions.create, { siteId });
     const gone = await owner.mutation(api.solutions.create, { siteId });
     const draftId = await proposal(siteId, "draft", [kept, gone]);
     await owner.mutation(api.solutions.remove, { solutionId: gone });
-    expect((await list(customerId)).map((s) => s._id)).toEqual([kept]);
+    expect((await list(siteId)).map((s) => s._id)).toEqual([kept]);
     expect((await t.run((ctx) => ctx.db.get(draftId)))?.solutionIds).toEqual([kept]);
   });
 
   test("refuses once a sent or decided proposal includes it", async () => {
     const { owner, customer, site, proposal, list } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1215MAIN");
+    const siteId = await site(await customer(), "1215MAIN");
     for (const state of ["sent", "approved", "declined"] as const) {
       const solutionId = await owner.mutation(api.solutions.create, { siteId });
       await proposal(siteId, state, [solutionId]);
@@ -396,18 +399,17 @@ describe("solutions.remove", () => {
         "in a sent or decided proposal",
       );
     }
-    const listed = await list(customerId);
+    const listed = await list(siteId);
     expect(listed).toHaveLength(3);
     expect(listed.every((s) => !s.deletable)).toBe(true);
   });
 
   test("goes with its site when an empty site is deleted", async () => {
     const { t, owner, customer, site, list } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1215MAIN");
+    const siteId = await site(await customer(), "1215MAIN");
     await owner.mutation(api.solutions.create, { siteId });
     await owner.mutation(api.sites.remove, { siteId });
-    expect(await list(customerId)).toEqual([]);
+    expect(await list(siteId)).toEqual([]);
     expect(await t.run((ctx) => ctx.db.query("solutions").collect())).toEqual([]);
   });
 });
@@ -415,12 +417,11 @@ describe("solutions.remove", () => {
 describe("owner only", () => {
   test("every solution and catalog function turns away anyone else", async () => {
     const { t, owner, stranger, customer, site } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1215MAIN");
+    const siteId = await site(await customer(), "1215MAIN");
     const solutionId = await owner.mutation(api.solutions.create, { siteId });
     for (const caller of [t, stranger]) {
       for (const call of [
-        () => caller.query(api.solutions.forCustomer, { customerId }),
+        () => caller.query(api.solutions.forSite, { siteId }),
         () => caller.query(api.catalog.suggestions, { prefix: "pa" }),
         () => caller.mutation(api.solutions.create, { siteId }),
         () => caller.mutation(api.solutions.update, { solutionId, title: "Mine" }),

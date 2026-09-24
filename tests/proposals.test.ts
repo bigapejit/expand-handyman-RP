@@ -118,10 +118,15 @@ function fixture() {
     return solutionId;
   };
   const create = (siteId: Id<"sites">) => owner.action(api.proposals.create, { siteId });
-  const tab = (customerId: Id<"customers">) =>
-    owner.query(api.proposals.forCustomer, { customerId });
-  const read = async (customerId: Id<"customers">, proposalId: Id<"proposals">) => {
-    const found = (await tab(customerId)).proposals.find((p) => p.proposalId === proposalId);
+  const tab = (siteId: Id<"sites">) => owner.query(api.proposals.forSite, { siteId });
+  // A proposal as its site's Proposals tab reads it, found on the site the
+  // Proposals page says it is at.
+  const read = async (proposalId: Id<"proposals">) => {
+    const row = (await owner.query(api.proposals.list, {})).find(
+      (p) => p.proposalId === proposalId,
+    );
+    if (!row) throw new Error("Proposal not on the Proposals page.");
+    const found = (await tab(row.siteId)).proposals.find((p) => p.proposalId === proposalId);
     if (!found) throw new Error("Proposal not on the tab.");
     return found;
   };
@@ -135,10 +140,9 @@ function fixture() {
 describe("proposals.create", () => {
   test("starts an empty draft at the site with the default deposit", async () => {
     const { customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       siteId,
       siteName: "1300FRANKLIN",
       code: "1300FRANKLIN-P1",
@@ -163,22 +167,21 @@ describe("proposals.create", () => {
     const other = await create(siteB);
     await owner.mutation(api.proposals.remove, { proposalId: second });
     const third = await create(siteA);
-    expect((await read(customerId, first)).code).toBe("1300FRANKLIN-P1");
-    expect((await read(customerId, other)).code).toBe("441094TH-P1");
-    expect((await read(customerId, third)).code).toBe("1300FRANKLIN-P3");
+    expect((await read(first)).code).toBe("1300FRANKLIN-P1");
+    expect((await read(other)).code).toBe("441094TH-P1");
+    expect((await read(third)).code).toBe("1300FRANKLIN-P3");
   });
 
   test("looks up the WA rate from the site's street and city or ZIP", async () => {
     const { customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     const url = new URL(String(dor.mock.calls[0][0]));
     expect(url.origin + url.pathname).toBe("https://webgis.dor.wa.gov/webapi/AddressRates.aspx");
     expect(url.searchParams.get("addr")).toBe("1300 Franklin St");
     expect(url.searchParams.get("city")).toBe("Vancouver");
     expect(url.searchParams.get("zip")).toBe("98660");
-    expect((await read(customerId, proposalId)).tax).toEqual({
+    expect((await read(proposalId)).tax).toEqual({
       source: "lookup",
       rate: 0.089,
       locationCode: "0605",
@@ -188,23 +191,22 @@ describe("proposals.create", () => {
 
   test("leaves no rate when the lookup fails, until the owner types one", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
 
     answerWith(zipCentroidGuess);
     const notFound = await create(siteId);
-    expect((await read(customerId, notFound)).tax).toEqual({ source: "lookup" });
+    expect((await read(notFound)).tax).toEqual({ source: "lookup" });
 
     answerWith("<html>Request Rejected</html>", 200);
     const blocked = await create(siteId);
-    expect((await read(customerId, blocked)).tax).toEqual({ source: "lookup" });
+    expect((await read(blocked)).tax).toEqual({ source: "lookup" });
 
     dor.mockRejectedValue(new Error("socket hang up"));
     const unreachable = await create(siteId);
-    expect((await read(customerId, unreachable)).tax).toEqual({ source: "lookup" });
+    expect((await read(unreachable)).tax).toEqual({ source: "lookup" });
 
     await owner.mutation(api.proposals.update, { proposalId: unreachable, taxRate: 0.086 });
-    expect((await read(customerId, unreachable)).tax).toEqual({
+    expect((await read(unreachable)).tax).toEqual({
       source: "override",
       rate: 0.086,
     });
@@ -212,8 +214,7 @@ describe("proposals.create", () => {
 
   test("charges no tax outside Washington, and never asks DOR", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1221SW", {
+    const siteId = await site(await customer(), "1221SW", {
       addressLine1: "1221 SW 4th Ave",
       city: "Portland",
       region: "OR",
@@ -223,7 +224,7 @@ describe("proposals.create", () => {
     expect(dor).not.toHaveBeenCalled();
     const deck = await solution(siteId, "Deck", 100_000);
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       tax: { source: "none" },
       money: { subtotalCents: 110_000, taxCents: 0, totalCents: 110_000 },
     });
@@ -244,8 +245,7 @@ describe("proposals.create", () => {
 describe("proposals.update", () => {
   test("prices the picked solutions, taxing the whole subtotal once", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     // $1,000.00 cost at 10% is $1,100; $333.33 cost is $366.66, so $367.
     const deck = await solution(siteId, "Deck repair", 100_000);
     const gutters = await solution(siteId, "Gutters", 33_333);
@@ -254,7 +254,7 @@ describe("proposals.update", () => {
       proposalId,
       solutionIds: [gutters, deck],
     });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       title: "Gutters + Deck repair",
       solutions: [
         { solutionId: gutters, title: "Gutters", priceCents: 36_700 },
@@ -267,12 +267,11 @@ describe("proposals.update", () => {
 
   test("an unpriced solution adds nothing to the subtotal", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const unpriced = await solution(siteId, "Paint");
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [unpriced] });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       solutions: [{ priceCents: null }],
       money: { subtotalCents: 0, taxCents: 0, totalCents: 0 },
     });
@@ -291,15 +290,14 @@ describe("proposals.update", () => {
 
   test("names, notes and the deposit, with emptied text going back to nothing", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const proposalId = await create(await site(customerId, "1300FRANKLIN"));
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
     await owner.mutation(api.proposals.update, {
       proposalId,
       name: "  Option A ",
       notes: " Excludes permits. ",
       depositPercent: 100,
     });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       name: "Option A",
       title: "Option A",
       notes: "Excludes permits.",
@@ -307,7 +305,7 @@ describe("proposals.update", () => {
       payment: { deposit: { kind: "percent", percent: 100 }, balanceCents: 0 },
     });
     await owner.mutation(api.proposals.update, { proposalId, name: " ", notes: "" });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       name: null,
       title: "Untitled proposal",
       notes: null,
@@ -328,8 +326,7 @@ describe("proposals.update", () => {
 
   test("sets the deposit as an amount, and going back finds the percent it kept", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const deck = await solution(siteId, "Deck repair", 100_000);
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, {
@@ -340,7 +337,7 @@ describe("proposals.update", () => {
 
     // $1,100 and 8.9% tax is $1,197.90.
     await owner.mutation(api.proposals.update, { proposalId, depositCents: 50_000 });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       depositPercent: 30,
       payment: {
         deposit: { kind: "amount", cents: 50_000 },
@@ -350,7 +347,7 @@ describe("proposals.update", () => {
     });
 
     await owner.mutation(api.proposals.update, { proposalId, depositPercent: 30 });
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       payment: {
         deposit: { kind: "percent", percent: 30 },
         depositCents: 35_937,
@@ -386,23 +383,21 @@ describe("proposals.update", () => {
   // solution is not refused against the total from before it.
   test("measures a set amount against the solutions picked in the same edit", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, {
       proposalId,
       solutionIds: [await solution(siteId, "Deck repair", 100_000)],
       depositCents: 100_000,
     });
-    expect((await read(customerId, proposalId)).payment.depositCents).toBe(100_000);
+    expect((await read(proposalId)).payment.depositCents).toBe(100_000);
   });
 
   test("an override keeps the location code and drops the quarter", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const proposalId = await create(await site(customerId, "1300FRANKLIN"));
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
     await owner.mutation(api.proposals.update, { proposalId, taxRate: 0.09 });
-    expect((await read(customerId, proposalId)).tax).toEqual({
+    expect((await read(proposalId)).tax).toEqual({
       source: "override",
       rate: 0.09,
       locationCode: "0605",
@@ -444,25 +439,24 @@ describe("proposals.setRecommended", () => {
       proposalId: second,
       recommended: true,
     });
-    expect((await read(customerId, first)).recommended).toBe(false);
-    expect((await read(customerId, second)).recommended).toBe(true);
+    expect((await read(first)).recommended).toBe(false);
+    expect((await read(second)).recommended).toBe(true);
     // Another site's mark is its own.
-    expect((await read(customerId, elsewhere)).recommended).toBe(true);
+    expect((await read(elsewhere)).recommended).toBe(true);
 
     await owner.mutation(api.proposals.setRecommended, {
       proposalId: second,
       recommended: false,
     });
-    expect((await read(customerId, second)).recommended).toBe(false);
+    expect((await read(second)).recommended).toBe(false);
   });
 
   test("moves on a proposal in any state", async () => {
     const { owner, customer, site, create, read, setState } = fixture();
-    const customerId = await customer();
-    const proposalId = await create(await site(customerId, "1300FRANKLIN"));
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
     await setState(proposalId, "sent");
     await owner.mutation(api.proposals.setRecommended, { proposalId, recommended: true });
-    expect((await read(customerId, proposalId)).recommended).toBe(true);
+    expect((await read(proposalId)).recommended).toBe(true);
   });
 
   test("turns away anyone who is not the owner", async () => {
@@ -479,8 +473,7 @@ describe("proposals.duplicate", () => {
     "copies a %s proposal into a new draft with the next number",
     async (state) => {
       const { owner, customer, site, solution, create, read, setState } = fixture();
-      const customerId = await customer();
-      const siteId = await site(customerId, "1300FRANKLIN");
+      const siteId = await site(await customer(), "1300FRANKLIN");
       const deck = await solution(siteId, "Deck", 100_000);
       const original = await create(siteId);
       await owner.mutation(api.proposals.update, {
@@ -498,7 +491,7 @@ describe("proposals.duplicate", () => {
       await setState(original, state);
 
       const copy = await owner.mutation(api.proposals.duplicate, { proposalId: original });
-      expect(await read(customerId, copy)).toMatchObject({
+      expect(await read(copy)).toMatchObject({
         code: "1300FRANKLIN-P2",
         state: "draft",
         // The name and the mark tell two options apart, so neither is copied.
@@ -509,14 +502,13 @@ describe("proposals.duplicate", () => {
         depositPercent: 30,
         tax: { source: "override", rate: 0.09, locationCode: "0605" },
       });
-      expect((await read(customerId, original)).state).toBe(state);
+      expect((await read(original)).state).toBe(state);
     },
   );
 
   test("copies a set Deposit", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const original = await create(siteId);
     await owner.mutation(api.proposals.update, {
       proposalId: original,
@@ -525,7 +517,7 @@ describe("proposals.duplicate", () => {
     });
 
     const copy = await owner.mutation(api.proposals.duplicate, { proposalId: original });
-    expect(await read(customerId, copy)).toMatchObject({
+    expect(await read(copy)).toMatchObject({
       depositPercent: 50,
       payment: { deposit: { kind: "amount", cents: 40_000 } },
     });
@@ -543,23 +535,23 @@ describe("proposals.duplicate", () => {
 describe("proposals.remove", () => {
   test("deletes a draft", async () => {
     const { owner, customer, site, create, tab } = fixture();
-    const customerId = await customer();
-    const proposalId = await create(await site(customerId, "1300FRANKLIN"));
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const proposalId = await create(siteId);
     await owner.mutation(api.proposals.remove, { proposalId });
-    expect((await tab(customerId)).proposals).toEqual([]);
+    expect((await tab(siteId)).proposals).toEqual([]);
   });
 
   test.each(["sent", "approved", "declined"] as const)(
     "refuses a %s proposal",
     async (state) => {
       const { owner, customer, site, create, tab, setState } = fixture();
-      const customerId = await customer();
-      const proposalId = await create(await site(customerId, "1300FRANKLIN"));
+      const siteId = await site(await customer(), "1300FRANKLIN");
+      const proposalId = await create(siteId);
       await setState(proposalId, state);
       await expect(owner.mutation(api.proposals.remove, { proposalId })).rejects.toThrow(
         "Only a draft",
       );
-      expect((await tab(customerId)).proposals).toHaveLength(1);
+      expect((await tab(siteId)).proposals).toHaveLength(1);
     },
   );
 
@@ -572,47 +564,66 @@ describe("proposals.remove", () => {
   });
 });
 
-describe("proposals.forCustomer", () => {
-  test("lists proposals across the customer's sites with the solutions to pick from", async () => {
-    const { customer, site, solution, create, tab } = fixture();
+describe("proposals.forSite", () => {
+  test("reads one site's proposals and the solutions to pick from, and nothing of the customer's other sites", async () => {
+    const { t, owner, customer, site, solution, create } = fixture();
     const customerId = await customer();
+    await t.run((ctx) => ctx.db.patch(customerId, { email: "maria@example.com" }));
     const franklin = await site(customerId, "1300FRANKLIN");
     const ninetyFourth = await site(customerId, "441094TH");
     const deck = await solution(franklin, "Deck", 100_000);
-    const fence = await solution(ninetyFourth, "Fence");
+    await solution(ninetyFourth, "Fence");
+    const second = await create(franklin);
     await create(ninetyFourth);
-    await create(franklin);
+    const third = await create(franklin);
     await create(await site(await customer("Someone Else"), "1ELSEWHERE"));
+    await owner.mutation(api.proposals.update, { proposalId: second, solutionIds: [deck] });
 
-    const read = await tab(customerId);
-    expect(read.proposals.map((p) => p.code)).toEqual(["1300FRANKLIN-P1", "441094TH-P1"]);
+    const read = await owner.query(api.proposals.forSite, { siteId: franklin });
+    // Where Send would go.
+    expect(read.customerEmail).toBe("maria@example.com");
     expect(read.solutions).toEqual([
       { solutionId: deck, siteId: franklin, title: "Deck", price: { costCents: 100_000, priceCents: 110_000 } },
-      { solutionId: fence, siteId: ninetyFourth, title: "Fence", price: null },
+    ]);
+    // In number order.
+    expect(read.proposals.map((p) => [p.proposalId, p.code])).toEqual([
+      [second, "1300FRANKLIN-P1"],
+      [third, "1300FRANKLIN-P2"],
     ]);
   });
 
   test("drops a deleted solution from a draft", async () => {
     const { owner, customer, site, solution, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const deck = await solution(siteId, "Deck", 100_000);
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
     await owner.mutation(api.solutions.remove, { solutionId: deck });
-    expect((await read(customerId, proposalId)).solutions).toEqual([]);
+    expect((await read(proposalId)).solutions).toEqual([]);
+  });
+
+  test("has nothing for a site that is gone", async () => {
+    const { t, owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    await t.run((ctx) => ctx.db.delete(siteId));
+    expect(await owner.query(api.proposals.forSite, { siteId })).toEqual({
+      customerEmail: null,
+      solutions: [],
+      proposals: [],
+    });
   });
 
   test("turns away anyone who is not the owner", async () => {
-    const { stranger, customer } = fixture();
-    await expect(
-      stranger.query(api.proposals.forCustomer, { customerId: await customer() }),
-    ).rejects.toThrow("Owner access required");
+    const { stranger, customer, site } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    await expect(stranger.query(api.proposals.forSite, { siteId })).rejects.toThrow(
+      "Owner access required",
+    );
   });
 });
 
 describe("proposals.list", () => {
-  test("lists every proposal with its customer, newest first", async () => {
+  test("lists every proposal with its site and customer, newest first", async () => {
     const { owner, customer, site, solution, create, setState } = fixture();
     const maria = await customer("Maria Delgado");
     const sam = await customer("Sam Park");
@@ -620,12 +631,14 @@ describe("proposals.list", () => {
     const deck = await solution(mariaSite, "Deck", 100_000);
     const first = await create(mariaSite);
     await owner.mutation(api.proposals.update, { proposalId: first, solutionIds: [deck] });
-    const second = await create(await site(sam, "441094TH"));
+    const samSite = await site(sam, "441094TH");
+    const second = await create(samSite);
     await setState(second, "sent");
 
     expect(await owner.query(api.proposals.list, {})).toEqual([
       expect.objectContaining({
         proposalId: second,
+        siteId: samSite,
         customerId: sam,
         customerName: "Sam Park",
         code: "441094TH-P1",
@@ -635,6 +648,7 @@ describe("proposals.list", () => {
       }),
       expect.objectContaining({
         proposalId: first,
+        siteId: mariaSite,
         customerId: maria,
         customerName: "Maria Delgado",
         code: "1300FRANKLIN-P1",
@@ -701,8 +715,7 @@ describe("moving a site to another address", () => {
 
   test("looks up its drafts' tax again, over a rate typed by hand", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, { proposalId, taxRate: 0.07 });
     dor.mockClear();
@@ -710,7 +723,7 @@ describe("moving a site to another address", () => {
     await move(owner, siteId, "place-main");
     const url = new URL(String(dor.mock.calls[0][0]));
     expect(url.searchParams.get("addr")).toBe("1215 Main St");
-    expect((await read(customerId, proposalId)).tax).toEqual({
+    expect((await read(proposalId)).tax).toEqual({
       source: "lookup",
       rate: 0.089,
       locationCode: "0605",
@@ -720,27 +733,24 @@ describe("moving a site to another address", () => {
 
   test("leaves a draft without a rate when the new lookup fails", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     answerWith(zipCentroidGuess);
     await move(owner, siteId, "place-main");
-    expect((await read(customerId, proposalId)).tax).toEqual({ source: "lookup" });
+    expect((await read(proposalId)).tax).toEqual({ source: "lookup" });
   });
 
   test("stops charging tax once the site is outside Washington", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     await move(owner, siteId, "place-portland");
-    expect((await read(customerId, proposalId)).tax).toEqual({ source: "none" });
+    expect((await read(proposalId)).tax).toEqual({ source: "none" });
   });
 
   test("starts charging tax once the site is in Washington", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1221SW", {
+    const siteId = await site(await customer(), "1221SW", {
       addressLine1: "1221 SW 4th Ave",
       city: "Portland",
       region: "OR",
@@ -748,7 +758,7 @@ describe("moving a site to another address", () => {
     });
     const proposalId = await create(siteId);
     await move(owner, siteId, "place-main");
-    expect((await read(customerId, proposalId)).tax).toMatchObject({
+    expect((await read(proposalId)).tax).toMatchObject({
       source: "lookup",
       rate: 0.089,
     });
@@ -756,12 +766,11 @@ describe("moving a site to another address", () => {
 
   test("leaves a proposal past Draft alone", async () => {
     const { owner, customer, site, create, read, setState } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     await setState(proposalId, "sent");
     await move(owner, siteId, "place-portland");
-    expect((await read(customerId, proposalId)).tax).toMatchObject({
+    expect((await read(proposalId)).tax).toMatchObject({
       source: "lookup",
       rate: 0.089,
     });
@@ -769,8 +778,7 @@ describe("moving a site to another address", () => {
 
   test("keeps a draft's tax when only the unit or access notes change", async () => {
     const { owner, customer, site, create, read } = fixture();
-    const customerId = await customer();
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer(), "1300FRANKLIN");
     const proposalId = await create(siteId);
     await owner.mutation(api.proposals.update, { proposalId, taxRate: 0.07 });
     await owner.action(api.sites.update, {
@@ -778,7 +786,7 @@ describe("moving a site to another address", () => {
       addressLine2: "Unit B",
       accessNotes: "Gate code 1234",
     });
-    expect((await read(customerId, proposalId)).tax).toMatchObject({
+    expect((await read(proposalId)).tax).toMatchObject({
       source: "override",
       rate: 0.07,
     });
@@ -796,8 +804,7 @@ describe("proposals.paper", () => {
 
   test("lays a draft out from its live solutions, unsent, with the owner as Estimator", async () => {
     const { t, owner, customer, site, create } = fixture();
-    const customerId = await customer("Dana Whitfield");
-    const siteId = await site(customerId, "1300FRANKLIN");
+    const siteId = await site(await customer("Dana Whitfield"), "1300FRANKLIN");
     await t.run((ctx) => ctx.db.patch(siteId, { addressLine2: "Apt 2" }));
     const faucet = await owner.mutation(api.solutions.create, {
       siteId,

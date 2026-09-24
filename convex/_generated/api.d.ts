@@ -24,6 +24,7 @@ import type * as pdfActions from "../pdfActions.js";
 import type * as pdfCopies from "../pdfCopies.js";
 import type * as pdfCopyFiles from "../pdfCopyFiles.js";
 import type * as pdfRenderer from "../pdfRenderer.js";
+import type * as photos from "../photos.js";
 import type * as places from "../places.js";
 import type * as proposalEmails from "../proposalEmails.js";
 import type * as proposals from "../proposals.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   pdfCopies: typeof pdfCopies;
   pdfCopyFiles: typeof pdfCopyFiles;
   pdfRenderer: typeof pdfRenderer;
+  photos: typeof photos;
   places: typeof places;
   proposalEmails: typeof proposalEmails;
   proposals: typeof proposals;

@@ -220,8 +220,8 @@ describe("Mark paid", () => {
     });
     const [row] = await owner.query(api.invoices.forProposal, { proposalId, today: today() });
     expect(row.standing).toBe("paid");
-    const [tabRow] = await owner.query(api.invoices.forCustomer, {
-      customerId: row.customerId,
+    const [tabRow] = await owner.query(api.invoices.forSite, {
+      siteId: row.siteId,
       today: today(),
     });
     expect(tabRow.standing).toBe("paid");
@@ -490,6 +490,8 @@ describe("The Dashboard's Invoices card", () => {
     ]);
     expect(card.owedCents).toBe(4 * 29_948);
     expect(card.overdue[0]).toMatchObject({
+      // The site the row opens on.
+      siteId: first.siteId,
       customerId: maria,
       customerName: "Maria Delgado",
       title: "INV-1001 · Deposit",

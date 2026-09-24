@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 
-import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { InvoicePanelHost } from "@/components/invoice-panel";
 import { InvoiceRow } from "@/components/invoice-row";
 import { useSidePanel } from "@/components/side-panel";
@@ -11,16 +11,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { usePacificToday } from "@/hooks/use-pacific-today";
 import { InvoicePanelParam, invoiceSentLabel } from "@/lib/invoices";
 
-// The customer page's Invoices tab: every invoice for the customer, newest
-// first, drafts and void included. For reading and sending only: an invoice
-// starts from its proposal, so there is no New invoice here. A row slides the
-// invoice panel in over the list.
-export function CustomerInvoices({ customerId }: { customerId: string }) {
+// The Invoices tab: every invoice at the site, newest first, drafts and void
+// included. For reading and sending only: an invoice starts from its
+// proposal, so there is no New invoice here. A row slides the invoice panel in
+// over the list.
+export function SiteInvoices({ siteId }: { siteId: Id<"sites"> }) {
   const today = usePacificToday();
-  const invoices = useQuery(api.invoices.forCustomer, {
-    customerId: customerId as Id<"customers">,
-    today,
-  });
+  const invoices = useQuery(api.invoices.forSite, { siteId, today });
   const { open } = useSidePanel(InvoicePanelParam);
   const count = invoices?.length ?? 0;
 
@@ -29,8 +26,8 @@ export function CustomerInvoices({ customerId }: { customerId: string }) {
       title="Invoices"
       description={
         count
-          ? `${count === 1 ? "1 invoice" : `${count} invoices`} for this customer's approved proposals.`
-          : "Invoices for this customer's approved proposals."
+          ? `${count === 1 ? "1 invoice" : `${count} invoices`} for this site's approved proposals.`
+          : "Invoices for this site's approved proposals."
       }
     >
       {invoices === undefined ? (
@@ -49,7 +46,7 @@ export function CustomerInvoices({ customerId }: { customerId: string }) {
           ))}
         </ol>
       )}
-      <InvoicePanelHost customerId={customerId} />
+      <InvoicePanelHost siteId={siteId} />
     </HubSection>
   );
 }

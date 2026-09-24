@@ -255,6 +255,24 @@ export default defineSchema({
     .index("by_customer", ["customerId"])
     .index("by_customer_place", ["customerId", "placeId"])
     .index("by_place", ["placeId"]),
+  // A **Photo** (CONTEXT.md): a picture the owner took at a site, shrunk in
+  // the browser to two JPEGs and kept as two files (ADR 0003). The full image
+  // is at most 2000px on its long edge and its size is kept here; the
+  // thumbnail is at most 400px. `takenAt` is the camera time the original
+  // file carried, absent when it carried none, as every iPhone camera shot
+  // does; `addedAt` is when it was saved, always. No caption, no tag.
+  photos: defineTable({
+    siteId: v.id("sites"),
+    fullId: v.id("_storage"),
+    thumbId: v.id("_storage"),
+    width: v.number(),
+    height: v.number(),
+    addedAt: v.number(),
+    takenAt: v.optional(v.number()),
+  })
+    // By upload time within a site, so the Sites list reads a site's newest
+    // photo off the index.
+    .index("by_site", ["siteId", "addedAt"]),
   // One priced piece of handyman work at a site (CONTEXT.md, **Solution**):
   // FRSG's shape keyed to a site, without the roof-record links. No price is
   // stored; lib/solution-pricing.ts works it out from the line items, the

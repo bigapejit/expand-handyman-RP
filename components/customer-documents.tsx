@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { Upload } from "lucide-react";
 import { useState } from "react";
 
-import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { DocumentStatusChip } from "@/components/document-chips";
 import { UploadPdfDialog } from "@/components/document-dialogs";
 import { IndexRow } from "@/components/index-row";

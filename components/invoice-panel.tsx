@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Ban, Download, Eye, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { HubLoading } from "@/components/customer-hub-shell";
+import { HubLoading } from "@/components/hub-section";
 import { InvoiceChip } from "@/components/invoice-chips";
 import {
   InvoiceDraftLines,
@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { usePacificToday } from "@/hooks/use-pacific-today";
 import { InvoicePanelParam, invoicePaperHref } from "@/lib/invoices";
 import { errorMessage } from "@/lib/utils";
@@ -37,13 +38,13 @@ import { errorMessage } from "@/lib/utils";
 // `?invoice=<id>` (lib/side-panel.ts) so a reload, a copied link and Back all
 // mean the same thing. The Invoices tab opens it over its list, and the
 // Proposals tab over an approved proposal's panel, which comes back when this
-// one closes. A link naming no invoice, or another customer's, just shows the
-// tab, and whatever panel the tab had open (`otherwise`).
+// one closes. A link naming no invoice, or one from another site, just shows
+// the tab, and whatever panel the tab had open (`otherwise`).
 export function InvoicePanelHost({
-  customerId,
+  siteId,
   otherwise = null,
 }: {
-  customerId: string;
+  siteId: Id<"sites">;
   otherwise?: ReactNode;
 }) {
   const { openId, close } = useSidePanel(InvoicePanelParam);
@@ -52,7 +53,7 @@ export function InvoicePanelHost({
     <OpenInvoice
       key={openId}
       invoiceId={openId}
-      customerId={customerId}
+      siteId={siteId}
       otherwise={otherwise}
       onClose={close}
     />
@@ -61,12 +62,12 @@ export function InvoicePanelHost({
 
 function OpenInvoice({
   invoiceId,
-  customerId,
+  siteId,
   otherwise,
   onClose,
 }: {
   invoiceId: string;
-  customerId: string;
+  siteId: Id<"sites">;
   otherwise: ReactNode;
   onClose: () => void;
 }) {
@@ -80,7 +81,7 @@ function OpenInvoice({
       </SidePanel>
     );
   }
-  if (invoice === null || invoice.customerId !== customerId) return otherwise;
+  if (invoice === null || invoice.siteId !== siteId) return otherwise;
   return <InvoicePanel invoice={invoice} onClose={onClose} />;
 }
 

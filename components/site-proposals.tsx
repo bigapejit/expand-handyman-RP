@@ -9,19 +9,20 @@ import {
   Download,
   Eye,
   GripVertical,
+  Plus,
   Star,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 
-import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { InvoicePanelHost } from "@/components/invoice-panel";
-import { NewForSite, SiteTag } from "@/components/new-for-site";
 import { pdfDownloadLabel, usePdfDownload } from "@/components/pdf-download";
 import { OpenedChip, ProposalStateChip } from "@/components/proposal-chips";
 import { ProposalInvoices } from "@/components/proposal-invoices";
 import { ProposalSending } from "@/components/proposal-sending";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
+import { SiteTag } from "@/components/site-tag";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,18 +63,16 @@ import {
 } from "@/lib/proposals";
 import { cn, errorMessage } from "@/lib/utils";
 
-type ProposalsTab = FunctionReturnType<typeof api.proposals.forCustomer>;
+type ProposalsTab = FunctionReturnType<typeof api.proposals.forSite>;
 type Proposal = ProposalsTab["proposals"][number];
 type OfferedSolution = ProposalsTab["solutions"][number];
 type ProposalPatch = Omit<FunctionArgs<typeof api.proposals.update>, "proposalId">;
 
-// The customer page's landing tab, ported from FRSG's site-proposals.tsx one
-// level up: every proposal across the customer's sites, each tagged with its
-// site. Opening a row slides the panel in over the list and puts the proposal
-// in the URL, exactly as the Solutions tab does.
-export function CustomerProposals({ customerId }: { customerId: string }) {
-  const id = customerId as Id<"customers">;
-  const tab = useQuery(api.proposals.forCustomer, { customerId: id });
+// The Proposals tab, ported from FRSG's site-proposals.tsx: the site page's
+// landing tab. Opening a row slides the panel in over the list and puts the
+// proposal in the URL, exactly as the Solutions tab does.
+export function SiteProposals({ siteId }: { siteId: Id<"sites"> }) {
+  const tab = useQuery(api.proposals.forSite, { siteId });
   // An action rather than a mutation: a Washington site's tax rate comes from
   // the Department of Revenue, and the new draft carries it from the start.
   const create = useAction(api.proposals.create);
@@ -88,7 +87,7 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
   const openProposal = tab?.proposals.find((proposal) => proposal.proposalId === openId);
   const count = tab?.proposals.length ?? 0;
 
-  const add = async (siteId: Id<"sites">) => {
+  const add = async () => {
     setAdding(true);
     setError("");
     try {
@@ -106,16 +105,13 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
       title="Proposals"
       description={
         count
-          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for this customer's sites.`
-          : "Offers for this customer's sites, each assembled from solutions."
+          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for this site.`
+          : "Offers for this site, each assembled from solutions."
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New proposal"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        <Button variant="outline" size="lg" disabled={adding} onClick={() => void add()}>
+          <Plus data-icon="inline-start" aria-hidden /> New proposal
+        </Button>
       }
     >
       {error ? (
@@ -127,8 +123,8 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
         <HubLoading label="Loading proposals" />
       ) : tab.proposals.length === 0 ? (
         <HubEmpty>
-          No proposals yet. Assemble one from a site&rsquo;s solutions; a site can have
-          several, each offering a different set.
+          No proposals yet. Assemble one from this site&rsquo;s solutions; a site can
+          have several, each offering a different set.
         </HubEmpty>
       ) : (
         <ol>
@@ -142,7 +138,7 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
         </ol>
       )}
       <InvoicePanelHost
-        customerId={customerId}
+        siteId={siteId}
         otherwise={
           tab && openProposal ? (
             <ProposalPanel
@@ -160,6 +156,7 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
   );
 }
 
+// Every row is at the same site, so none repeats the site's name.
 function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void }) {
   const solutions = proposal.solutions.length;
   return (
@@ -178,12 +175,8 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
             {proposal.state === "sent" && proposal.opened ? <OpenedChip /> : null}
             {proposal.recommended ? <RecommendedMark /> : null}
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={proposal.siteName} />
-            <span aria-hidden>·</span>
-            <span className="truncate">
-              {solutions === 1 ? "1 solution" : `${solutions} solutions`}
-            </span>
+          <span className="block truncate text-xs text-slate-500">
+            {solutions === 1 ? "1 solution" : `${solutions} solutions`}
           </span>
         </span>
         <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
@@ -268,20 +261,19 @@ function ProposalPanel({
     if (!(await save({ solutionIds: next }))) setPicked(previous);
   };
 
-  const atSite = tab.solutions.filter((solution) => solution.siteId === proposal.siteId);
-  const bySolutionId = new Map(atSite.map((solution) => [solution.solutionId, solution] as const));
+  // The tab is one site's, so every solution on it is one this draft may offer.
+  const bySolutionId = new Map(
+    tab.solutions.map((solution) => [solution.solutionId, solution] as const),
+  );
   // A solution deleted while the panel is open is dropped here too, so the
   // next tick never sends an id the server would refuse.
   const current = picked.filter((solutionId) => bySolutionId.has(solutionId));
   const held = new Set(current);
   const offered = current.flatMap((solutionId) => bySolutionId.get(solutionId) ?? []);
-  const available = atSite.filter((solution) => !held.has(solution.solutionId));
+  const available = tab.solutions.filter((solution) => !held.has(solution.solutionId));
 
   const alreadyRecommended = tab.proposals.find(
-    (other) =>
-      other.recommended &&
-      other.siteId === proposal.siteId &&
-      other.proposalId !== proposal.proposalId,
+    (other) => other.recommended && other.proposalId !== proposal.proposalId,
   );
 
   return (

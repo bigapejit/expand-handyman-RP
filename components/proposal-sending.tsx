@@ -34,7 +34,7 @@ import {
 } from "@/lib/signing-link";
 import { cn, dateTime, errorMessage } from "@/lib/utils";
 
-type ProposalsTab = FunctionReturnType<typeof api.proposals.forCustomer>;
+type ProposalsTab = FunctionReturnType<typeof api.proposals.forSite>;
 type Proposal = ProposalsTab["proposals"][number];
 
 // The panel's Send, and once sent, its signing link: where it went, whether

@@ -41,10 +41,12 @@ export function downloadPdf(bytes: Uint8Array, title: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
-export async function uploadFile(url: string, data: Blob) {
+// Storage keeps the content type the upload names, which is how a saved file
+// is known for a PDF or a photo's JPEG afterwards.
+export async function uploadFile(url: string, data: Blob, contentType: string) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/pdf" },
+    headers: { "Content-Type": contentType },
     body: data,
   });
   if (!res.ok) throw new Error("Upload failed. Please try again.");

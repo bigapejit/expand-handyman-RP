@@ -14,7 +14,7 @@ import {
 
 import { formatCents } from "./money";
 
-// How a Solution reads on the customer's Solutions tab: the row in the list,
+// How a Solution reads on the site's Solutions tab: the row in the list,
 // and the Line Item table inside the panel. Ported from FRSG's
 // apps/web/lib/solutions.ts without the roof-record links. Pure, so the price
 // the owner watches change while typing is arithmetically the same number the

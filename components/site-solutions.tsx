@@ -5,9 +5,9 @@ import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
-import { NewForSite, SiteTag } from "@/components/new-for-site";
+import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
+import { SiteTag } from "@/components/site-tag";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,18 +53,17 @@ import {
 } from "@/lib/solutions";
 import { cn, errorMessage } from "@/lib/utils";
 
-type Solution = FunctionReturnType<typeof api.solutions.forCustomer>[number];
+type Solution = FunctionReturnType<typeof api.solutions.forSite>[number];
 type CatalogSuggestion = FunctionReturnType<typeof api.catalog.suggestions>[number];
 type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId">;
 
-// The customer's Solutions tab, ported from FRSG's site-solutions.tsx one level
-// up: every solution across the customer's sites, each tagged with its site.
-// Opening a row slides the panel in over the list and puts the solution in the
-// URL, so a reload or a copied link reopens it. Every edit lands as the field
-// is left; nothing here is customer-visible until a proposal is sent.
-export function CustomerSolutions({ customerId }: { customerId: string }) {
-  const id = customerId as Id<"customers">;
-  const solutions = useQuery(api.solutions.forCustomer, { customerId: id });
+// The Solutions tab, ported from FRSG's site-solutions.tsx: one site's
+// solutions on the site page. Opening a row slides the panel in over the list
+// and puts the solution in the URL, so a reload or a copied link reopens it.
+// Every edit lands as the field is left; nothing here is customer-visible
+// until a proposal is sent.
+export function SiteSolutions({ siteId }: { siteId: Id<"sites"> }) {
+  const solutions = useQuery(api.solutions.forSite, { siteId });
   const create = useMutation(api.solutions.create);
   const { openId, open, close } = useSidePanel("solution");
   const [adding, setAdding] = useState(false);
@@ -73,7 +72,7 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
   // A link naming a solution since deleted just shows the list.
   const openSolution = solutions?.find((solution) => solution._id === openId);
 
-  const add = async (siteId: Id<"sites">) => {
+  const add = async () => {
     setAdding(true);
     setError("");
     try {
@@ -94,12 +93,9 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
           : "The priced pieces of work proposals are assembled from."
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New solution"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        <Button variant="outline" size="lg" disabled={adding} onClick={() => void add()}>
+          <Plus data-icon="inline-start" aria-hidden /> New solution
+        </Button>
       }
     >
       {error ? (
@@ -110,7 +106,7 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
       {solutions === undefined ? (
         <HubLoading label="Loading solutions" />
       ) : solutions.length === 0 ? (
-        <HubEmpty>No solutions yet. Price one for each piece of work a site needs.</HubEmpty>
+        <HubEmpty>No solutions yet. Price one for each piece of work this site needs.</HubEmpty>
       ) : (
         <ol>
           {solutions.map((solution) => (
@@ -129,6 +125,7 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
   );
 }
 
+// Every row is at the same site, so none repeats the site's name.
 function SolutionRow({ solution, open }: { solution: Solution; open: () => void }) {
   return (
     <li className="border-b last:border-b-0">
@@ -139,12 +136,8 @@ function SolutionRow({ solution, open }: { solution: Solution; open: () => void 
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-slate-900">{solution.title}</span>
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={solution.siteName} />
-            <span aria-hidden>·</span>
-            <span className="truncate">
-              {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
-            </span>
+          <span className="block truncate text-xs text-slate-500">
+            {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
           </span>
         </span>
         <span

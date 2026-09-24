@@ -208,17 +208,17 @@ export const list = query({
   },
 });
 
-// The customer page's Invoices tab: every invoice for the customer, newest
-// first, drafts and void included. For reading and sending; nothing here
-// makes one.
-export const forCustomer = query({
-  args: { customerId: v.id("customers"), today },
+// The site page's Invoices tab: every invoice at the site, newest first,
+// drafts and void included, read by its index. For reading and sending;
+// nothing here makes one.
+export const forSite = query({
+  args: { siteId: v.id("sites"), today },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     requireDay(a.today);
     const invoices = await ctx.db
       .query("invoices")
-      .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
+      .withIndex("by_site", (q) => q.eq("siteId", a.siteId))
       .collect();
     return (await invoiceRows(ctx, invoices, a.today)).sort(newestSentFirst);
   },

@@ -19,7 +19,7 @@ type DecidedRow = Dashboard["decided"][number];
 // FRSG's Dashboard Proposals card: what is out with a customer across every
 // site, the one waiting longest first and each saying whether the customer
 // has opened its current link, then the few most recently decided. Every row
-// opens that proposal in its panel on its customer's Proposals tab; nothing
+// opens that proposal in its panel on its site's Proposals tab; nothing
 // here is edited.
 export function DashboardProposals() {
   const proposals = useQuery(api.proposals.dashboard);
@@ -48,7 +48,7 @@ export function DashboardProposals() {
       ) : proposals.awaiting.length === 0 && proposals.decided.length === 0 ? (
         <Quiet>
           No proposal has been sent yet. They are assembled and sent on a
-          customer&rsquo;s Proposals tab.
+          site&rsquo;s Proposals tab.
         </Quiet>
       ) : (
         <div className="space-y-4">
@@ -93,7 +93,7 @@ function ProposalList<Row extends AwaitingRow | DecidedRow>({
       {rows.map((row) => (
         <li key={row.proposalId}>
           <Link
-            href={proposalPanelHref(row.customerId, row.proposalId)}
+            href={proposalPanelHref(row.siteId, row.proposalId)}
             className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-slate-50"
           >
             <div className="min-w-0 flex-1">

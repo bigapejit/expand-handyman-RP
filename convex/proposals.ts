@@ -82,90 +82,77 @@ import { isWashingtonRegion } from "../lib/wa-sales-tax";
 // Send freezes the offer, and from then on every reader uses the frozen copy
 // and never the live solutions, customer or site.
 
-// The customer page's Proposals tab, and everything the panel over it edits:
-// every proposal across the customer's sites, and every solution there is to
-// pick from, each tagged with its site.
-export const forCustomer = query({
-  args: { customerId: v.id("customers") },
+// The site page's Proposals tab, and everything the panel over it edits: the
+// site's proposals, each as the panel reads it, and its solutions to pick
+// from, read by the site's index. A site that is gone has nothing on it.
+export const forSite = query({
+  args: { siteId: v.id("sites") },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
-    const customer = await ctx.db.get(a.customerId);
+    const site = await ctx.db.get(a.siteId);
+    if (!site) return { customerEmail: null, solutions: [], proposals: [] };
+    const customer = await ctx.db.get(site.customerId);
     // Where Send would go, or null when the customer has no address to send to.
     const customerEmail = customer ? sendableEmail(customer.email) : null;
-    const sites = await ctx.db
-      .query("sites")
-      .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
-      .collect();
-    sites.sort((x, y) => x.name.localeCompare(y.name));
-
-    const perSite = await Promise.all(
-      sites.map(async (site) => {
-        const [solutions, proposals] = await Promise.all([
-          ctx.db
-            .query("solutions")
-            .withIndex("by_site", (q) => q.eq("siteId", site._id))
-            .collect(),
-          proposalsAtSite(ctx, site._id),
-        ]);
-        const bySolutionId = new Map(solutions.map((s) => [s._id, s] as const));
-        return {
-          solutions: solutions.map((solution) => ({
-            solutionId: solution._id,
-            siteId: solution.siteId,
-            title: solution.title,
-            // Null rather than zero when nothing has been priced yet: the
-            // "No price" a draft may hold but not send.
-            price: priceStoredSolution(solution),
-          })),
-          // In number order, so an edit never reshuffles the list under the
-          // cursor.
-          proposals: await Promise.all(
-            proposals
-              .sort((x, y) => x.number - y.number)
-              .map(async (proposal) => {
-                const read = proposalForOwner(proposal, site, (id) => bySolutionId.get(id));
-                return {
-                  ...read,
-                  // What Send would refuse, asked the way `sendWithLink` asks
-                  // it, so the button names the same reasons.
-                  sendBlockers:
-                    proposal.state === "draft"
-                      ? [
-                          ...sendBlockers(
-                            read.solutions.map((solution) => solution.priceCents),
-                            proposal.tax,
-                          ),
-                          ...depositBlockers(read.payment),
-                          ...recipientBlockers(customerEmail),
-                        ]
-                      : [],
-                  sentAt: proposal.sentAt ?? null,
-                  sentTo: proposal.frozen?.sentTo ?? null,
-                  ...(await linkHistory(ctx, proposal._id)),
-                  ...decisionForOwner(proposal),
-                  // Approving one proposal leaves the site's others alone, so
-                  // the panel says how many are still out for the owner to
-                  // retire by hand.
-                  otherSentAtSite: proposals.filter(
-                    (other) => other._id !== proposal._id && other.state === "sent",
-                  ).length,
-                };
-              }),
-          ),
-        };
-      }),
-    );
-
+    const [solutions, proposals] = await Promise.all([
+      ctx.db
+        .query("solutions")
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .collect(),
+      proposalsAtSite(ctx, site._id),
+    ]);
+    const bySolutionId = new Map(solutions.map((s) => [s._id, s] as const));
     return {
       customerEmail,
-      solutions: perSite.flatMap((site) => site.solutions),
-      proposals: perSite.flatMap((site) => site.proposals),
+      solutions: solutions.map((solution) => ({
+        solutionId: solution._id,
+        siteId: solution.siteId,
+        title: solution.title,
+        // Null rather than zero when nothing has been priced yet: the
+        // "No price" a draft may hold but not send.
+        price: priceStoredSolution(solution),
+      })),
+      // In number order, so an edit never reshuffles the list under the
+      // cursor.
+      proposals: await Promise.all(
+        proposals
+          .sort((x, y) => x.number - y.number)
+          .map(async (proposal) => {
+            const read = proposalForOwner(proposal, site, (id) => bySolutionId.get(id));
+            return {
+              ...read,
+              // What Send would refuse, asked the way `sendWithLink` asks
+              // it, so the button names the same reasons.
+              sendBlockers:
+                proposal.state === "draft"
+                  ? [
+                      ...sendBlockers(
+                        read.solutions.map((solution) => solution.priceCents),
+                        proposal.tax,
+                      ),
+                      ...depositBlockers(read.payment),
+                      ...recipientBlockers(customerEmail),
+                    ]
+                  : [],
+              sentAt: proposal.sentAt ?? null,
+              sentTo: proposal.frozen?.sentTo ?? null,
+              ...(await linkHistory(ctx, proposal._id)),
+              ...decisionForOwner(proposal),
+              // Approving one proposal leaves the site's others alone, so
+              // the panel says how many are still out for the owner to
+              // retire by hand.
+              otherSentAtSite: proposals.filter(
+                (other) => other._id !== proposal._id && other.state === "sent",
+              ).length,
+            };
+          }),
+      ),
     };
   },
 });
 
 // The global Proposals page: every proposal across every customer, newest
-// first. Read-only; each row opens the proposal on its customer's page.
+// first. Read-only; each row carries its site, where it opens.
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -192,6 +179,7 @@ export const list = query({
       const read = proposalForOwner(proposal, site, (id) => solutions.get(id));
       rows.push({
         proposalId: read.proposalId,
+        siteId: site._id,
         customerId: customer._id,
         customerName: customer.name,
         code: read.code,
@@ -269,15 +257,16 @@ export const dashboard = query({
   },
 });
 
-// A Dashboard row's name for a proposal past Send, and where it opens. A site
-// with a proposal cannot be deleted, so a missing one is data gone wrong, and
-// the row is left out rather than pointing nowhere.
+// A Dashboard row's name for a proposal past Send, and the site it opens on.
+// A site with a proposal cannot be deleted, so a missing one is data gone
+// wrong, and the row is left out rather than pointing nowhere.
 async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
   const site = await ctx.db.get(proposal.siteId);
   if (!site || !proposal.frozen) return null;
   const offer = frozenOffer(proposal.frozen);
   return {
     proposalId: proposal._id,
+    siteId: site._id,
     customerId: site.customerId,
     customerName: proposal.frozen.customerName,
     code: offer.code,

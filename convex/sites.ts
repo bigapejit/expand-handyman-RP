@@ -12,12 +12,16 @@ import type { Id } from "./_generated/dataModel";
 import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
 import { lookUpDraftTax, resetDraftTax } from "./proposals";
+import { deleteSitePhotos } from "./photos";
 import { deleteSiteSolutions } from "./solutions";
+import { Unknown } from "../lib/expand-business";
 import {
   createSiteName,
   parseSiteDetails,
   sameUnit,
-  siteAddress,
+  siteCityLine,
+  siteDeleteRefusal,
+  siteStreetLine,
 } from "../lib/sites";
 
 // A picked place as Google described it, fetched on the server so no site can
@@ -33,6 +37,8 @@ export const place = v.object({
 });
 const details = { addressLine2: v.string(), accessNotes: v.string() };
 
+// The customer page's Sites cards: each of the customer's sites with its
+// address over two lines and how many proposals it has.
 export const forCustomer = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, a) => {
@@ -46,7 +52,8 @@ export const forCustomer = query({
         .sort((x, y) => x.name.localeCompare(y.name))
         .map(async (site) => ({
           ...site,
-          address: siteAddress(site),
+          streetLine: siteStreetLine(site),
+          cityLine: siteCityLine(site),
           proposalCount: (
             await ctx.db
               .query("proposals")
@@ -55,6 +62,99 @@ export const forCustomer = query({
           ).length,
         })),
     );
+  },
+});
+
+// The Sites list: every site across every customer, with its street and city
+// lines, whose it is, how many proposals it has and when it was last touched,
+// the one touched most recently first. The page searches the rows itself.
+// Bounded as the Customers list is. Proposals are read in one scan rather than
+// a query per site; photos far outnumber them, so each site's newest is read
+// off its index instead.
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    const sites = await ctx.db.query("sites").order("desc").take(1000);
+    const proposals = new Map<Id<"sites">, { count: number; lastEdit: number }>();
+    for (const proposal of await ctx.db.query("proposals").take(10_000)) {
+      const held = proposals.get(proposal.siteId);
+      proposals.set(proposal.siteId, {
+        count: (held?.count ?? 0) + 1,
+        lastEdit: Math.max(held?.lastEdit ?? 0, proposal.updatedAt),
+      });
+    }
+    const customerNames = new Map<Id<"customers">, string>();
+    const rows = [];
+    for (const site of sites) {
+      if (!customerNames.has(site.customerId))
+        customerNames.set(
+          site.customerId,
+          (await ctx.db.get(site.customerId))?.name ?? Unknown,
+        );
+      const held = proposals.get(site._id);
+      const newestPhoto = await ctx.db
+        .query("photos")
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .order("desc")
+        .first();
+      rows.push({
+        siteId: site._id,
+        customerId: site.customerId,
+        customerName: customerNames.get(site.customerId) ?? Unknown,
+        streetLine: siteStreetLine(site),
+        cityLine: siteCityLine(site),
+        proposalCount: held?.count ?? 0,
+        // The newest of the site's own last edit, its proposals' latest and
+        // its latest photo's upload.
+        lastActivity: Math.max(
+          site.updatedAt,
+          held?.lastEdit ?? 0,
+          newestPhoto?.addedAt ?? 0,
+        ),
+      });
+    }
+    return rows.sort((x, y) => y.lastActivity - x.lastActivity);
+  },
+});
+
+// The site page's header: the site, its address over two lines, whose it is,
+// its access notes, and the count beside each tab. Read by the id the page
+// address carries, which may be anything a link was typed as, so an id naming
+// no site opens nothing rather than failing.
+export const get = query({
+  args: { siteId: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const siteId = ctx.db.normalizeId("sites", a.siteId);
+    const site = siteId ? await ctx.db.get(siteId) : null;
+    if (!site) return null;
+    const bySite = (table: "proposals" | "solutions" | "photos" | "invoices") =>
+      ctx.db
+        .query(table)
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .collect();
+    const [customer, proposals, solutions, photos, invoices] = await Promise.all([
+      ctx.db.get(site.customerId),
+      bySite("proposals"),
+      bySite("solutions"),
+      bySite("photos"),
+      bySite("invoices"),
+    ]);
+    return {
+      site,
+      streetLine: siteStreetLine(site),
+      cityLine: siteCityLine(site),
+      customerId: site.customerId,
+      customerName: customer?.name ?? Unknown,
+      accessNotes: site.accessNotes,
+      counts: {
+        proposals: proposals.length,
+        solutions: solutions.length,
+        photos: photos.length,
+        invoices: invoices.length,
+      },
+    };
   },
 });
 
@@ -158,19 +258,31 @@ export const patch = internalMutation({
   },
 });
 
+// Delete site, from Edit site on the site page. Refused while the site holds a
+// proposal or an invoice, whatever the dialog showed; otherwise its solutions
+// go with it, and its photos with both files each, so nothing of it is left in
+// storage.
 export const remove = mutation({
   args: { siteId: v.id("sites") },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const site = await ctx.db.get(a.siteId);
     if (!site) return;
-    const proposal = await ctx.db
-      .query("proposals")
-      .withIndex("by_site", (q) => q.eq("siteId", site._id))
-      .first();
-    if (proposal)
-      throw new Error("This site has proposals, so it can't be deleted.");
+    // One of each is enough to refuse, so none is counted past the first.
+    const oneOf = async (table: "proposals" | "invoices") =>
+      (await ctx.db
+        .query(table)
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .first())
+        ? 1
+        : 0;
+    const refusal = siteDeleteRefusal({
+      proposals: await oneOf("proposals"),
+      invoices: await oneOf("invoices"),
+    });
+    if (refusal) throw new Error(refusal);
     await deleteSiteSolutions(ctx, site._id);
+    await deleteSitePhotos(ctx, site._id);
     await ctx.db.delete(site._id);
   },
 });

@@ -27,7 +27,7 @@ async function fixture() {
     email: "andrew@cogtex.ai",
     emailVerified: true,
   });
-  const customerId = await owner.action(api.customers.add, {
+  const { customerId } = await owner.action(api.customers.add, {
     name: "Test Customer",
     email: "customer@example.com",
     phone: "(555) 123-4567",

@@ -250,7 +250,7 @@ describe("Job done", () => {
     });
     // The proposal itself does not change state.
     expect(
-      (await owner.query(api.proposals.forCustomer, { customerId: maria })).proposals[0].state,
+      (await owner.query(api.proposals.forSite, { siteId })).proposals[0].state,
     ).toBe("approved");
   });
 

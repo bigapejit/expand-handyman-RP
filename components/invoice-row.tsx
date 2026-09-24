@@ -5,7 +5,7 @@ import type { api } from "@/convex/_generated/api";
 import { formatCentsExact } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-type InvoiceListRow = FunctionReturnType<typeof api.invoices.forCustomer>[number];
+type InvoiceListRow = FunctionReturnType<typeof api.invoices.forSite>[number];
 
 // One invoice in a list inside a hub page or a panel: its title and chip, a
 // line under it, and the amount due on the right. A void invoice is struck
