@@ -80,15 +80,18 @@ type SentProposal = Doc<"proposals"> & { state: "sent" | "approved" | "declined"
 
 // The proposal out on a deal. A deal remembers the proposal that last moved
 // it (`proposalId`, written when one is sent or approved), so two jobs at
-// one site, or two offers out at once, each read their own. A deal moved
-// before that was recorded, or only by hand, falls back to the latest offer
-// sent from its site since the deal began. Drafts are the owner's own and
-// say nothing yet. Null when none.
+// one site, or two offers out at once, each read their own. An open deal
+// that never recorded one, from before this was kept, falls back to the
+// latest offer sent from its site since the deal began; a deal closed by
+// hand with none recorded shows none, since any offer at the site after
+// that is another job's. Drafts are the owner's own and say nothing yet.
+// Null when none.
 async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">, site: Doc<"sites"> | null) {
   let latest: SentProposal | null = null;
   const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
   if (held && held.state !== "draft" && held.frozen) latest = { ...held, state: held.state };
-  else if (site) latest = await latestSentFrom(ctx, site._id, deal.createdAt);
+  else if (site && isOpen(deal.stage))
+    latest = await latestSentFrom(ctx, site._id, deal.createdAt);
   if (!latest?.frozen) return null;
   // **Opened**: only a Sent one's current link can be, and only by the customer.
   const live =

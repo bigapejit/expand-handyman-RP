@@ -483,6 +483,22 @@ describe("board", () => {
     expect(await row(second)).toMatchObject({ stage: "won", proposal: { proposalId: p2, state: "approved" } });
   });
 
+  test("a deal closed by hand shows no later offer from its site", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const lost = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    await owner.mutation(api.deals.setStage, { dealId: lost, stage: "lost" });
+    vi.advanceTimersByTime(60_000);
+    await send(siteId);
+    expect(await row(lost)).toMatchObject({ stage: "lost", proposal: null });
+  });
+
   test("a lead from before deals is moved too, getting its deal on the way", async () => {
     const { t, owner, customer, site, send, deals } = fixture();
     const customerId = await customer();
