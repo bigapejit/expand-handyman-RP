@@ -101,16 +101,20 @@ function SentLink({ invoice }: { invoice: PanelInvoice }) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          disabled={busy || invoice.customerEmail === null}
-          onClick={() => setConfirming(true)}
-        >
-          <RotateCcw data-icon="inline-start" aria-hidden /> {busy ? "Re-sending…" : "Re-send"}
-        </Button>
-      </div>
-      {invoice.customerEmail === null ? (
+      {/* A void invoice's link opens nothing until Void brings the stamped
+          paper, so it is not re-sent (invoices.resendWithLink). */}
+      {invoice.state === "sent" ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={busy || invoice.customerEmail === null}
+            onClick={() => setConfirming(true)}
+          >
+            <RotateCcw data-icon="inline-start" aria-hidden /> {busy ? "Re-sending…" : "Re-send"}
+          </Button>
+        </div>
+      ) : null}
+      {invoice.state === "sent" && invoice.customerEmail === null ? (
         <p className="text-xs text-slate-500">
           The customer has no email address now. Add one to re-send.
         </p>

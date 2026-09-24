@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 // drawn the same way, so an invoice row reads like a proposal row: its
 // **Standing** once sent, and Draft or Void where it has none. Unlike a
 // proposal's, a draft invoice does carry a chip, because a list of invoices
-// mixes bills that are owed with ones nobody has seen yet.
+// mixes invoices that are owed with drafts nobody has seen yet.
 export function InvoiceChip({
   state,
   standing,

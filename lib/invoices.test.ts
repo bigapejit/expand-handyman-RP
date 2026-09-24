@@ -11,6 +11,7 @@ import {
   invoiceSentLabel,
   matchesInvoiceFilter,
   matchesInvoiceSearch,
+  type InvoiceState,
 } from "./invoices";
 
 describe("How an invoice is named on a row", () => {
@@ -57,7 +58,7 @@ describe("The chip a row wears", () => {
   });
 });
 
-type Row = Parameters<typeof compareInvoiceRows>[0];
+type Row = Parameters<typeof compareInvoiceRows>[0] & { state: InvoiceState };
 const row = (over: Partial<Row> & { id: string }): Row & { id: string } => ({
   state: "sent",
   standing: "unpaid",

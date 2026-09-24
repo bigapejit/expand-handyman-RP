@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { invoiceStanding, isPacificDay, pacificDay } from "./invoice-standing";
+import { invoiceStanding, isCalendarDay, pacificDay } from "./invoice-standing";
 
 // A moment given as Pacific wall-clock time. PDT is UTC-7, PST is UTC-8.
 const pdt = (y: number, m: number, d: number, h = 12, min = 0) =>
@@ -12,7 +12,7 @@ const sent = (sentAt: number, amountDueCents = 29_948) => ({
   state: "sent" as const,
   sentAt,
   amountDueCents,
-  paid: false,
+  hasPayment: false,
 });
 
 describe("The Pacific day", () => {
@@ -24,10 +24,10 @@ describe("The Pacific day", () => {
   });
 
   it("knows a day written as YYYY-MM-DD from anything else", () => {
-    expect(isPacificDay("2026-09-23")).toBe(true);
-    expect(isPacificDay("2026-9-23")).toBe(false);
-    expect(isPacificDay("2026-02-30")).toBe(false);
-    expect(isPacificDay("")).toBe(false);
+    expect(isCalendarDay("2026-09-23")).toBe(true);
+    expect(isCalendarDay("2026-9-23")).toBe(false);
+    expect(isCalendarDay("2026-02-30")).toBe(false);
+    expect(isCalendarDay("")).toBe(false);
   });
 });
 
@@ -75,7 +75,7 @@ describe("An invoice's standing", () => {
 
   it("is Paid once a payment is recorded, however late", () => {
     const at = pdt(2026, 9, 1);
-    expect(invoiceStanding({ ...sent(at), paid: true }, "2026-12-01")).toBe("paid");
+    expect(invoiceStanding({ ...sent(at), hasPayment: true }, "2026-12-01")).toBe("paid");
   });
 
   it("leaves a credit Unpaid until it is marked paid", () => {
@@ -87,9 +87,9 @@ describe("An invoice's standing", () => {
   it("is nothing for a draft or a void invoice", () => {
     const at = pdt(2026, 9, 1);
     expect(
-      invoiceStanding({ state: "draft", amountDueCents: 0, paid: false }, "2026-09-20"),
+      invoiceStanding({ state: "draft", amountDueCents: 0, hasPayment: false }, "2026-09-20"),
     ).toBeNull();
     expect(invoiceStanding({ ...sent(at), state: "void" }, "2026-09-20")).toBeNull();
-    expect(invoiceStanding({ ...sent(at, 0), state: "void", paid: true }, "2026-09-20")).toBeNull();
+    expect(invoiceStanding({ ...sent(at, 0), state: "void", hasPayment: true }, "2026-09-20")).toBeNull();
   });
 });

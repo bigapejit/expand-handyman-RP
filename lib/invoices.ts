@@ -1,5 +1,5 @@
 import { invoiceNumberLabel } from "./invoice-money";
-import type { Standing } from "./invoice-standing";
+import { PacificTimeZone, type Standing } from "./invoice-standing";
 import { panelHref } from "./side-panel";
 
 // How an **Invoice** (CONTEXT.md) reads in the staff app: its row title, the
@@ -102,21 +102,22 @@ export function matchesInvoiceFilter(
 }
 
 // Overdue first, then unpaid, then everything else, and newest sent first
-// within each: the oldest problem is at the top without the newest bill being
-// buried. A draft has not been sent, and sits where it was made.
-export function compareInvoiceRows(
-  x: InvoiceOrderRow,
-  y: InvoiceOrderRow,
+// within each: the overdue ones are at the top without the newest invoice
+// being buried.
+export function compareInvoiceRows(x: InvoiceOrderRow, y: InvoiceOrderRow): number {
+  return standingRank(x) - standingRank(y) || newestSentFirst(x, y);
+}
+
+// The Invoices tab's order, and the page's within each standing. A draft has
+// not been sent, and sits where it was made.
+export function newestSentFirst(
+  x: Pick<InvoiceOrderRow, "sentAt" | "createdAt">,
+  y: Pick<InvoiceOrderRow, "sentAt" | "createdAt">,
 ): number {
-  return (
-    standingRank(x) - standingRank(y) ||
-    (y.sentAt ?? y.createdAt) - (x.sentAt ?? x.createdAt) ||
-    y.createdAt - x.createdAt
-  );
+  return (y.sentAt ?? y.createdAt) - (x.sentAt ?? x.createdAt) || y.createdAt - x.createdAt;
 }
 
 type InvoiceOrderRow = {
-  state: InvoiceState;
   standing: Standing | null;
   sentAt: number | null;
   createdAt: number;
@@ -147,7 +148,7 @@ export function invoiceSentLabel(sentAt: number | null, locale?: string): string
     month: "short",
     day: "numeric",
     year: "numeric",
-    timeZone: "America/Los_Angeles",
+    timeZone: PacificTimeZone,
   }).format(sentAt);
   return `Sent ${day}`;
 }

@@ -18,7 +18,7 @@ export type Standing = "unpaid" | "overdue" | "paid";
 // Days past the sent day an unpaid invoice may run before it reads Overdue.
 export const OverdueAfterDays = 7;
 
-const PacificTimeZone = "America/Los_Angeles";
+export const PacificTimeZone = "America/Los_Angeles";
 
 const dayParts = new Intl.DateTimeFormat("en-US", {
   timeZone: PacificTimeZone,
@@ -37,7 +37,7 @@ export function pacificDay(ms: number): string {
 }
 
 // Whether a string is a real calendar day written `YYYY-MM-DD`.
-export function isPacificDay(day: string): boolean {
+export function isCalendarDay(day: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
   const at = dayNumber(day);
   return new Date(at * DayMs).toISOString().slice(0, 10) === day;
@@ -50,13 +50,13 @@ export function invoiceStanding(
     sentAt?: number | null;
     amountDueCents: number;
     // Whether a payment is recorded on it.
-    paid: boolean;
+    hasPayment: boolean;
   },
   // Today, as `pacificDay` writes it.
   today: string,
 ): Standing | null {
   if (invoice.state !== "sent") return null;
-  if (invoice.paid || invoice.amountDueCents === 0) return "paid";
+  if (invoice.hasPayment || invoice.amountDueCents === 0) return "paid";
   if (invoice.sentAt === undefined || invoice.sentAt === null) return "unpaid";
   const daysSinceSent = dayNumber(today) - dayNumber(pacificDay(invoice.sentAt));
   return daysSinceSent > OverdueAfterDays ? "overdue" : "unpaid";

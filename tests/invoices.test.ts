@@ -500,8 +500,18 @@ describe("Re-send", () => {
     const { proposalId } = await approved(await customer());
     const draft = await written(proposalId, { kind: "final" });
     await expect(owner.action(api.invoices.resend, { invoiceId: draft })).rejects.toThrow(
-      /Only a sent or void invoice can be re-sent/,
+      /Only a sent invoice can be re-sent/,
     );
+  });
+
+  test("is refused for a void invoice while its link has no paper to open, and its link stays", async () => {
+    const { t, owner, customer, approved, links } = fixture();
+    const { invoiceId } = await approved(await customer());
+    await t.run((ctx) => ctx.db.patch(invoiceId, { state: "void", voidedAt: Date.now() }));
+    await expect(owner.action(api.invoices.resend, { invoiceId })).rejects.toThrow(
+      /Only a sent invoice can be re-sent/,
+    );
+    expect((await links(invoiceId)).map((link) => link.endedAt)).toEqual([undefined]);
   });
 });
 

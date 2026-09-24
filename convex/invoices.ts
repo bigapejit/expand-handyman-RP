@@ -28,11 +28,12 @@ import {
   invoiceTaxRate,
 } from "../lib/invoice-money";
 import type { PaperInvoice } from "../lib/invoice-paper";
-import { invoiceStanding, isPacificDay } from "../lib/invoice-standing";
+import { invoiceStanding, isCalendarDay } from "../lib/invoice-standing";
 import {
   compareInvoiceRows,
   invoiceRowTitle,
   matchesInvoiceFilter,
+  newestSentFirst,
 } from "../lib/invoices";
 import { proposalDisplayName } from "../lib/proposal-pricing";
 import { signingUrl } from "../lib/signing-link";
@@ -156,7 +157,7 @@ export async function emailNewInvoiceLink(
 const today = v.string();
 
 function requireDay(day: string) {
-  if (!isPacificDay(day)) throw new Error("Today has to be a day written YYYY-MM-DD.");
+  if (!isCalendarDay(day)) throw new Error("Today has to be a day written YYYY-MM-DD.");
 }
 
 // The Invoices page: every invoice across every customer, filtered by the
@@ -203,10 +204,7 @@ export const forCustomer = query({
       .query("invoices")
       .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
       .collect();
-    return (await invoiceRows(ctx, invoices, a.today)).sort(
-      (x, y) =>
-        (y.sentAt ?? y.createdAt) - (x.sentAt ?? x.createdAt) || y.createdAt - x.createdAt,
-    );
+    return (await invoiceRows(ctx, invoices, a.today)).sort(newestSentFirst);
   },
 });
 
@@ -344,16 +342,20 @@ export const resend = action({
 
 // Nothing on the invoice moves, not its lines, number or date: only where it
 // went. The old link ends as `resent`, so the email it sat in stops opening
-// anything, and the letter names the owner who re-sent it. The spec lets a
-// void invoice be re-sent too, whatever its standing.
+// anything, and the letter names the owner who re-sent it.
+//
+// The spec lets a void invoice be re-sent too, but its link only opens once
+// Void brings the paper stamped VOID (`invoiceStillOpenedBy`); until then a
+// re-send would end the customer's link and mail one that opens nothing, so
+// it is refused. Void widens this to `sent` or `void` with the stamp.
 export const resendWithLink = internalMutation({
   args: { invoiceId: v.id("invoices"), token: v.string() },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) throw new Error("Invoice not found.");
-    if (invoice.state === "draft" || !invoice.frozen)
-      throw new Error("Only a sent or void invoice can be re-sent.");
+    if (invoice.state !== "sent" || !invoice.frozen)
+      throw new Error("Only a sent invoice can be re-sent.");
     const customer = await ctx.db.get(invoice.customerId);
     const sentTo = customer ? sendableEmail(customer.email) : null;
     if (sentTo === null)
@@ -413,7 +415,7 @@ async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: st
         customerName: await customerName(invoice),
         amountDueCents,
         standing: invoiceStanding(
-          { state: invoice.state, sentAt: invoice.sentAt, amountDueCents, paid: false },
+          { state: invoice.state, sentAt: invoice.sentAt, amountDueCents, hasPayment: false },
           today,
         ),
         sentAt: invoice.sentAt ?? null,

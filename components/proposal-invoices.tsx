@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 
 import { HubLoading } from "@/components/customer-hub-shell";
-import { InvoiceRow } from "@/components/customer-invoices";
+import { InvoiceRow } from "@/components/invoice-row";
 import { FieldHeading } from "@/components/side-panel";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";

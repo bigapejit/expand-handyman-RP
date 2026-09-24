@@ -1,5 +1,6 @@
-import { InvoicesIndex, ZelleSetting } from "@/components/invoices-index";
+import { InvoicesIndex } from "@/components/invoices-index";
 import { PageHeader } from "@/components/page-header";
+import { ZelleSetting } from "@/components/zelle-setting";
 
 export default function InvoicesPage() {
   return (
