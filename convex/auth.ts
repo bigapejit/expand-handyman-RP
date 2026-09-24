@@ -1,16 +1,30 @@
 import type { QueryCtx, MutationCtx, ActionCtx } from "./_generated/server";
+
+// Who counts as the Owner (CONTEXT.md): the Clerk account pinned in
+// OWNER_CLERK_ID, any account whose verified email is listed in OWNER_EMAIL,
+// and on a dev deployment the QA account the browser-test seed pins in
+// QA_CLERK_ID. The email list is honoured beside the pinned id, not only until
+// it is set, so a seed or a re-pin can never lock the owner out of their own
+// deployment. Each variable may hold several values separated by commas.
 export async function isOwner(ctx: QueryCtx | MutationCtx | ActionCtx) {
   const identity = await ctx.auth.getUserIdentity();
-  const ownerId = process.env.OWNER_CLERK_ID;
-  // An exact verified email is the bootstrap allowlist until the owner's ID is configured.
+  if (!identity) return false;
+  const ids = list(process.env.OWNER_CLERK_ID).concat(list(process.env.QA_CLERK_ID));
+  if (ids.includes(identity.subject)) return true;
   return (
-    !!identity &&
-    (ownerId
-      ? identity.subject === ownerId
-      : identity.emailVerified === true &&
-        identity.email === process.env.OWNER_EMAIL)
+    identity.emailVerified === true &&
+    !!identity.email &&
+    list(process.env.OWNER_EMAIL).includes(identity.email.toLowerCase())
   );
 }
+
+function list(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export async function requireOwner(ctx: QueryCtx | MutationCtx | ActionCtx) {
   if (!(await isOwner(ctx)))
     throw new Error(

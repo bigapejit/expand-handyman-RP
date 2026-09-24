@@ -7,7 +7,7 @@
 - Vercel project: `expand-handyman-rp`, connected to GitHub `main`.
 - Convex production: `dashing-cricket-260`; development: `glorious-donkey-718`.
 - Clerk application: Expand Handyman, separate production and development instances.
-- Clerk allows `andrew@cogtex.ai` and `*@expandhandyman.com`. Production backend access is pinned to the existing owner's Clerk user ID with `OWNER_CLERK_ID`, so changing the owner's primary email preserves access. Other accounts on the domain do not receive owner access.
+- Clerk allows `andrew@cogtex.ai` and `*@expandhandyman.com`. Production backend access is pinned to the existing owner's Clerk user ID with `OWNER_CLERK_ID`, so changing the owner's primary email preserves access; a verified email listed in `OWNER_EMAIL` counts too. Other accounts on the domain do not receive owner access. The development deployment lists the owner's dev account and `andrew.p@expandhandyman.com`; the browser-test seed pins its QA account in `QA_CLERK_ID` only.
 - Porkbun: staff A record points to Vercel; Clerk API, account portal and email verification CNAME records are configured. Existing website and email records were preserved.
 
 The owner must create their first production account and verify their own email. No production user password was created during setup.
