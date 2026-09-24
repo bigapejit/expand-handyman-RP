@@ -10,7 +10,9 @@ if(!templates.data.some(t=>t.name==='convex'))await clerk.jwtTemplates.create({n
 const email='qa+clerk_test@expandhandyman.com';
 const users=await clerk.users.getUserList({emailAddress:[email]});
 const user=users.data[0]??await clerk.users.createUser({emailAddress:[email],firstName:'QA',lastName:'Tester',skipPasswordRequirement:true});
-const result=spawnSync(process.execPath,['node_modules/convex/bin/main.js','env','set','OWNER_CLERK_ID',user.id],{encoding:'utf8',windowsHide:true});
+// The QA account gets its own allowlist variable. OWNER_CLERK_ID stays the
+// owner's, so seeding a browser test never locks the owner out of dev.
+const result=spawnSync(process.execPath,['node_modules/convex/bin/main.js','env','set','QA_CLERK_ID',user.id],{encoding:'utf8',windowsHide:true});
 if(result.status!==0)throw new Error(result.stderr);
 const token=await clerk.signInTokens.createSignInToken({userId:user.id,expiresInSeconds:1800});
 await mkdir('test-results',{recursive:true});await writeFile('test-results/browser-login.json',JSON.stringify({userId:user.id,url:`http://localhost:3210/sign-in?__clerk_ticket=${encodeURIComponent(token.token)}`,tokenId:token.id}));
