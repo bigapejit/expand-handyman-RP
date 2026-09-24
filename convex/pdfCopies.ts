@@ -266,11 +266,7 @@ async function render<Target>(
   // Named in the log when the deployment names no origin.
   what: string,
   mint: (token: string) => Promise<Minted<Target>>,
-  record: (
-    target: Target,
-    storageId: Id<"_storage">,
-    renderedAt: number,
-  ) => Promise<keyof typeof RecordedOutcome>,
+  record: (target: Target, storageId: Id<"_storage">, renderedAt: number) => Promise<Recorded>,
 ): Promise<RenderOutcome> {
   // Asked first and before anything is written: a deployment with no
   // renderer is simply one that does not render, and mints no pass for a page
@@ -416,7 +412,7 @@ export const recordPdfCopy = internalMutation({
     linkId: v.id("signingLinks"),
     renderedAt: v.number(),
   },
-  handler: async (ctx, a): Promise<keyof typeof RecordedOutcome> => {
+  handler: async (ctx, a): Promise<Recorded> => {
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal || !(await paperStillMeant(ctx, proposal, a))) {
       await ctx.storage.delete(a.storageId);
@@ -450,7 +446,7 @@ export const recordInvoicePdfCopy = internalMutation({
     stampDay: v.optional(v.string()),
     renderedAt: v.number(),
   },
-  handler: async (ctx, a): Promise<keyof typeof RecordedOutcome> => {
+  handler: async (ctx, a): Promise<Recorded> => {
     const invoice = await ctx.db.get(a.invoiceId);
     const paper = invoice ? await fixedInvoicePaperOf(ctx, invoice) : null;
     if (!invoice || !paper || !invoicePaperStillMeant(paper, a)) {
@@ -572,12 +568,16 @@ function passFor(ctx: QueryCtx, token: string) {
     .unique();
 }
 
+// What a paper's record did with a rendered file: took it, let it go because
+// the paper had moved on, or let it go because a file was already there.
+type Recorded = "recorded" | "discarded" | "kept";
+
 // What the render amounts to, by what became of its file.
 const RecordedOutcome = {
   recorded: "rendered",
   kept: "kept",
   discarded: "moved",
-} as const;
+} as const satisfies Record<Recorded, string>;
 
 // A token that opens no paper, said in Download's own words rather than
 // borrowing one of the render's.

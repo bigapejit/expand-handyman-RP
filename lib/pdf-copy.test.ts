@@ -14,7 +14,7 @@ describe("the PDF copy's filename", () => {
   });
 
   test("drops characters no file system takes", () => {
-    expect(pdfCopyFilename('12/3:A*B?"C<D>|E\F-P1')).toBe(
+    expect(pdfCopyFilename('12/3:A*B?"C<D>|E\\F-P1')).toBe(
       "Expand Handyman Proposal 123ABCDEF-P1.pdf",
     );
     expect(pdfCopyFilename("  4410\tNE-P1\n")).toBe("Expand Handyman Proposal 4410 NE-P1.pdf");

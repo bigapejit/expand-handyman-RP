@@ -473,7 +473,7 @@ describe("which invoices keep a PDF copy", () => {
     expect(await f.stored(invoiceId)).toBeNull();
   });
 
-  test("a file is handed out only while the invoice is still in the paper state it printed", async () => {
+  test("a file is handed out only while the invoice is in the paper state it printed", async () => {
     const f = fixture();
     const { invoiceId } = await downloaded(f);
     // A payment that reached the table some other way than Mark paid, which

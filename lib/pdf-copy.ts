@@ -172,7 +172,7 @@ export function pdfCopyFilename(code: string, options: { signed?: boolean } = {}
 }
 
 // "Expand Handyman Invoice INV-1001.pdf", and "… (void).pdf" for a void
-// invoice, so a cancelled bill saved beside the one that replaced it is never
+// invoice, so a void invoice saved beside the one that replaced it is never
 // read as money owed. Sent and paid share a name: the PAID stamp on the sheet
 // says which.
 export function invoicePdfCopyFilename(number: string, options: { void?: boolean } = {}): string {
