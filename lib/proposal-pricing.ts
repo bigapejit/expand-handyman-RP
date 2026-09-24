@@ -220,7 +220,8 @@ export type SendBlocker =
   | "no_tax_rate"
   | "deposit_over_total"
   | "no_email"
-  | "deal_moved";
+  | "deal_moved"
+  | "deal_ambiguous";
 
 // Every reason at once, in the order they read: what the Proposal is missing,
 // then what is wrong with what it holds. A Draft may hold zero Solutions and
@@ -266,6 +267,15 @@ export function recipientBlockers(email: string | null): SendBlocker[] {
  * `deal` is the deal's site now, `undefined` when the deal is gone; `null`
  * when the proposal was made for no deal.
  */
+/**
+ * An offer made for no deal in particular, with more than one open deal here
+ * it could be for, is nobody's until the owner says which: sending it would
+ * move a job by guesswork. `freeDeals` is how many could take it.
+ */
+export function ambiguityBlockers(unbound: boolean, freeDeals: number): SendBlocker[] {
+  return unbound && freeDeals > 1 ? ["deal_ambiguous"] : [];
+}
+
 export function dealBlockers(
   deal: { siteId?: string } | null | undefined,
   siteId: string,
@@ -288,6 +298,8 @@ export function sendBlockerMessage(blocker: SendBlocker): string {
       return "The customer has no email address to send it to.";
     case "deal_moved":
       return "The deal this Proposal is for has moved to another site.";
+    case "deal_ambiguous":
+      return "More than one open deal here could be for this Proposal. Make the Proposal from the deal's card on the Pipeline.";
   }
 }
 

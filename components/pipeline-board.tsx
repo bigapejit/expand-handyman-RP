@@ -129,7 +129,7 @@ export function PipelineBoard({
                         {inColumn.length}
                       </span>
                       <span className="flex-1" />
-                      {value ? (
+                      {value !== null ? (
                         <span className="text-xs text-slate-500 tabular-nums">{money(value)}</span>
                       ) : null}
                     </header>
@@ -292,7 +292,7 @@ function DealCard({
       {snippet ? <span className="mt-2 line-clamp-2 text-sm text-slate-600">{snippet}</span> : null}
       <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <SourceBadge source={deal.source} compact />
-        {value ? (
+        {value !== null ? (
           <span className="rounded-md bg-slate-100 px-1.5 py-px text-[10px] font-medium text-slate-600 tabular-nums">
             {money(value)}
           </span>

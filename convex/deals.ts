@@ -244,6 +244,62 @@ export const open = mutation({
   },
 });
 
+// Of a customer's deals, those an offer from `site` could be for, begun by
+// `at`: open, at the site or at none yet.
+export function couldBeFor(deals: Doc<"deals">[], site: Doc<"sites">, at: number) {
+  return deals.filter(
+    (deal) =>
+      isOpen(deal.stage) && deal.createdAt <= at && (!deal.siteId || deal.siteId === site._id),
+  );
+}
+
+// Of those, the ones with no live offer out. An offer still out (sent) is
+// live; a withdrawn, declined or already signed one is not (an open deal
+// holding a signed offer was reopened by hand), and the deal is free for
+// another.
+export async function withNoLiveOffer(ctx: QueryCtx, deals: Doc<"deals">[]) {
+  const free: Doc<"deals">[] = [];
+  for (const deal of deals) {
+    const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
+    if (held?.state !== "sent") free.push(deal);
+  }
+  return free;
+}
+
+// The open deals an offer from `site` made now could be for, with no live
+// offer out: what Send asks before sending an offer made for no deal in
+// particular (lib/proposal-pricing.ts, `ambiguityBlockers`).
+export async function freeDealsForOffer(ctx: QueryCtx, site: Doc<"sites">) {
+  const deals = await ctx.db
+    .query("deals")
+    .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+    .collect();
+  return withNoLiveOffer(ctx, couldBeFor(deals, site, Date.now()));
+}
+
+// The open deals a proposal from this site could be for, newest first, for
+// the Proposals tab's New proposal to ask which when there is more than one.
+export const openAtSite = query({
+  args: { siteId: v.id("sites") },
+  handler: async (ctx, { siteId }) => {
+    await requireOwner(ctx);
+    const site = await ctx.db.get(siteId);
+    if (!site) return [];
+    const deals = await ctx.db
+      .query("deals")
+      .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+      .collect();
+    return couldBeFor(deals, site, Date.now())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((deal) => ({
+        dealId: deal._id,
+        title: deal.title,
+        stage: deal.stage,
+        hasSite: deal.siteId !== undefined,
+      }));
+  },
+});
+
 async function dealOf(ctx: QueryCtx, dealId: Id<"deals">) {
   const deal = await ctx.db.get(dealId);
   if (!deal) throw new Error("Deal not found.");
@@ -389,25 +445,10 @@ export async function advanceForSite(
     .query("deals")
     .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
     .collect();
-  // The deals this proposal could be for: open, begun before it went out,
-  // at its site or at none yet.
-  const candidates = deals.filter(
-    (deal) =>
-      isOpen(deal.stage) &&
-      deal.createdAt <= sentAt &&
-      (!deal.siteId || deal.siteId === site._id),
-  );
-  // What each candidate already holds: an offer still out (sent) is live; a
-  // withdrawn, declined or already signed one is not (an open deal holding
-  // a signed offer was reopened by hand), and the deal is free for another.
-  const heldState = new Map<Id<"deals">, Doc<"proposals">["state"] | null>();
-  for (const deal of candidates) {
-    const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
-    heldState.set(deal._id, held ? held.state : null);
-  }
+  // The deals this proposal could be for, and those of them free to take it.
+  const candidates = couldBeFor(deals, site, sentAt);
+  const free = await withNoLiveOffer(ctx, candidates);
   const holding = (deal: Doc<"deals">) => deal.proposalId === proposal._id;
-  const free = (deal: Doc<"deals">) => heldState.get(deal._id) !== "sent";
-  const outOnAnother = (deal: Doc<"deals">) => heldState.get(deal._id) === "sent";
   // The deal the offer is for: the one it was drafted for or Send gave it
   // to, wherever that deal is now, plus any still reading it (an offer from
   // before this was recorded). Its send and its approval are that deal's
@@ -423,16 +464,17 @@ export async function advanceForSite(
   if (own.length > 0) {
     targets = here;
   } else {
-    // A first send is for the deal with no live offer of its own; two open
-    // jobs at one site each get theirs. With none free, it is a fresh offer
-    // on the deal whose earlier one is still out, and replaces it. An
-    // approval of an offer no deal is known to own is one from before this
-    // was recorded, and finds its deal the same way.
-    targets = candidates.filter(free);
-    if (targets.length === 0) targets = candidates.filter(outOnAnother);
-    // One offer is for one job. With more than one deal it could be for,
-    // the one the owner touched last is the one being quoted; the others
-    // wait for their own.
+    // An offer made for no deal in particular is for the deal with no live
+    // offer of its own; Send refuses it while more than one could take it,
+    // so this finds one. With none free, it is a fresh offer on the deal
+    // whose earlier one is still out, and replaces it. An approval of an
+    // offer no deal is known to own is one from before this was recorded,
+    // and finds its deal the same way.
+    targets = free;
+    if (targets.length === 0) targets = candidates;
+    // One offer is for one job. With more than one deal it could still be
+    // for, the one the owner touched last is the one being quoted; the
+    // others wait for their own.
     if (targets.length > 1) {
       targets = [
         targets.reduce((best, deal) =>

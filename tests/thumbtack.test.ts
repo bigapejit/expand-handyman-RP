@@ -117,8 +117,9 @@ function fixture() {
         updatedAt: 0,
       }),
     );
-  // A proposal to `customerId` sent through the real Send, with its live token.
-  const send = async (customerId: Id<"customers">) => {
+  // A proposal to `customerId` sent through the real Send, with its live
+  // token; made for `dealId` when one is given.
+  const send = async (customerId: Id<"customers">, dealId?: Id<"deals">) => {
     const siteId = await site(customerId);
     const solutionId = await owner.mutation(api.solutions.create, { siteId, title: "Fix gate" });
     await owner.mutation(api.solutions.update, {
@@ -126,7 +127,10 @@ function fixture() {
       description: "Rehang the gate.",
       lineItems: [{ name: "Gate labor", quantity: 2, unitCostCents: 25_000, unit: "HR" }],
     });
-    const proposalId = await owner.action(api.proposals.create, { siteId });
+    const proposalId = await owner.action(api.proposals.create, {
+      siteId,
+      ...(dealId ? { dealId } : {}),
+    });
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
     await owner.action(api.proposals.send, { proposalId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -470,7 +474,7 @@ describe("stages", () => {
     expect(after.stageBy).toBeUndefined();
   });
 
-  test("a proposal Send moves the one deal it is for, the one touched last, hand-added or not", async () => {
+  test("a proposal Send moves the one deal it was made for, hand-added or not", async () => {
     const { t, owner, receive, deals, send } = fixture();
     await receive(leadEvent("900"));
     const [lead] = await deals();
@@ -483,9 +487,9 @@ describe("stages", () => {
     await owner.mutation(api.deals.setStage, { dealId: byHand, stage: "estimating" });
     await t.run((ctx) => ctx.db.patch(lead.customerId, { email: "olivia@example.com" }));
 
-    await send(lead.customerId);
-    // Two open jobs and one offer: the hand-added deal was touched last, so
-    // it is the one quoted; the lead's deal waits for its own.
+    await send(lead.customerId, byHand);
+    // Two open jobs and one offer, made for the hand-added deal: it is the
+    // one quoted; the lead's deal waits for its own.
     expect((await deals()).map((d) => d.stage)).toEqual(["booked", "quoted"]);
   });
 

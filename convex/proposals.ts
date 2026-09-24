@@ -16,7 +16,7 @@ import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import { lookUpSiteTax } from "./salesTax";
-import { advanceForSite } from "./deals";
+import { advanceForSite, freeDealsForOffer } from "./deals";
 import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
@@ -52,6 +52,7 @@ import {
   proposalMoney,
   recipientBlockers,
   sendBlockerMessage,
+  ambiguityBlockers,
   dealBlockers,
   sendBlockers,
   splitPayment,
@@ -95,6 +96,9 @@ export const forSite = query({
     const customer = await ctx.db.get(site.customerId);
     // Where Send would go, or null when the customer has no address to send to.
     const customerEmail = customer ? sendableEmail(customer.email) : null;
+    // For a draft made for no deal in particular: how many open deals here
+    // could take it, more than one being too many to send.
+    const freeDeals = (await freeDealsForOffer(ctx, site)).length;
     const [solutions, proposals] = await Promise.all([
       ctx.db
         .query("solutions")
@@ -134,6 +138,7 @@ export const forSite = query({
                       ...depositBlockers(read.payment),
                       ...recipientBlockers(customerEmail),
                       ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
+                      ...ambiguityBlockers(proposal.dealId === undefined, freeDeals),
                     ]
                   : [],
               sentAt: proposal.sentAt ?? null,
@@ -415,12 +420,15 @@ export const insertDraft = internalMutation({
     const site = await ctx.db.get(a.siteId);
     if (!site) throw new Error("Site not found.");
     // The deal must be at this site now, not only when its panel was drawn:
-    // a draft made for a deal that has since moved would never move it.
+    // a draft made for a deal that has since moved would never move it. A
+    // deal with no site yet takes this one, as it would on Send.
     if (a.dealId) {
       const deal = await ctx.db.get(a.dealId);
       if (!deal || deal.customerId !== site.customerId)
         throw new Error("That deal is not this customer's.");
-      if (deal.siteId !== site._id) throw new Error("That deal is not at this site any more.");
+      if (!deal.siteId) await ctx.db.patch(deal._id, { siteId: site._id, updatedAt: Date.now() });
+      else if (deal.siteId !== site._id)
+        throw new Error("That deal is not at this site any more.");
     }
 
     // Washington or nothing: `none` is the whole of "this site charges no
@@ -785,6 +793,10 @@ export const sendWithLink = internalMutation({
       ...depositBlockers(splitPayment(money.totalCents, storedDeposit(proposal))),
       ...recipientBlockers(sentTo),
       ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
+      ...ambiguityBlockers(
+        proposal.dealId === undefined,
+        (await freeDealsForOffer(ctx, site)).length,
+      ),
     ]);
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
