@@ -15,7 +15,13 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
-import { offerOf, paperOf, type StaffPaper } from "./offers";
+import {
+  freezeOffer,
+  offerOf,
+  paperOf,
+  sendBlockersFor,
+  type StaffPaper,
+} from "./offers";
 import { lookUpSiteTax } from "./salesTax";
 import { advanceForCustomer } from "./leads";
 import { emailOutcome } from "./schema";
@@ -685,11 +691,11 @@ export const send = action({
   },
 });
 
-// Freezes the offer as it stands (FRSG's frozen block, plus the Proposal ID,
-// the customer's name, the site's address, the email it goes to and the
-// Estimator), mints the link and schedules its email. The email is scheduled,
-// never awaited: Send is the offer, and a Resend outage must be able to fail
-// without unmaking it.
+// Freezes the offer the draft's paper already shows (convex/offers.ts: FRSG's
+// frozen block, plus the Proposal ID, the customer's name, the site's address
+// and the Estimator) with the email it goes to, mints the link and schedules
+// its email. The email is scheduled, never awaited: Send is the offer, and a
+// Resend outage must be able to fail without unmaking it.
 export const sendWithLink = internalMutation({
   args: { proposalId: v.id("proposals"), token: v.string() },
   handler: async (ctx, a) => {
@@ -701,61 +707,19 @@ export const sendWithLink = internalMutation({
     if (!customer) throw new Error("Customer not found.");
     const identity = await ctx.auth.getUserIdentity();
 
-    const priced = (await liveSolutions(ctx, proposal)).map((solution) => ({
-      solution,
-      price: priceStoredSolution(solution),
-    }));
-    const money = proposalMoney(
-      priced.map(({ price }) => price),
-      proposal.tax,
-    );
+    const offer = await offerOf(ctx, proposal);
+    if (!offer) throw new Error("Site not found.");
     const sentTo = sendableEmail(customer.email);
     // The same questions the button asks, asked again here, because a stale
     // panel is exactly how an unpriced solution would otherwise reach a
     // customer.
-    refuseSend([
-      ...sendBlockers(
-        priced.map(({ price }) => price?.priceCents ?? null),
-        proposal.tax,
-      ),
-      ...depositBlockers(splitPayment(money.totalCents, storedDeposit(proposal))),
-      ...recipientBlockers(sentTo),
-    ]);
+    refuseSend(sendBlockersFor(offer, sentTo));
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
 
-    const frozen: FrozenProposal = {
-      code: proposalCode(site.name, proposal.number),
-      customerName: customer.name,
-      site: { street: siteStreetLine(site), city: siteCityLine(site), region: site.region },
-      sentTo,
-      estimator: {
-        name: identity?.name?.trim() || Unknown,
-        email: identity?.email?.trim() || Unknown,
-      },
-      solutions: priced.map(({ solution, price }) => {
-        // Unreachable past the refusal above, which names every unpriced
-        // solution. Stated rather than defaulted, because a solution frozen at
-        // $0 would be a price Expand never offered.
-        if (!price) throw new Error("A solution with no price reached Send.");
-        return {
-          solutionId: solution._id,
-          title: solution.title,
-          scopeOfWork: solution.description,
-          priceCents: price.priceCents,
-          lineItems: offeredLineItems(solution.lineItems),
-          materialAllowanceCents: solution.materialAllowanceCents,
-        };
-      }),
-      ...money,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      tax: proposal.tax,
-      terms: proposalTerms(),
-      // The draft's own text, copied like everything else here. It stays on
-      // the draft too, so Withdraw hands the live field back unchanged.
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
-    };
+    // The draft's own fields stay on the row beside the frozen copy, so
+    // Withdraw hands them back unchanged.
+    const frozen = freezeOffer(offer, sentTo);
     const now = Date.now();
     await ctx.db.patch(proposal._id, {
       state: "sent",
