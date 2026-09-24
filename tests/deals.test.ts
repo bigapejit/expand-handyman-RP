@@ -399,6 +399,23 @@ describe("board", () => {
     expect((await row(dealId))?.proposal).toBeNull();
   });
 
+  test("a re-send restarts the deal's follow-up clock", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const proposalId = await send(siteId);
+    const first = Date.now();
+    vi.advanceTimersByTime(10 * 86_400_000);
+    await owner.action(api.proposals.resend, { proposalId });
+    expect((await row(dealId))?.proposal).toMatchObject({ state: "sent", sentAt: first + 10 * 86_400_000 });
+  });
+
   test("approving a proposal leaves a deal that began after it was sent alone", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();

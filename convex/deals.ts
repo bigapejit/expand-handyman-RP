@@ -100,7 +100,9 @@ async function proposalOf(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
     code: latest.frozen.code,
     totalCents: latest.frozen.totalCents,
     state: latest.state,
-    sentAt: latest.sentAt ?? latest.updatedAt,
+    // A Re-send keeps the offer's date and mints a new link, so the link's
+    // send is when the customer last heard: "Sent N days ago" counts from it.
+    sentAt: live?.sentAt ?? latest.sentAt ?? latest.updatedAt,
     opened: live ? await customerViewedLink(ctx, live.token) : false,
   };
 }

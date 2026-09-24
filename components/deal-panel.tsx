@@ -377,6 +377,19 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
   // only a save of the latest text clears `dirty`, so the next blur still
   // sends the newer text rather than letting the older save overwrite it.
   const latest = useRef(text);
+  // Back removes `?deal=` and unmounts the panel without a blur, so what is
+  // typed goes out on the way out as well. Refs, because the cleanup runs
+  // with the closure it was made in.
+  const dirtyRef = useRef(false);
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  useEffect(
+    () => () => {
+      if (dirtyRef.current && latest.current.trim() !== savedRef.current)
+        void setNotes({ dealId, notes: latest.current }).catch(() => {});
+    },
+    [dealId, setNotes],
+  );
 
   return (
     <div className="space-y-2">
@@ -392,6 +405,7 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
         maxLength={MAX_NOTES}
         onChange={(event) => {
           latest.current = event.target.value;
+          dirtyRef.current = true;
           setText(event.target.value);
           setDirty(true);
           setStatus("idle");
@@ -399,6 +413,7 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
         onBlur={() => {
           if (!dirty) return;
           if (text.trim() === saved) {
+            dirtyRef.current = false;
             setDirty(false);
             return;
           }
@@ -408,6 +423,7 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
           setNotes({ dealId, notes: sent })
             .then(() => {
               if (latest.current !== sent) return;
+              dirtyRef.current = false;
               setDirty(false);
               setStatus("saved");
             })
