@@ -22,8 +22,9 @@ const seconds = (ms: number) => Math.floor(ms / 1000);
 const WebhookSecret = "whsec_test_expand";
 
 // Outbound HTTP, stubbed at fetch. Stripe's API answers from `stripeAnswer`,
-// by default a fresh session for every create and the sessions and payment
-// intents a test has put in `sessions` and `intents`; every call to it is
+// by default a fresh session for every create and the sessions, payment
+// intents and charges a test has put in `sessions`, `intents` and
+// `charges`; every call to it is
 // kept, form fields decoded, to be asserted on. Resend answers with an id
 // and every letter is kept; DOR answers with Vancouver's rate.
 type StripeCall = {
@@ -36,6 +37,7 @@ let stripeCalls: StripeCall[];
 let stripeAnswer: (call: StripeCall) => Response;
 let sessions: Map<string, Record<string, unknown>>;
 let intents: Map<string, Record<string, unknown>>;
+let charges: Map<string, Record<string, unknown>>;
 let resendCalls: { headers: Record<string, string>; body: Record<string, unknown> }[];
 
 const stripeError = (status: number, message: string) =>
@@ -58,6 +60,11 @@ function defaultStripeAnswer(call: StripeCall): Response {
     const found = intents.get(decodeURIComponent(intent[1]));
     return found ? Response.json(found) : stripeError(404, "No such payment_intent");
   }
+  const charge = /^\/v1\/charges\/([^/]+)$/.exec(call.path);
+  if (call.method === "GET" && charge) {
+    const found = charges.get(decodeURIComponent(charge[1]));
+    return found ? Response.json(found) : stripeError(404, "No such charge");
+  }
   return stripeError(400, `Unexpected ${call.method} ${call.path}`);
 }
 
@@ -79,6 +86,7 @@ beforeEach(() => {
   stripeAnswer = defaultStripeAnswer;
   sessions = new Map();
   intents = new Map();
+  charges = new Map();
   resendCalls = [];
   vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -272,6 +280,9 @@ function fixture() {
     livemode: false,
     data: { object },
   });
+  // A card charge, refunded in full unless told otherwise, made the moment
+  // the fixture's clock reads; `paidCharge` is one a Pay now made, carrying
+  // the metadata Stripe copies from the payment intent.
   const charge = (over: Record<string, unknown> = {}) => ({
     id: "ch_test_1",
     object: "charge",
@@ -279,8 +290,13 @@ function fixture() {
     amount: 29_948,
     amount_refunded: 29_948,
     refunded: true,
+    created: seconds(Date.now()),
+    payment_method_details: { type: "card" },
+    metadata: {},
     ...over,
   });
+  const paidCharge = (invoiceId: Id<"invoices">, over: Record<string, unknown> = {}) =>
+    charge({ metadata: { invoiceId, invoiceNumber: "INV-1001" }, ...over });
   const dispute = (over: Record<string, unknown> = {}) => ({
     id: "dp_test_1",
     object: "dispute",
@@ -356,6 +372,7 @@ function fixture() {
     bankSession,
     event,
     charge,
+    paidCharge,
     dispute,
     apply,
     post,
@@ -972,6 +989,56 @@ describe("A full refund", () => {
     await apply({ ...completed, id: "evt_test_late" });
     expect(await paymentsOf(invoiceId)).toEqual([]);
   });
+
+  test("told before its completion, is kept from the charge, and the late completion writes no payment", async () => {
+    const { apply, event, session, paidCharge, approved, paymentsOf, stripeRows, list, page, panel } =
+      fixture();
+    const { invoiceId, token } = await approved();
+    const paid = paidCharge(invoiceId);
+    const completed = event("checkout.session.completed", session(invoiceId));
+
+    vi.setSystemTime(pdt(9, 10));
+    await apply(event("charge.refunded", paid));
+    const [ended] = await stripeRows();
+    expect(ended).toMatchObject({
+      invoiceId,
+      stripePaymentIntentId: "pi_test_1",
+      method: "card",
+      amountCents: 29_948,
+      acceptedAt: pdt(9, 1),
+      status: "refunded",
+      endedAt: pdt(9, 10),
+    });
+    expect(ended.stripeCheckoutSessionId).toBeUndefined();
+
+    await apply(completed);
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([
+      { stripeCheckoutSessionId: "cs_test_1", status: "refunded", endedAt: pdt(9, 10) },
+    ]);
+    expect((await list("overdue")).map((row) => row.invoiceId)).toEqual([invoiceId]);
+    expect(await list("paid")).toEqual([]);
+    expect(await page(token)).toMatchObject({ paper: { stamp: null }, ways: ["bank", "card"] });
+    expect((await panel(invoiceId))?.note).toMatchObject({
+      kind: "refunded",
+      method: "card",
+      acceptedOn: "2026-09-01",
+      endedOn: "2026-09-10",
+    });
+  });
+
+  test("told first on a charge no Pay now made, is recorded and changes nothing", async () => {
+    const { apply, event, session, charge, approved, paymentsOf, stripeRows, stripeEvents } =
+      fixture();
+    const { invoiceId } = await approved();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await apply(event("charge.refunded", charge({ payment_intent: "pi_elsewhere" })));
+    expect(await stripeRows()).toEqual([]);
+    expect(await stripeEvents()).toMatchObject([{ type: "charge.refunded" }]);
+
+    await apply(event("checkout.session.completed", session(invoiceId)));
+    expect(await paymentsOf(invoiceId)).toHaveLength(1);
+  });
 });
 
 describe("A dispute", () => {
@@ -1000,6 +1067,63 @@ describe("A dispute", () => {
       method: "bank",
       endedOn: "2026-10-02",
     });
+  });
+
+  test("lost before its bank payment's completion, keeps the row lost, and neither late event writes a payment", async () => {
+    const { apply, event, bankSession, paidCharge, dispute, approved, paymentsOf, stripeRows, list, page, panel } =
+      fixture();
+    const { invoiceId, token } = await approved();
+    const paid = paidCharge(invoiceId, { payment_method_details: { type: "us_bank_account" } });
+
+    vi.setSystemTime(pdt(10, 2));
+    await apply(event("charge.dispute.closed", dispute({ charge: paid })));
+    await apply(event("checkout.session.completed", bankSession(invoiceId)));
+    await apply(
+      event(
+        "checkout.session.async_payment_succeeded",
+        bankSession(invoiceId, { payment_status: "paid" }),
+      ),
+    );
+
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([
+      {
+        stripeCheckoutSessionId: "cs_test_1",
+        method: "bank",
+        acceptedAt: pdt(9, 1),
+        status: "dispute_lost",
+        endedAt: pdt(10, 2),
+        reason: "insufficient funds",
+      },
+    ]);
+    expect((await list("overdue")).map((row) => row.invoiceId)).toEqual([invoiceId]);
+    expect(await page(token)).toMatchObject({
+      paper: { stamp: null },
+      ways: ["bank", "card"],
+      stripe: null,
+    });
+    expect((await panel(invoiceId))?.note).toMatchObject({
+      kind: "dispute_lost",
+      method: "bank",
+      endedOn: "2026-10-02",
+    });
+  });
+
+  test("lost first, is refused without its charge, and kept from the charge the webhook passes", async () => {
+    const { t, apply, event, session, dispute, approved, paymentsOf, stripeRows, stripeEvents } =
+      fixture();
+    const { invoiceId } = await approved();
+    const lost = event("charge.dispute.closed", dispute());
+    await expect(apply(lost)).rejects.toThrow(/No charge to tell/);
+    expect(await stripeEvents()).toEqual([]);
+
+    await t.mutation(internal.stripePayments.applyStripeEvent, {
+      event: lost,
+      charge: { invoiceId, method: "card", amountCents: 29_948, created: seconds(Date.now()) },
+    });
+    await apply(event("checkout.session.completed", session(invoiceId)));
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([{ status: "dispute_lost", method: "card" }]);
   });
 
   test("won or closed any other way, leaves the payment standing", async () => {
@@ -1041,6 +1165,26 @@ describe("The success return", () => {
 
     await apply(event("checkout.session.completed", session(invoiceId)));
     expect(await paymentsOf(invoiceId)).toHaveLength(1);
+  });
+
+  test("writes no payment for a session whose money a refund already sent back", async () => {
+    const { t, apply, event, session, paidCharge, approved, paymentsOf, stripeRows, page } =
+      fixture();
+    const { invoiceId, token } = await approved();
+    await apply(event("charge.refunded", paidCharge(invoiceId)));
+    sessions.set(
+      "cs_test_1",
+      session(invoiceId, {
+        payment_intent: { id: "pi_test_1", object: "payment_intent", status: "succeeded" },
+      }),
+    );
+
+    await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([
+      { stripeCheckoutSessionId: "cs_test_1", status: "refunded" },
+    ]);
+    expect((await page(token))?.paper.stamp).toBeNull();
   });
 
   test("dates the payment by when the customer paid on Stripe's page, not by when the page came back", async () => {
@@ -1209,5 +1353,61 @@ describe("Stripe's webhook", () => {
     expect(letters("returned_payment_owner")[0].body.text).toMatch(
       /^Bank payment on INV-1001 for \$299\.48 was returned: The customer's account has insufficient funds\.\n/,
     );
+  });
+});
+
+describe("Stripe's webhook, a dispute lost before its completion", () => {
+  test("asks Stripe for the charge the event names only by id, and the late completion writes no payment", async () => {
+    const { post, event, session, paidCharge, dispute, approved, paymentsOf, stripeRows } =
+      fixture();
+    const { invoiceId } = await approved();
+    charges.set("ch_test_1", paidCharge(invoiceId));
+
+    vi.setSystemTime(pdt(10, 2));
+    const lost = JSON.stringify(event("charge.dispute.closed", dispute()));
+    expect((await post(lost)).status).toBe(200);
+    expect(stripeCalls.map((call) => [call.method, call.path])).toEqual([
+      ["GET", "/v1/charges/ch_test_1"],
+    ]);
+    expect(await stripeRows()).toMatchObject([
+      {
+        invoiceId,
+        stripePaymentIntentId: "pi_test_1",
+        method: "card",
+        amountCents: 29_948,
+        acceptedAt: pdt(9, 1),
+        status: "dispute_lost",
+        endedAt: pdt(10, 2),
+        reason: "insufficient funds",
+      },
+    ]);
+
+    const completed = JSON.stringify(event("checkout.session.completed", session(invoiceId)));
+    expect((await post(completed)).status).toBe(200);
+    expect(await paymentsOf(invoiceId)).toEqual([]);
+    expect(await stripeRows()).toMatchObject([
+      { stripeCheckoutSessionId: "cs_test_1", status: "dispute_lost" },
+    ]);
+  });
+
+  test("answers 500 and records nothing when Stripe cannot say what the charge was, so it comes again", async () => {
+    const { post, event, dispute, approved, stripeRows, stripeEvents } = fixture();
+    await approved();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const lost = JSON.stringify(event("charge.dispute.closed", dispute()));
+    expect((await post(lost)).status).toBe(500);
+    expect(await stripeRows()).toEqual([]);
+    expect(await stripeEvents()).toEqual([]);
+  });
+
+  test("records a dispute on a charge no Pay now made, and changes nothing", async () => {
+    const { post, event, charge, dispute, approved, stripeRows, stripeEvents } = fixture();
+    await approved();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    charges.set("ch_test_1", charge());
+    const lost = JSON.stringify(event("charge.dispute.closed", dispute()));
+    expect((await post(lost)).status).toBe(200);
+    expect(await stripeRows()).toEqual([]);
+    expect(await stripeEvents()).toMatchObject([{ type: "charge.dispute.closed" }]);
   });
 });

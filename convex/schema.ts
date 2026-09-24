@@ -450,8 +450,9 @@ export default defineSchema({
   })
     .index("by_invoice", ["invoiceId"])
     .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
-  // One **Pay now** through Stripe whose Checkout Session completed: the
-  // payment's life before its `payments` row exists and after it is gone. A
+  // One **Pay now** through Stripe whose Checkout Session completed, or whose
+  // money went back before Stripe told the app it had: the payment's life
+  // before its `payments` row exists and after it is gone. A
   // bank payment is `on_its_way` until the bank confirms it, which is what
   // makes the invoice read **Payment on its way**; `paid` while its
   // `payments` row stands; and `returned` (a **Returned payment**),
@@ -460,14 +461,19 @@ export default defineSchema({
   // void. Written only by what Stripe tells the app, never by the owner.
   stripePayments: defineTable({
     invoiceId: v.id("invoices"),
-    stripeCheckoutSessionId: v.string(),
+    // Absent only on a row a full refund or a lost dispute wrote before the
+    // session's completion arrived: Stripe names no session on a charge or a
+    // dispute, and the completion, when it comes, fills it in. Never an empty
+    // string, so the index finds a session's row and nothing else.
+    stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.string(),
     method: v.union(v.literal("bank"), v.literal("card")),
     // What Stripe took, in whole cents. Only the sentences read it: the
     // payment itself has no amount, and the invoice's Amount Due is the
     // figure owed.
     amountCents: v.number(),
-    // When Stripe accepted the payment: the session's completion.
+    // When Stripe accepted the payment: the session's completion, or the
+    // charge's making on a row a refund or a lost dispute wrote first.
     acceptedAt: v.number(),
     status: v.union(
       v.literal("on_its_way"),

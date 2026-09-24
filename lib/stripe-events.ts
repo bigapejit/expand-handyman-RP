@@ -31,6 +31,8 @@ export type StripeEventReading = {
       paymentIntentId: string | null;
       // A full refund: Stripe's `refunded`, which a partial one leaves false.
       full: boolean;
+      // The charge refunded, which is the event's own object.
+      charge: ChargeReading | null;
     }
   | {
       kind: "dispute";
@@ -39,6 +41,10 @@ export type StripeEventReading = {
       // Stripe's reason code, in words: `insufficient_funds` reads
       // "insufficient funds".
       reason: string | null;
+      // The charge disputed: Stripe names it by id, and only an event that
+      // came with it expanded carries what it says.
+      chargeId: string | null;
+      charge: ChargeReading | null;
     }
   | { kind: "other" }
 );
@@ -63,6 +69,21 @@ export type CheckoutSessionReading = {
   // The bank's or Stripe's own words for a failed payment, when the payment
   // intent came expanded with them.
   failureMessage: string | null;
+};
+
+// What a charge says of the payment it took, enough to write a Stripe
+// payment's row from when a full refund or a lost dispute is told before the
+// session's completion. Stripe copies the payment intent's metadata onto the
+// charge, so a Pay now's charge names its invoice as the session does.
+export type ChargeReading = {
+  // As the app wrote it into the metadata; not yet known to name a real
+  // invoice, and null on a charge some other payment made.
+  invoiceId: string | null;
+  // From `payment_method_details.type`.
+  method: PayMethod | null;
+  amountCents: number;
+  // Seconds since the epoch: when the customer paid.
+  created: number;
 };
 
 const SessionTypes = {
@@ -114,6 +135,7 @@ function prunedObject(type: string, object: Record<string, unknown>): Record<str
             : null,
     };
   }
+  const charge = object.charge;
   return {
     id: text(object.id),
     object: text(object.object),
@@ -121,6 +143,29 @@ function prunedObject(type: string, object: Record<string, unknown>): Record<str
     refunded: object.refunded === true,
     status: text(object.status),
     reason: text(object.reason),
+    ...prunedCharge(object),
+    charge:
+      typeof charge === "string"
+        ? charge
+        : typeof charge === "object" && charge !== null
+          ? {
+              id: text(record(charge).id),
+              object: text(record(charge).object),
+              ...prunedCharge(record(charge)),
+            }
+          : null,
+  };
+}
+
+// What `readCharge` reads of a charge, besides its id.
+function prunedCharge(object: Record<string, unknown>): Record<string, unknown> {
+  return {
+    amount: count(object.amount),
+    created: count(object.created),
+    payment_method_details: {
+      type: text(record(object.payment_method_details).type),
+    },
+    metadata: { invoiceId: text(record(object.metadata).invoiceId) },
   };
 }
 
@@ -144,6 +189,7 @@ export function readStripeEvent(event: unknown): StripeEventReading {
       kind: "refund",
       paymentIntentId: intentId(object.payment_intent),
       full: object.refunded === true,
+      charge: readCharge(object),
     };
   if (type === "charge.dispute.closed")
     return {
@@ -152,6 +198,8 @@ export function readStripeEvent(event: unknown): StripeEventReading {
       paymentIntentId: intentId(object.payment_intent),
       lost: object.status === "lost",
       reason: text(object.reason)?.replace(/_/g, " ") ?? null,
+      chargeId: intentId(object.charge),
+      charge: readCharge(object.charge),
     };
   return { ...known, kind: "other" };
 }
@@ -173,12 +221,25 @@ function readSession(object: Record<string, unknown>): CheckoutSessionReading {
   };
 }
 
-// Stripe's name for how a session lets the customer pay, as the app says it.
+// A charge, as Stripe sends it or as the webhook fetched it; null for
+// anything that is not one, such as a dispute's charge named only by its id.
+export function readCharge(value: unknown): ChargeReading | null {
+  const object = record(value);
+  if (object.object !== "charge") return null;
+  return {
+    invoiceId: text(record(object.metadata).invoiceId),
+    method: methodOf(record(object.payment_method_details).type),
+    amountCents: count(object.amount) ?? 0,
+    created: count(object.created) ?? 0,
+  };
+}
+
+// Stripe's name for a way to pay, on a session or a charge, in the app's words.
 export function methodOf(stripeType: unknown): PayMethod | null {
   return stripeType === "us_bank_account" ? "bank" : stripeType === "card" ? "card" : null;
 }
 
-// A payment intent named by its id, or expanded into the object.
+// A payment intent or a charge named by its id, or expanded into the object.
 function intentId(value: unknown): string | null {
   if (typeof value === "string") return value || null;
   return typeof value === "object" && value !== null ? text(record(value).id) : null;

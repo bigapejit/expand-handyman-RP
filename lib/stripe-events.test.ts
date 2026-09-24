@@ -133,6 +133,38 @@ describe("A Stripe event as the rules read it", () => {
     expect(closed("won")).toMatchObject({ kind: "dispute", lost: false });
   });
 
+  it("reads the charge a refund was made on, and a dispute's only when it came expanded", () => {
+    const paid = {
+      id: "ch_1",
+      object: "charge",
+      payment_intent: "pi_1",
+      refunded: true,
+      amount: 285_437,
+      created: 1_790_000_000,
+      payment_method_details: { type: "us_bank_account", us_bank_account: { last4: "6789" } },
+      metadata: { invoiceId: "k57invoice", invoiceNumber: "INV-1004", other: "x" },
+      billing_details: { email: "jane@example.com" },
+    };
+    const charge = {
+      invoiceId: "k57invoice",
+      method: "bank",
+      amountCents: 285_437,
+      created: 1_790_000_000,
+    };
+    const refunded = event("charge.refunded", paid);
+    expect(readStripeEvent(refunded)).toMatchObject({ kind: "refund", charge });
+    expect(readStripeEvent(prunedStripeEvent(refunded))).toEqual(readStripeEvent(refunded));
+
+    const dispute = { id: "dp_1", object: "dispute", payment_intent: "pi_1", status: "lost" };
+    expect(
+      readStripeEvent(event("charge.dispute.closed", { ...dispute, charge: "ch_1" })),
+    ).toMatchObject({ kind: "dispute", chargeId: "ch_1", charge: null });
+    const expanded = event("charge.dispute.closed", { ...dispute, charge: paid });
+    expect(readStripeEvent(expanded)).toMatchObject({ chargeId: "ch_1", charge });
+    expect(readStripeEvent(prunedStripeEvent(expanded))).toEqual(readStripeEvent(expanded));
+    expect(JSON.stringify(prunedStripeEvent(expanded))).not.toMatch(/6789|jane|"other"/);
+  });
+
   it("reads every other event as one to record and leave", () => {
     expect(
       readStripeEvent(event("payment_intent.processing", { id: "pi_1", object: "payment_intent" })),

@@ -19,7 +19,9 @@ import { CardLimitNote, stripeEventDay, waysToPay, type PayMethod } from "../lib
 import { signingUrl } from "../lib/signing-link";
 import {
   prunedStripeEvent,
+  readCharge,
   readStripeEvent,
+  type ChargeReading,
   type StripeEventReading,
 } from "../lib/stripe-events";
 
@@ -272,6 +274,33 @@ export async function failureReasonFromStripe(
   }
 }
 
+// The charge a lost dispute was over, for a `charge.dispute.closed` event
+// that names it only by id: if no completion came before it, the dispute's
+// row is written from the charge. Read before the mutation, which cannot
+// call out; nothing if Stripe cannot be asked, when the mutation refuses the
+// event only if it needed the charge, and Stripe delivers it again.
+export async function disputedChargeFromStripe(
+  event: StripeEventReading,
+): Promise<ChargeReading | undefined> {
+  if (event.kind !== "dispute" || !event.lost || event.charge || !event.chargeId) return undefined;
+  const { chargeId } = event;
+  const secretKey = stripeSecretKey();
+  if (!secretKey) return undefined;
+  try {
+    return readCharge(await stripeClient(secretKey).charges.retrieve(chargeId)) ?? undefined;
+  } catch (error) {
+    console.error(`Stripe charge ${chargeId} could not be read: ${messageOf(error)}`);
+    return undefined;
+  }
+}
+
+const chargeReading = v.object({
+  invoiceId: v.union(v.string(), v.null()),
+  method: v.union(payMethod, v.null()),
+  amountCents: v.number(),
+  created: v.number(),
+});
+
 // Everything Stripe says about a payment, applied: the webhook's events and
 // the success return's session (spec #121, the events table). An event is
 // taken once, by its `evt_` id, and every rule is idempotent on the object
@@ -285,6 +314,8 @@ export const applyStripeEvent = internalMutation({
     // The bank's words for a returned payment, when the webhook had to ask
     // Stripe for them.
     failureReason: v.optional(v.string()),
+    // A lost dispute's charge, when the webhook had to ask Stripe for it.
+    charge: v.optional(chargeReading),
   },
   handler: async (ctx, a) => {
     const event = readStripeEvent(a.event);
@@ -307,7 +338,7 @@ export const applyStripeEvent = internalMutation({
       case "refund":
         // A partial refund changes nothing: a payment is there or gone.
         if (event.full && event.paymentIntentId)
-          await endPayment(ctx, event.paymentIntentId, {
+          await endPayment(ctx, event.paymentIntentId, event.charge, {
             status: "refunded",
             endedAt: event.created * 1000,
           });
@@ -316,7 +347,7 @@ export const applyStripeEvent = internalMutation({
         // Only a lost dispute sends the money back; one won or merely opened
         // leaves the payment standing.
         if (event.lost && event.paymentIntentId)
-          await endPayment(ctx, event.paymentIntentId, {
+          await endPayment(ctx, event.paymentIntentId, event.charge ?? a.charge ?? null, {
             status: "dispute_lost",
             endedAt: event.created * 1000,
             reason: event.reason ?? undefined,
@@ -386,11 +417,28 @@ type StripePaymentFacts = {
 
 const Ended = new Set<Doc<"stripePayments">["status"]>(["returned", "refunded", "dispute_lost"]);
 
-function rowForSession(ctx: QueryCtx, sessionId: string) {
+// The row a session's payment already has: the one written for the session,
+// or else the one a full refund or a lost dispute wrote for its payment
+// intent before the completion arrived, which learns its session here.
+async function rowForSession(ctx: MutationCtx, payment: StripePaymentFacts) {
+  const row = await ctx.db
+    .query("stripePayments")
+    .withIndex("by_checkout_session", (q) => q.eq("stripeCheckoutSessionId", payment.sessionId))
+    .first();
+  if (row) return row;
+  const endedFirst = (await rowsForIntent(ctx, payment.paymentIntentId)).find(
+    (row) => row.stripeCheckoutSessionId === undefined,
+  );
+  if (!endedFirst) return null;
+  await ctx.db.patch(endedFirst._id, { stripeCheckoutSessionId: payment.sessionId });
+  return { ...endedFirst, stripeCheckoutSessionId: payment.sessionId };
+}
+
+function rowsForIntent(ctx: QueryCtx, paymentIntentId: string) {
   return ctx.db
     .query("stripePayments")
-    .withIndex("by_checkout_session", (q) => q.eq("stripeCheckoutSessionId", sessionId))
-    .first();
+    .withIndex("by_payment_intent", (q) => q.eq("stripePaymentIntentId", paymentIntentId))
+    .collect();
 }
 
 function paymentsForIntent(ctx: QueryCtx, paymentIntentId: string) {
@@ -407,7 +455,7 @@ function paymentsForIntent(ctx: QueryCtx, paymentIntentId: string) {
 // twice for one payment intent; and never for a payment already gone back,
 // which a late delivery must not bring back to life.
 async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
-  const row = await rowForSession(ctx, payment.sessionId);
+  const row = await rowForSession(ctx, payment);
   if (row && Ended.has(row.status)) return;
   const [existing] = await paymentsForIntent(ctx, payment.paymentIntentId);
   const paymentId =
@@ -433,9 +481,10 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
 
 // A bank payment accepted and not yet confirmed: the invoice reads Payment
 // on its way. Nothing when the session already has its row, which may be
-// paid already if the confirmation came first.
+// paid already if the confirmation came first, or ended if a full refund or
+// a lost dispute did.
 async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
-  if (await rowForSession(ctx, payment.sessionId)) return;
+  if (await rowForSession(ctx, payment)) return;
   await ctx.db.insert("stripePayments", { ...rowFields(payment), status: "on_its_way" });
 }
 
@@ -450,7 +499,7 @@ async function recordReturned(
   payment: StripePaymentFacts,
   reason: string | undefined,
 ) {
-  const row = await rowForSession(ctx, payment.sessionId);
+  const row = await rowForSession(ctx, payment);
   if (row && row.status !== "on_its_way") return;
   const ended = { status: "returned" as const, endedAt: payment.at, reason };
   if (row) await ctx.db.patch(row._id, ended);
@@ -476,16 +525,11 @@ async function recordReturned(
 async function endPayment(
   ctx: MutationCtx,
   paymentIntentId: string,
-  ended: {
-    status: "refunded" | "dispute_lost";
-    endedAt: number;
-    reason?: string;
-  },
+  charge: ChargeReading | null,
+  ended: PaymentEnded,
 ) {
-  const rows = await ctx.db
-    .query("stripePayments")
-    .withIndex("by_payment_intent", (q) => q.eq("stripePaymentIntentId", paymentIntentId))
-    .collect();
+  const rows = await rowsForIntent(ctx, paymentIntentId);
+  if (rows.length === 0) return endedBeforeCompletion(ctx, paymentIntentId, charge, ended);
   for (const row of rows)
     if (!Ended.has(row.status)) await ctx.db.patch(row._id, { ...ended, paymentId: undefined });
   for (const payment of await paymentsForIntent(ctx, paymentIntentId)) {
@@ -493,6 +537,45 @@ async function endPayment(
     const invoice = await ctx.db.get(payment.invoiceId);
     if (invoice) await paperChanged(ctx, invoice);
   }
+}
+
+type PaymentEnded = {
+  status: "refunded" | "dispute_lost";
+  endedAt: number;
+  reason?: string;
+};
+
+// A full refund or a lost dispute told before the completion of the session
+// it ends, which Stripe does not promise to deliver first: the row is
+// written already ended, from the charge, so the completion, when it comes,
+// finds the money gone and writes no payment. No `payments` row was ever
+// written, so the paper has nothing to change. A charge whose metadata names
+// no invoice of the app's was not a Pay now, and is left alone. With no
+// charge at all, which a dispute's event does not carry and Stripe could not
+// be asked for, there is no telling, so the event is refused, unrecorded,
+// for Stripe to deliver again.
+async function endedBeforeCompletion(
+  ctx: MutationCtx,
+  paymentIntentId: string,
+  charge: ChargeReading | null,
+  ended: PaymentEnded,
+) {
+  if (!charge)
+    throw new Error(`No charge to tell whether Stripe payment ${paymentIntentId} was a Pay now.`);
+  const invoiceId = charge.invoiceId ? ctx.db.normalizeId("invoices", charge.invoiceId) : null;
+  const invoice = invoiceId ? await ctx.db.get(invoiceId) : null;
+  if (!invoice || !charge.method) {
+    console.warn(`Stripe payment ${paymentIntentId} is not an invoice's; left alone.`);
+    return;
+  }
+  await ctx.db.insert("stripePayments", {
+    invoiceId: invoice._id,
+    stripePaymentIntentId: paymentIntentId,
+    method: charge.method,
+    amountCents: charge.amountCents,
+    acceptedAt: charge.created * 1000,
+    ...ended,
+  });
 }
 
 // The fields a Stripe payment's row is made with, whichever event came first.

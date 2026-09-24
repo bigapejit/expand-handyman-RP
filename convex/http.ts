@@ -2,7 +2,11 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { failureReasonFromStripe, verifiedStripeEvent } from "./stripePayments";
+import {
+  disputedChargeFromStripe,
+  failureReasonFromStripe,
+  verifiedStripeEvent,
+} from "./stripePayments";
 import { prunedStripeEvent, readStripeEvent } from "../lib/stripe-events";
 import { eventTypeOf, webhookAuthorized } from "../lib/thumbtack";
 const http = httpRouter();
@@ -112,6 +116,8 @@ http.route({
 // Thumbtack one is. Anything else is applied by one mutation and answered
 // 200, including the event types the app leaves alone, so Stripe stops
 // sending them; only a failure to apply answers 500, for Stripe to retry.
+// What the mutation needs and the event does not carry, a returned payment's
+// reason or a lost dispute's charge, is asked of Stripe first.
 const stripeReply = (status: number) => new Response(null, { status });
 http.route({
   path: "/stripe/webhook",
@@ -138,10 +144,13 @@ http.route({
       return stripeReply(400);
     }
     try {
-      const failureReason = await failureReasonFromStripe(readStripeEvent(event));
+      const reading = readStripeEvent(event);
+      const failureReason = await failureReasonFromStripe(reading);
+      const charge = await disputedChargeFromStripe(reading);
       await ctx.runMutation(internal.stripePayments.applyStripeEvent, {
         event,
         ...(failureReason ? { failureReason } : {}),
+        ...(charge ? { charge } : {}),
       });
       return stripeReply(200);
     } catch (error) {
