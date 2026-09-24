@@ -120,3 +120,34 @@ export function contactWarnings(
     warnings.phone = `Another customer already uses this phone number: ${byPhone.name}`;
   return warnings;
 }
+
+/**
+ * The New site dialog's customer search: customers whose name holds the typed
+ * text, or whose phone holds the typed digits once there are three of them, so
+ * `maria`, `555 12` and `(555) 123-4567` all find Maria. Names that start with
+ * the typing come first, then the rest, each alphabetically; at most `limit`.
+ */
+export function findCustomers<C extends { name: string; phone: string }>(
+  customers: C[],
+  typed: string,
+  limit = 5,
+): C[] {
+  const text = typed.trim().toLowerCase();
+  if (!text) return [];
+  // A typed country code is dropped and a stored one kept, so the ten digits
+  // line up whichever side wrote the 1.
+  const digits = usDigits(typed);
+  const name = (c: C) => c.name.trim().toLowerCase();
+  return customers
+    .filter(
+      (c) =>
+        name(c).includes(text) ||
+        (digits.length >= 3 && c.phone.replace(/\D/g, "").includes(digits)),
+    )
+    .sort(
+      (a, b) =>
+        Number(name(b).startsWith(text)) - Number(name(a).startsWith(text)) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, limit);
+}

@@ -354,44 +354,93 @@ describe("sites.update", () => {
 });
 
 describe("sites.remove", () => {
-  test("deletes a site with no proposals", async () => {
-    const { owner, customer, addSite } = fixture();
-    const customerId = await customer();
-    const siteId = await addSite(customerId);
-    await owner.mutation(api.sites.remove, { siteId });
-    expect(await owner.query(api.sites.forCustomer, { customerId })).toEqual([]);
-  });
-
-  test("refuses while the site has any proposal, a draft included", async () => {
+  test("deletes a site with no proposals or invoices, and its solutions with it", async () => {
     const { t, owner, customer, addSite } = fixture();
     const customerId = await customer();
     const siteId = await addSite(customerId);
-    await t.run((ctx) =>
-      ctx.db.insert("proposals", {
+    const kept = await addSite(customerId, "place-main");
+    await owner.mutation(api.solutions.create, { siteId });
+    await owner.mutation(api.solutions.create, { siteId: kept });
+    await owner.mutation(api.sites.remove, { siteId });
+    expect(await owner.query(api.sites.get, { siteId })).toBeNull();
+    expect(await owner.query(api.sites.forCustomer, { customerId })).toMatchObject([
+      { _id: kept },
+    ]);
+    const solutions = await t.run((ctx) => ctx.db.query("solutions").collect());
+    expect(solutions.map((solution) => solution.siteId)).toEqual([kept]);
+  });
+
+  test("refuses while the site has any proposal, a draft included", async () => {
+    const { owner, customer, addSite, proposal } = fixture();
+    const customerId = await customer();
+    const siteId = await addSite(customerId);
+    await proposal(siteId);
+    await expect(owner.mutation(api.sites.remove, { siteId })).rejects.toThrow(
+      "This site has proposals, so it can't be deleted.",
+    );
+    expect(await owner.query(api.sites.get, { siteId })).toMatchObject({
+      counts: { proposals: 1 },
+    });
+  });
+
+  test("refuses while the site has any invoice, even with its proposal gone", async () => {
+    const { t, owner, customer, addSite, proposal } = fixture();
+    const customerId = await customer();
+    const siteId = await addSite(customerId);
+    const proposalId = await proposal(siteId);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("invoices", {
+        proposalId,
         siteId,
-        number: 1,
+        customerId,
+        kind: "typed",
         state: "draft",
-        solutionIds: [],
-        recommended: false,
-        depositPercent: 50,
-        tax: { source: "lookup" },
+        lines: [],
+        taxRate: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      // Only the invoice is left to hold the site.
+      await ctx.db.delete(proposalId);
+    });
+    await expect(owner.mutation(api.sites.remove, { siteId })).rejects.toThrow(
+      "This site has invoices, so it can't be deleted.",
+    );
+    expect(await owner.query(api.sites.get, { siteId })).toMatchObject({
+      counts: { proposals: 0, invoices: 1 },
+    });
+  });
+
+  test("names both when the site has proposals and invoices", async () => {
+    const { t, owner, customer, addSite, proposal } = fixture();
+    const customerId = await customer();
+    const siteId = await addSite(customerId);
+    const proposalId = await proposal(siteId);
+    await t.run((ctx) =>
+      ctx.db.insert("invoices", {
+        proposalId,
+        siteId,
+        customerId,
+        kind: "typed",
+        state: "draft",
+        lines: [],
+        taxRate: 0,
         createdAt: 0,
         updatedAt: 0,
       }),
     );
     await expect(owner.mutation(api.sites.remove, { siteId })).rejects.toThrow(
-      "has proposals",
+      "This site has proposals and invoices, so it can't be deleted.",
     );
-    const [site] = await owner.query(api.sites.forCustomer, { customerId });
-    expect(site.proposalCount).toBe(1);
   });
 
   test("turns away anyone who is not the owner", async () => {
-    const { stranger, customer, addSite } = fixture();
+    const { owner, stranger, customer, addSite } = fixture();
     const siteId = await addSite(await customer());
     await expect(stranger.mutation(api.sites.remove, { siteId })).rejects.toThrow(
       "Owner access required",
     );
+    expect(await owner.query(api.sites.get, { siteId })).not.toBeNull();
   });
 });
 
@@ -448,6 +497,31 @@ describe("customers.add", () => {
       streetLine: "1215 Main St, Apt 4B",
       accessNotes: "Gate code 1234",
     });
+  });
+
+  // New site from the Sites list with a new customer: someone else already
+  // having the address is a warning in the dialog, never a refusal.
+  test("saves a first site at an address another customer already has", async () => {
+    const { owner, customer, addSite } = fixture();
+    const landlord = await customer("Harlow Property Group", "ops@harlow.example");
+    await addSite(landlord, "place-94th", "Apt 2");
+    const { customerId, siteId } = await owner.action(api.customers.add, {
+      name: "Maria Delgado",
+      email: "maria@example.com",
+      phone: "",
+      firstSite: {
+        placeId: "place-94th",
+        sessionToken: session,
+        addressLine2: "Apt 2",
+        accessNotes: "Tenant; call first",
+      },
+    });
+    expect(await owner.query(api.sites.atPlace, { placeId: "place-94th" })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ customerId: landlord, addressLine2: "Apt 2" }),
+        expect.objectContaining({ siteId, customerId, addressLine2: "Apt 2" }),
+      ]),
+    );
   });
 
   test("refuses access notes too long for a site, before asking Google", async () => {

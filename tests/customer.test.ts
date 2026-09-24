@@ -5,6 +5,7 @@ import { api } from "../convex/_generated/api";
 import {
   contactWarnings,
   displayPhone,
+  findCustomers,
   formatPhone,
   normalizeEmail,
   parseCustomer,
@@ -171,5 +172,36 @@ describe("contactWarnings", () => {
       contactWarnings({ name: "", email: "ops@harlow.example", phone: "" }, others, "harlow"),
     ).toEqual({});
     expect(contactWarnings({ name: "", email: "", phone: "" }, others)).toEqual({});
+  });
+});
+
+describe("findCustomers", () => {
+  const customers = [
+    { name: "Ben Okafor", phone: "360.555.0177" },
+    { name: "Maria Delgado", phone: "+13605550118" },
+    { name: "Ana Maria Ruiz", phone: "" },
+    { name: "Harlow Property Group", phone: "+15035550100" },
+  ];
+  const names = (typed: string, limit?: number) =>
+    findCustomers(customers, typed, limit).map((c) => c.name);
+
+  test("finds by any part of the name, names starting with the typing first", () => {
+    expect(names(" MARIA ")).toEqual(["Maria Delgado", "Ana Maria Ruiz"]);
+    expect(names("okaf")).toEqual(["Ben Okafor"]);
+  });
+
+  test("finds by phone digits however they are typed or stored", () => {
+    expect(names("(360) 555-0118")).toEqual(["Maria Delgado"]);
+    expect(names("1 360 555 0177")).toEqual(["Ben Okafor"]);
+    expect(names("555")).toEqual(["Ben Okafor", "Harlow Property Group", "Maria Delgado"]);
+  });
+
+  test("waits for three digits, and for any typing at all", () => {
+    expect(names("36")).toEqual([]);
+    expect(names("  ")).toEqual([]);
+  });
+
+  test("shows only the first few", () => {
+    expect(names("a", 2)).toEqual(["Ana Maria Ruiz", "Ben Okafor"]);
   });
 });

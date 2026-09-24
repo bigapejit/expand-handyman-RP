@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { SiteDialog } from "@/components/site-dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
 // The Site page, the one the owner works from: the customer hub one level
@@ -25,53 +26,57 @@ const TABS = [
 
 export function SiteHubShell({ siteId, children }: { siteId: string; children: ReactNode }) {
   const detail = useQuery(api.sites.get, { siteId });
-  const [editing, setEditing] = useState(false);
+  // The site as it stood when Edit site opened. The dialog sits beside the
+  // page rather than in it, so it outlives the site when Delete site succeeds
+  // and the page shows a spinner, not "No such site", while the dialog moves
+  // on to the Sites list.
+  const [editing, setEditing] = useState<Doc<"sites"> | null>(null);
 
-  if (detail === undefined) {
-    return (
+  let page: ReactNode;
+  if (detail === undefined || (detail === null && editing))
+    page = (
       <div className="grid min-h-64 place-items-center">
         <LoaderCircle aria-label="Loading site" className="size-6 animate-spin text-slate-500" />
       </div>
     );
-  }
-  if (detail === null) return <SiteNotFound />;
+  else if (detail === null) page = <SiteNotFound />;
+  else
+    page = (
+      <div className="space-y-6">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{detail.streetLine}</h1>
+            <p className="text-sm text-muted-foreground">{detail.cityLine}</p>
+            <p className="text-sm">
+              <Link
+                href={`/customers/${detail.customerId}`}
+                className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+              >
+                <User aria-hidden className="size-3.5" />
+                {detail.customerName}
+              </Link>
+            </p>
+            {detail.accessNotes ? (
+              <p className="text-sm text-slate-600">
+                <KeyRound aria-hidden className="mr-1 inline size-3.5 text-slate-400" />
+                {detail.accessNotes}
+              </p>
+            ) : null}
+          </div>
+          <Button variant="outline" size="lg" onClick={() => setEditing(detail.site)}>
+            <Pencil data-icon="inline-start" aria-hidden /> Edit site
+          </Button>
+        </header>
+        <SiteTabRow siteId={siteId} counts={detail.counts} />
+        {children}
+      </div>
+    );
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{detail.streetLine}</h1>
-          <p className="text-sm text-muted-foreground">{detail.cityLine}</p>
-          <p className="text-sm">
-            <Link
-              href={`/customers/${detail.customerId}`}
-              className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
-            >
-              <User aria-hidden className="size-3.5" />
-              {detail.customerName}
-            </Link>
-          </p>
-          {detail.accessNotes ? (
-            <p className="text-sm text-slate-600">
-              <KeyRound aria-hidden className="mr-1 inline size-3.5 text-slate-400" />
-              {detail.accessNotes}
-            </p>
-          ) : null}
-        </div>
-        <Button variant="outline" size="lg" onClick={() => setEditing(true)}>
-          <Pencil data-icon="inline-start" aria-hidden /> Edit site
-        </Button>
-      </header>
-      <SiteTabRow siteId={siteId} counts={detail.counts} />
-      {children}
-      {editing ? (
-        <SiteDialog
-          customerId={detail.customerId}
-          site={detail.site}
-          onClose={() => setEditing(false)}
-        />
-      ) : null}
-    </div>
+    <>
+      {page}
+      {editing ? <SiteDialog site={editing} onClose={() => setEditing(null)} /> : null}
+    </>
   );
 }
 

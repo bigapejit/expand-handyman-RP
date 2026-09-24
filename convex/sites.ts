@@ -20,6 +20,7 @@ import {
   sameUnit,
   siteAddress,
   siteCityLine,
+  siteDeleteRefusal,
   siteStreetLine,
 } from "../lib/sites";
 
@@ -245,18 +246,28 @@ export const patch = internalMutation({
   },
 });
 
+// Delete site, from Edit site on the site page. Refused while the site holds a
+// proposal or an invoice, whatever the dialog showed; otherwise its solutions
+// go with it.
 export const remove = mutation({
   args: { siteId: v.id("sites") },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const site = await ctx.db.get(a.siteId);
     if (!site) return;
-    const proposal = await ctx.db
-      .query("proposals")
-      .withIndex("by_site", (q) => q.eq("siteId", site._id))
-      .first();
-    if (proposal)
-      throw new Error("This site has proposals, so it can't be deleted.");
+    // One of each is enough to refuse, so none is counted past the first.
+    const oneOf = async (table: "proposals" | "invoices") =>
+      (await ctx.db
+        .query(table)
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .first())
+        ? 1
+        : 0;
+    const refusal = siteDeleteRefusal({
+      proposals: await oneOf("proposals"),
+      invoices: await oneOf("invoices"),
+    });
+    if (refusal) throw new Error(refusal);
     await deleteSiteSolutions(ctx, site._id);
     await ctx.db.delete(site._id);
   },

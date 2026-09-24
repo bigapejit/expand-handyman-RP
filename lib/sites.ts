@@ -108,3 +108,17 @@ export function siteActivityLabel(
     timeZone,
   }).format(at);
 }
+
+// Why a site cannot be deleted, or null when it can. Proposals and invoices
+// are paperwork a customer may have seen, so a site holding either stays; the
+// Edit site dialog shows this beside a disabled Delete site, and the server
+// refuses with it whatever the button said.
+export function siteDeleteRefusal(held: { proposals: number; invoices: number }) {
+  const what = [
+    held.proposals > 0 ? "proposals" : "",
+    held.invoices > 0 ? "invoices" : "",
+  ].filter(Boolean);
+  return what.length
+    ? `This site has ${what.join(" and ")}, so it can't be deleted.`
+    : null;
+}

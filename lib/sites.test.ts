@@ -5,6 +5,7 @@ import {
   siteActivityLabel,
   siteAddress,
   siteCityLine,
+  siteDeleteRefusal,
   siteStreetLine,
 } from "./sites";
 
@@ -119,5 +120,23 @@ describe("siteActivityLabel", () => {
     expect(label("2026-09-16T20:00:00Z")).toBe("Sep 16");
     expect(label("2026-01-02T20:00:00Z")).toBe("Jan 2");
     expect(label("2025-12-30T20:00:00Z")).toBe("Dec 30, 2025");
+  });
+});
+
+describe("siteDeleteRefusal", () => {
+  it("lets a site with no paperwork go", () => {
+    expect(siteDeleteRefusal({ proposals: 0, invoices: 0 })).toBeNull();
+  });
+
+  it("names whatever paperwork keeps the site", () => {
+    expect(siteDeleteRefusal({ proposals: 2, invoices: 0 })).toBe(
+      "This site has proposals, so it can't be deleted.",
+    );
+    expect(siteDeleteRefusal({ proposals: 0, invoices: 1 })).toBe(
+      "This site has invoices, so it can't be deleted.",
+    );
+    expect(siteDeleteRefusal({ proposals: 1, invoices: 3 })).toBe(
+      "This site has proposals and invoices, so it can't be deleted.",
+    );
   });
 });

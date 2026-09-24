@@ -1,20 +1,24 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { LoaderCircle, MapPin, Search } from "lucide-react";
+import { LoaderCircle, MapPin, Plus, Search } from "lucide-react";
 import { useState } from "react";
 
 import { IndexEmptyState, IndexRow } from "@/components/index-row";
+import { SiteDialog } from "@/components/site-dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import { siteActivityLabel } from "@/lib/sites";
 
 // The Sites list: one row per Site, the one touched most recently first, and
 // one search box that reads the street, the city or the customer's name,
-// whichever the owner remembers.
+// whichever the owner remembers. New site starts a job from the address, and
+// asks whose it is second.
 export function SitesIndex() {
   const sites = useQuery(api.sites.list);
   const [search, setSearch] = useState("");
+  const [adding, setAdding] = useState(false);
   const query = search.trim().toLowerCase();
   const shown = sites?.filter((site) =>
     [site.streetLine, site.cityLine, site.customerName].some((text) =>
@@ -41,6 +45,10 @@ export function SitesIndex() {
             className="h-9 pl-8"
           />
         </label>
+        <Button size="lg" onClick={() => setAdding(true)}>
+          <Plus data-icon="inline-start" aria-hidden />
+          New site
+        </Button>
       </div>
 
       {shown === undefined ? (
@@ -72,6 +80,8 @@ export function SitesIndex() {
           ))}
         </ul>
       )}
+
+      {adding ? <SiteDialog onClose={() => setAdding(false)} /> : null}
     </div>
   );
 }
