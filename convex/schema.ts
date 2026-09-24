@@ -472,8 +472,10 @@ export default defineSchema({
     // payment itself has no amount, and the invoice's Amount Due is the
     // figure owed.
     amountCents: v.number(),
-    // When Stripe accepted the payment: the session's completion, or the
-    // charge's making on a row a refund or a lost dispute wrote first.
+    // When Stripe accepted the payment: the session's completion, whenever
+    // it arrives. A row a confirmation or a return wrote first holds that
+    // event's later time, and one a refund or a lost dispute wrote first the
+    // charge's making, only until the completion comes and sets it back.
     acceptedAt: v.number(),
     status: v.union(
       v.literal("on_its_way"),

@@ -1,8 +1,15 @@
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  type QueryCtx,
+} from "./_generated/server";
 import { appOrigin, emailReplyTo, sendEmail, sendsEmail } from "./email";
+import { invoiceLinksFor } from "./invoiceLinks";
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { ExpandBusiness } from "../lib/expand-business";
 import { pacificDay } from "../lib/invoice-standing";
@@ -34,8 +41,6 @@ export const sendReturnedPayment = internalAction({
     // The name and address the invoice went to, as sent.
     customerName: v.string(),
     to: v.string(),
-    // The link to pay again through: the invoice's live link, or its newest.
-    token: v.optional(v.string()),
     // The bank's words, for the owner only.
     reason: v.optional(v.string()),
     // Another bank payment for the invoice still on its way, from a second
@@ -54,12 +59,14 @@ export const sendReturnedPayment = internalAction({
       // the customer to pay an invoice that is no longer payable must not go.
       // This check is the last word. One the mutation already left unasked is
       // not asked here even if the other payment has come back too since:
-      // that return writes letters of its own.
-      const notAsked = await ctx.runQuery(internal.stripeEmails.whyNotAskAgain, {
+      // that return writes letters of its own. The link is looked up in the
+      // same moment, since a Re-send in between ends the one the invoice had
+      // when the return committed, and a letter must not send the customer to
+      // a link that opens nothing.
+      const { notAsked, token } = await ctx.runQuery(internal.stripeEmails.askAgain, {
         invoiceId: a.invoiceId,
       });
-      const url = a.token ? signingUrl(appOrigin(), a.token) : null;
-      const emailed = notAsked ? false : await sendCustomerLetter(a, amount, url);
+      const emailed = notAsked ? false : await sendCustomerLetter(a, amount, token);
       // Kept for the owner's grey note, which otherwise could only guess.
       await ctx.runMutation(internal.stripeEmails.recordCustomerLetter, {
         paymentIntentId: a.paymentIntentId,
@@ -85,26 +92,44 @@ export const sendReturnedPayment = internalAction({
   },
 });
 
-// Why the customer is not to be asked to pay the invoice again, or null while
-// it still owes: sent, with no payment and none on its way, which is when the
-// link has its Pay button back. A void invoice says so before a payment on
-// it, since its paper reads VOID whatever Stripe wrote.
-export const whyNotAskAgain = internalQuery({
+// Whether the customer is to be asked to pay the invoice again, and through
+// which link, both as they stand now. `notAsked` says why not, or is null
+// while the invoice still owes: sent, with no payment and none on its way,
+// which is when the link has its Pay button back. A void invoice says so
+// before a payment on it, since its paper reads VOID whatever Stripe wrote.
+export const askAgain = internalQuery({
   args: { invoiceId: v.id("invoices") },
-  handler: async (ctx, a): Promise<NotAsked | null> => {
-    const invoice = await ctx.db.get(a.invoiceId);
-    if (!invoice || invoice.state !== "sent") return { kind: "voided" };
-    if (await paymentFor(ctx, invoice._id)) return { kind: "paid" };
-    const other = await paymentOnItsWayFor(ctx, invoice._id);
-    if (other)
-      return {
-        kind: "still_on_its_way",
-        amountCents: other.amountCents,
-        acceptedOn: pacificDay(other.acceptedAt),
-      };
-    return null;
+  handler: async (ctx, a): Promise<{ notAsked: NotAsked | null; token: string | null }> => {
+    const token = (await linkToPayAgain(ctx, a.invoiceId))?.token ?? null;
+    return { notAsked: await whyNotAskAgain(ctx, a.invoiceId), token };
   },
 });
+
+async function whyNotAskAgain(
+  ctx: QueryCtx,
+  invoiceId: Id<"invoices">,
+): Promise<NotAsked | null> {
+  const invoice = await ctx.db.get(invoiceId);
+  if (!invoice || invoice.state !== "sent") return { kind: "voided" };
+  if (await paymentFor(ctx, invoice._id)) return { kind: "paid" };
+  const other = await paymentOnItsWayFor(ctx, invoice._id);
+  if (other)
+    return {
+      kind: "still_on_its_way",
+      amountCents: other.amountCents,
+      acceptedOn: pacificDay(other.acceptedAt),
+    };
+  return null;
+}
+
+// Where the letter sends the customer to pay again: the invoice's live link,
+// which is the newest after a re-send; failing that, the newest it has had.
+async function linkToPayAgain(ctx: QueryCtx, invoiceId: Id<"invoices">) {
+  const links = (await invoiceLinksFor(ctx, invoiceId)).sort(
+    (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
+  );
+  return links.find((link) => link.endedAt === undefined) ?? links[0] ?? null;
+}
 
 // Whether the customer's letter went, on the return it was about. A payment
 // intent is one payment, so its returned row is the one.
@@ -128,10 +153,11 @@ export const recordCustomerLetter = internalMutation({
 // sends no mail at all writes both letters to the log, with the link's path,
 // and that counts as sent.
 async function sendCustomerLetter(
-  a: { paymentIntentId: string; number: string; customerName: string; to: string; token?: string },
+  a: { paymentIntentId: string; number: string; customerName: string; to: string },
   amount: string,
-  url: string | null,
+  token: string | null,
 ): Promise<boolean> {
+  const url = token ? signingUrl(appOrigin(), token) : null;
   if (url === null && sendsEmail()) {
     console.error(
       `Returned payment letter to ${a.to} not sent: no app origin is configured (APP_ORIGIN).`,
@@ -141,7 +167,7 @@ async function sendCustomerLetter(
   const customer = await sendEmail({
     to: a.to,
     subject: `Your payment for Invoice ${a.number} did not go through`,
-    text: customerLetter({ ...a, amount, url: url ?? (a.token ? signingPath(a.token) : "") }),
+    text: customerLetter({ ...a, amount, url: url ?? (token ? signingPath(token) : "") }),
     replyTo: emailReplyTo(),
     idempotencyKey: `returned-payment/${a.paymentIntentId}/customer`,
     tags: { letter: "returned_payment_customer" },

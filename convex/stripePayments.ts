@@ -11,7 +11,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { appOrigin } from "./email";
-import { invoiceLinkForToken, invoiceLinksFor, invoiceStillOpenedBy } from "./invoiceLinks";
+import { invoiceLinkForToken, invoiceStillOpenedBy } from "./invoiceLinks";
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
@@ -396,6 +396,7 @@ async function applySession(
   };
   switch (event.type) {
     case "completed":
+      await acceptedAtCompletion(ctx, payment);
       // A card's money is in at once; a bank's is on its way until the bank
       // confirms it, unless the payment intent, when the success return read
       // it, has already failed.
@@ -488,10 +489,24 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
   if (!existing) await paperChanged(ctx, payment.invoice);
 }
 
+// A completion delivered after another event already wrote its session's
+// row: Stripe does not promise the order, and a confirmation or a return
+// that came first dated the row by its own day, days after the customer
+// paid, as a refund's charge dates it by the charge. The payment was
+// accepted when its session completed, so the completion's time replaces a
+// later one, and every sentence that says when reads the day the customer
+// paid. Only ever a later one: the success return dates its completion by
+// the payment intent's making, a moment before the webhook's own, and the
+// webhook's arriving second must not move it on.
+async function acceptedAtCompletion(ctx: MutationCtx, payment: StripePaymentFacts) {
+  const row = await rowForSession(ctx, payment);
+  if (row && payment.at < row.acceptedAt) await ctx.db.patch(row._id, { acceptedAt: payment.at });
+}
+
 // A bank payment accepted and not yet confirmed: the invoice reads Payment
 // on its way. Nothing when the session already has its row, which may be
-// paid already if the confirmation came first, or ended if a full refund or
-// a lost dispute did.
+// paid already if the confirmation came first, or ended if a return, a full
+// refund or a lost dispute did.
 async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
   if (await rowForSession(ctx, payment)) return;
   await ctx.db.insert("stripePayments", { ...rowFields(payment), status: "on_its_way" });
@@ -533,7 +548,6 @@ async function recordReturned(
     amountCents: payment.amountCents,
     customerName: invoice.frozen.customerName,
     to: invoice.frozen.sentTo,
-    token: (await linkToPayAgain(ctx, invoice._id))?.token,
     ...(reason ? { reason } : {}),
     ...(other
       ? {
@@ -624,16 +638,6 @@ async function paperChanged(ctx: MutationCtx, invoice: Doc<"invoices">) {
   if (invoice.state !== "sent") return;
   await discardInvoicePdfCopy(ctx, invoice);
   await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
-}
-
-// Where the Returned payment letter sends the customer to pay again: the
-// invoice's live link, which is the newest after a re-send; failing that, the
-// newest it has had.
-async function linkToPayAgain(ctx: QueryCtx, invoiceId: Id<"invoices">) {
-  const links = (await invoiceLinksFor(ctx, invoiceId)).sort(
-    (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
-  );
-  return links.find((link) => link.endedAt === undefined) ?? links[0] ?? null;
 }
 
 function messageOf(error: unknown): string {

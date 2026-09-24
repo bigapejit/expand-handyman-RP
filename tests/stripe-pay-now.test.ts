@@ -817,6 +817,30 @@ describe("A bank payment Stripe accepted", () => {
     expect((await list("paid")).map((row) => row.invoiceId)).toEqual([invoiceId]);
   });
 
+  test("confirmed before its completion arrived, is dated accepted by the completion once it comes", async () => {
+    const { apply, event, bankSession, charge, approved, stripeRows, panel } = fixture();
+    const { invoiceId } = await approved();
+    vi.setSystemTime(pdt(9, 2));
+    const completed = event("checkout.session.completed", bankSession(invoiceId));
+    vi.setSystemTime(pdt(9, 5));
+    await apply(
+      event(
+        "checkout.session.async_payment_succeeded",
+        bankSession(invoiceId, { payment_status: "paid" }),
+      ),
+    );
+    await apply(completed);
+    expect(await stripeRows()).toMatchObject([{ status: "paid", acceptedAt: pdt(9, 2) }]);
+
+    // The refund's note is where a paid one says when it was accepted.
+    vi.setSystemTime(pdt(9, 10));
+    await apply(event("charge.refunded", charge()));
+    const note = (await panel(invoiceId))?.note;
+    expect(note && stripeNoteSentence(note)).toBe(
+      "Bank payment of $299.48 from Sept 2 was refunded Sept 10 in Stripe.",
+    );
+  });
+
   test("the session expiring unpaid writes nothing", async () => {
     const { apply, event, bankSession, approved, stripeRows, stripeEvents } = fixture();
     const { invoiceId } = await approved();
@@ -1084,6 +1108,45 @@ describe("A Returned payment", () => {
     expect(text).toContain(
       "Another bank payment of $299.48 accepted Sept 12 is still on its way, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
     );
+  });
+
+  test("returned before its completion arrived, is dated accepted by the completion once it comes", async () => {
+    const f = fixture();
+    const { invoiceId, token } = await f.approved();
+    vi.setSystemTime(pdt(9, 2));
+    const completed = f.event("checkout.session.completed", f.bankSession(invoiceId));
+    vi.setSystemTime(pdt(9, 5));
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId)),
+      "insufficient funds",
+    );
+    await f.apply(completed);
+
+    expect(await f.stripeRows()).toMatchObject([
+      { status: "returned", acceptedAt: pdt(9, 2), endedAt: pdt(9, 5) },
+    ]);
+    const note = (await f.panel(invoiceId))?.note;
+    expect(note && stripeNoteSentence(note)).toBe(
+      "Bank payment of $299.48 accepted Sept 2 was returned Sept 5: insufficient funds. The customer was emailed to pay again.",
+    );
+    expect(await f.page(token)).toMatchObject({
+      stripe: { kind: "returned", acceptedOn: "2026-09-02" },
+    });
+  });
+
+  test("re-sent after it came back but before the letters went, sends the customer to the new link and not the ended one", async () => {
+    const f = fixture();
+    const { invoiceId, token } = await returnedFor(f);
+    await f.owner.action(api.invoices.resend, { invoiceId });
+    const live = (await f.t.run((ctx) => ctx.db.query("invoiceLinks").collect())).find(
+      (link) => link.invoiceId === invoiceId && link.endedAt === undefined,
+    )!;
+    expect(live.token).not.toBe(token);
+
+    await f.deliver();
+    const [customer] = f.letters("returned_payment_customer");
+    expect(customer.body.text).toContain(`https://staff.expandhandyman.com/sign/${live.token}`);
+    expect(customer.body.text).not.toContain(token);
   });
 
   test("sends the customer to the invoice's live link after a re-send", async () => {
