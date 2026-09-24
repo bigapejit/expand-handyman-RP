@@ -11,7 +11,11 @@ import type { PaperProposal, PaperSolution } from "@/lib/proposal-paper";
 import { fingerprintOf, SigningConsent } from "@/lib/proposal-signing";
 
 export const TaxRate = 0.089;
-export const ZelleEmail = "pay@expandhandyman.com";
+// The business is enrolled with Zelle under a tag, not an email (#116). The
+// paper's line reads "Zelle: send to <this>. The payment shows as Expand
+// Handyman LLC.", so the setting carries the words that complete it.
+export const ZelleTag = "expandhandyman";
+export const ZelleEmail = `the Zelle® tag ${ZelleTag} from your banking app`;
 
 // ── The ways to pay online, as the map settled them on 2026-09-23 ────────
 // Bank is always offered; card only when Amount Due is $1,000 or less. No

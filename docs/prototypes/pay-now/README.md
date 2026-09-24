@@ -9,8 +9,18 @@ is always offered, card only when Amount Due is $1,000 or less, no fee on either
 
 ## The invoice link, `/prototype/pay-now/link`
 
-Three places Pay now could live, `?variant=A|B|C`, on the real paper screen with the
-real invoice paper:
+Four places Pay now could live, `?variant=D|A|B|C`, on the real paper screen with the
+real invoice paper. D came after the walk, when the owner asked for one Pay button and
+Zelle among the choices (research #116: the business is enrolled under the Zelle tag
+`expandhandyman`, no email, and no link can preset the amount or open the bank app):
+
+- **D Pay button, then bank, card, Zelle** (default): a bar pinned to the bottom with
+  Amount Due on the left and one black "Pay $2,854.37" on the right. It opens a sheet of
+  rows: Pay by bank, Pay by card (only up to $1,000), Pay by Zelle®. Zelle turns the
+  sheet into three steps: open your banking app, send to the tag (with Copy tag), the
+  amount and the invoice number for the memo. `?show=sheet` and `?show=zelle` open
+  those states. The paper's How to pay line reads "Zelle: send to the Zelle® tag
+  expandhandyman from your banking app."
 
 - **A Pay bar at the bottom**: a bar pinned to the bottom like the sign bar. Amount Due
   on the left, "Pay by card" (when offered) and "Pay by bank" on the right, one sentence

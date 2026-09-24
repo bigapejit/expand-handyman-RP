@@ -20,6 +20,7 @@ import {
   payChoices,
   Readings,
   shortDay,
+  ZelleTag,
   type PayChoice,
   type Reading,
 } from "./fixtures";
@@ -35,17 +36,23 @@ import {
 //   B  A card of the two choices between the top bar and the paper.
 //   C  One Pay button in the top bar, which opens a sheet of the two choices.
 
+//   D  (added after the walk on 2026-09-23) One black Pay button in the
+//      bottom bar, which opens a sheet of three: bank, card, Zelle. Zelle
+//      shows the tag, the amount and the invoice number for the memo, since
+//      no link can open the customer's banking app with those filled in.
+
 const Variants = [
+  { key: "D", name: "Pay button, then bank, card, Zelle" },
   { key: "A", name: "Pay bar at the bottom" },
   { key: "B", name: "Choices above the paper" },
   { key: "C", name: "Pay button, then a sheet" },
 ] as const;
-const VariantKeys = ["A", "B", "C"] as const;
+const VariantKeys = ["D", "A", "B", "C"] as const;
 type Variant = (typeof VariantKeys)[number];
 const ReadingKeys = ["unpaid", "small", "onway", "paid"] as const;
-// `?show=` opens a state a press would reach, for screenshots: C's sheet, or
-// the stand-in checkout for bank or card.
-const ShowKeys = ["", "sheet", "bank", "card"] as const;
+// `?show=` opens a state a press would reach, for screenshots: the sheet, the
+// Zelle step, or the stand-in checkout for bank or card.
+const ShowKeys = ["", "sheet", "zelle", "bank", "card"] as const;
 type Show = (typeof ShowKeys)[number];
 
 export function LinkPrototype() {
@@ -88,7 +95,9 @@ function LinkPage({
   const [checkout, setCheckout] = useState<PayChoice | null>(
     show === "bank" ? startChoices[0] : show === "card" ? startChoices[1] : null,
   );
-  const [sheet, setSheet] = useState(show === "sheet");
+  const [sheet, setSheet] = useState(show === "sheet" || show === "zelle");
+  // D's sheet, turned to the Zelle step.
+  const [zelle, setZelle] = useState(show === "zelle");
 
   const state: LinkState =
     outcome === "bank" || reading === "onway"
@@ -147,6 +156,24 @@ function LinkPage({
   const bar =
     variant === "A" && state !== "paid" ? (
       <PayBar state={state} amount={amount} choices={choices} onPay={pay} />
+    ) : variant === "D" && state !== "paid" ? (
+      sheet ? (
+        <ThreeWaysSheet
+          amount={amount}
+          invoiceNumber={paper.number}
+          choices={choices}
+          zelle={zelle}
+          onZelle={() => setZelle(true)}
+          onBack={() => setZelle(false)}
+          onPay={pay}
+          onClose={() => {
+            setSheet(false);
+            setZelle(false);
+          }}
+        />
+      ) : (
+        <PayButtonBar state={state} amount={amount} onOpen={() => setSheet(true)} />
+      )
     ) : variant === "C" && sheet ? (
       <PaySheet amount={amount} choices={choices} onPay={pay} onClose={() => setSheet(false)} />
     ) : undefined;
@@ -287,6 +314,145 @@ function PaySheet({
           </div>
           <ChoiceRows choices={choices} onPay={onPay} />
           <p className="pn-card-text">{waysSentence(choices)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── D: one Pay button, then bank, card and Zelle ─────────────────────────
+function PayButtonBar({
+  state,
+  amount,
+  onOpen,
+}: {
+  state: LinkState;
+  amount: string;
+  onOpen: () => void;
+}) {
+  if (state === "onway")
+    return (
+      <div className="paper-bar">
+        <p className="paper-bar-note">{onItsWay(amount)}</p>
+        <div className="paper-bar-row">
+          <span className="paper-bar-sum">
+            <strong>Payment on its way</strong> · bank payment of {amount} accepted{" "}
+            {shortDay(AcceptedOn)}
+          </span>
+        </div>
+      </div>
+    );
+  return (
+    <div className="paper-bar">
+      <div className="paper-bar-row">
+        <span className="paper-bar-sum">
+          <strong>{amount}</strong> · due on receipt
+        </span>
+        <span className="paper-grow" />
+        <button type="button" className="paper-btn paper-btn-primary" onClick={onOpen}>
+          Pay {amount}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// The sheet Pay opens: the three ways as rows, or, once Zelle is picked, what
+// to do in the banking app.
+function ThreeWaysSheet({
+  amount,
+  invoiceNumber,
+  choices,
+  zelle,
+  onZelle,
+  onBack,
+  onPay,
+  onClose,
+}: {
+  amount: string;
+  invoiceNumber: string;
+  choices: PayChoice[];
+  zelle: boolean;
+  onZelle: () => void;
+  onBack: () => void;
+  onPay: (choice: PayChoice) => void;
+  onClose: () => void;
+}) {
+  const [bank, card] = choices;
+  const [copied, setCopied] = useState(false);
+  const copyTag = () => {
+    void navigator.clipboard?.writeText(ZelleTag).then(() => setCopied(true));
+  };
+  return (
+    <div className="paper-bar">
+      <div className="paper-bar-sheet">
+        <div className="paper-form">
+          <div className="paper-form-head">
+            <div className="paper-form-sum">
+              {zelle ? (
+                <>
+                  Pay <strong>{amount}</strong> by Zelle
+                </>
+              ) : (
+                <>
+                  <strong>{amount}</strong> · due on receipt
+                </>
+              )}
+            </div>
+            <button type="button" className="paper-link" onClick={zelle ? onBack : onClose}>
+              {zelle ? "Back" : "Close"}
+            </button>
+          </div>
+          {zelle ? (
+            <>
+              <ol className="pn-steps">
+                <li>Open your banking app and find Zelle®.</li>
+                <li>
+                  Send to the Zelle® tag <strong className="pn-tag">{ZelleTag}</strong>. It shows
+                  as Expand Handyman LLC.{" "}
+                  <button type="button" className="paper-btn" onClick={copyTag}>
+                    {copied ? "Copied" : "Copy tag"}
+                  </button>
+                </li>
+                <li>
+                  Amount <strong>{amount}</strong>. Put <strong>{invoiceNumber}</strong> in the
+                  memo.
+                </li>
+              </ol>
+              <p className="pn-card-text">
+                We mark the invoice paid when the money lands, usually the same day.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="pn-choices">
+                <button type="button" className="pn-choice" onClick={() => onPay(bank)}>
+                  <span className="pn-choice-name">Pay by bank</span>
+                  <span className="pn-choice-note">
+                    From your checking account, through Stripe.
+                  </span>
+                  <span className="pn-choice-amount">{formatCentsExact(bank.chargeCents)}</span>
+                </button>
+                {card ? (
+                  <button type="button" className="pn-choice" onClick={() => onPay(card)}>
+                    <span className="pn-choice-name">Pay by card</span>
+                    <span className="pn-choice-note">Credit or debit, on Stripe&rsquo;s page.</span>
+                    <span className="pn-choice-amount">{formatCentsExact(card.chargeCents)}</span>
+                  </button>
+                ) : null}
+                <button type="button" className="pn-choice" onClick={onZelle}>
+                  <span className="pn-choice-name">Pay by Zelle®</span>
+                  <span className="pn-choice-note">From your banking app, to our Zelle® tag.</span>
+                  <span className="pn-choice-amount">{amount}</span>
+                </button>
+              </div>
+              <p className="pn-card-text">
+                {card
+                  ? "No fee on any of them. A check works too: see How to pay on the invoice."
+                  : "No fee on either. Card is for invoices up to $1,000. A check works too: see How to pay on the invoice."}
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
