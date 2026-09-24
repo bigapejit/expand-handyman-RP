@@ -128,15 +128,23 @@ What an invoice reads about its money: Unpaid, Paid, Overdue when still unpaid m
 _Avoid_: Status (which is draft, sent or void), state, paid flag
 
 **Pay now**:
-The customer paying a sent invoice online from its link, for the full Amount Due and with no fee, through Stripe's own checkout page: by bank, always offered, or by card, offered only when Amount Due is $1,000 or less. The payment then records itself on the invoice. Zelle and check stay on the paper as the other ways to pay.
+The customer paying a sent invoice from its link: one Pay button opens the Pay sheet. Bank and card go through Stripe's own checkout page for the full Amount Due with no fee, card only when Amount Due is $1,000 or less, and the payment then records itself on the invoice. Zelle and check are steps on the sheet and stay in How to pay on the paper; money that comes those ways is still marked paid by the owner.
 _Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Stripe's page, not an app concept), online payment (as the name of the action), card fee or surcharge (there is none)
 
+**Pay sheet**:
+What the Pay button on an invoice link opens: the ways to pay, each with the Amount Due. Pay by bank and Pay by card lead to Stripe; Pay by Zelle® and Pay by check turn the sheet into the steps for paying that way, naming the Zelle tag or the payee, the amount and the invoice number for the memo. Card is listed only when Amount Due is $1,000 or less.
+_Avoid_: Payment options, payment methods (Stripe's word), checkout
+
+**Zelle tag**:
+The business's Zelle handle, `expandhandyman`, which a customer types in their banking app where they would type an email address. The invoice paper and the Pay sheet name it, never an email, because the business is enrolled with Zelle under the tag alone. A setting the owner edits, since the bank may change it.
+_Avoid_: Zelle email, Zelle address, Zelle ID
+
 **Payment on its way**:
-The standing of a sent invoice whose bank payment Stripe has accepted but not yet confirmed, which can take a few business days. Pay now is gone from the link meanwhile, and the invoice does not read Overdue. It reads Paid, stamp and all, once the money is confirmed.
+The standing of a sent invoice whose bank payment Stripe has accepted but not yet confirmed, which can take a few business days. The Pay button is gone from the link meanwhile, and the invoice does not read Overdue. It reads Paid, stamp and all, once the money is confirmed.
 _Avoid_: Pending, processing, awaiting payment
 
 **Returned payment**:
-A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and Pay now is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason. The invoice keeps the note until it is paid, on its way again or void.
+A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and the Pay button is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason. The invoice keeps the note until it is paid, on its way again or void.
 _Avoid_: Failed payment (Stripe's word; the money was accepted, then sent back), bounced payment, declined (a card word)
 
 **Invoice paper**:
