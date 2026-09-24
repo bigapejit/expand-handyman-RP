@@ -1,13 +1,15 @@
 import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { invoiceStamp, paymentFor } from "./payments";
+import { invoicePaperState, type InvoicePaperState } from "../lib/invoice-paper";
 import { pdfCopyStateFor } from "../lib/pdf-copy";
 
-// The one place that reads a proposal's stored **PDF copy** (CONTEXT.md;
-// ADR 0002), ported from FRSG's convex/proposalPdfFiles.ts: the file a
-// proposal's present state calls for, and how a file is let go of. Kept apart
+// The one place that reads a proposal's or an invoice's stored **PDF copy**
+// (CONTEXT.md; ADR 0002), ported from FRSG's convex/proposalPdfFiles.ts: the
+// file the present state calls for, and how a file is let go of. Kept apart
 // from convex/pdfCopies.ts, which renders and serves the file, because the
-// lifecycle in convex/proposals.ts needs these answers without pulling in the
-// renderer behind them.
+// lifecycles in convex/proposals.ts and convex/invoices.ts need these answers
+// without pulling in the renderer behind them.
 
 export type PdfCopy = NonNullable<Doc<"proposals">["pdfCopy"]>;
 
@@ -31,4 +33,39 @@ export async function discardPdfCopy(ctx: MutationCtx, proposal: Doc<"proposals"
   if (!proposal.pdfCopy) return;
   await ctx.storage.delete(proposal.pdfCopy.storageId);
   await ctx.db.patch(proposal._id, { pdfCopy: undefined });
+}
+
+export type InvoicePdfCopy = NonNullable<Doc<"invoices">["pdfCopy"]>;
+
+// Which paper a sent or void invoice is now: sent, or stamped PAID or VOID.
+// A draft has no paper to keep, and answers nothing.
+export async function invoicePaperStateOf(
+  ctx: QueryCtx,
+  invoice: Doc<"invoices">,
+): Promise<InvoicePaperState | null> {
+  if (invoice.state === "draft") return null;
+  return invoicePaperState({ stamp: invoiceStamp(invoice, await paymentFor(ctx, invoice._id)) });
+}
+
+// An invoice's stored file, only while it is the paper the invoice stands on:
+// a file of the unstamped sheet is never handed out once the sheet says PAID.
+export async function currentInvoicePdfCopyOf(
+  ctx: QueryCtx,
+  invoice: Doc<"invoices">,
+): Promise<InvoicePdfCopy | null> {
+  const copy = invoice.pdfCopy;
+  if (!copy) return null;
+  return copy.paperState === (await invoicePaperStateOf(ctx, invoice)) ? copy : null;
+}
+
+// Mark paid, Mark unpaid, Void and Re-send each let an invoice's file go, as
+// `discardPdfCopy` does a proposal's: the stamp changes the sheet, and a
+// re-send is a proposal's re-send over again. The caller's own patch follows.
+export async function discardInvoicePdfCopy(
+  ctx: MutationCtx,
+  invoice: Doc<"invoices">,
+): Promise<void> {
+  if (!invoice.pdfCopy) return;
+  await ctx.storage.delete(invoice.pdfCopy.storageId);
+  await ctx.db.patch(invoice._id, { pdfCopy: undefined });
 }

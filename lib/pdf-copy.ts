@@ -1,5 +1,5 @@
-// The one request that turns a proposal paper into a **PDF copy**, and the
-// one name the file goes by (CONTEXT.md; ADR 0002). Ported from FRSG's
+// The one request that turns a proposal or invoice paper into a **PDF copy**,
+// and the names the file goes by (CONTEXT.md; ADR 0002). Ported from FRSG's
 // shared/proposal-pdf.ts. The renderer is Cloudflare Browser Run's REST `/pdf`
 // endpoint: a hosted Chromium that opens a URL and hands back bytes.
 //
@@ -31,7 +31,8 @@ export type PdfCopyRequest = {
   // signing link, which logs a view on every open (ADR 0001); the request
   // below refuses that path outright as a second guard.
   url: string;
-  // The **Proposal ID** the sheets are footed with.
+  // What the sheets are footed with: the **Proposal ID**, or the invoice
+  // number, `INV-1001`.
   code: string;
 };
 
@@ -81,7 +82,9 @@ function escapeHtml(text: string): string {
 // and the letterhead's image, and marks its root `data-paper="ready"` once all
 // three have arrived (components/paper-screen.tsx). The letterhead's name is
 // the first thing the paper draws, so the pair says: the data is here, and
-// everything the paper is drawn with is here.
+// everything the paper is drawn with is here. The invoice paper sits in the
+// same screen under the same letterhead (components/invoice-paper.tsx), so
+// one mark serves both papers.
 export const ProposalPaperReadySelector =
   '.paper-screen[data-paper="ready"] .pd-letterhead-name';
 
@@ -163,14 +166,26 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
 // file is the **Signed copy**: what the paper is called wherever it is saved.
 // The signed paper says so in its own name because a customer ends up holding
 // both in one folder, and the offer and the contract must not be told apart
-// only by the date on them. Characters no file system takes are dropped rather
-// than escaped, so the name stays readable.
+// only by the date on them.
 export function pdfCopyFilename(code: string, options: { signed?: boolean } = {}): string {
-  const id = code
+  return paperFilename("Proposal", code, options.signed ? " (signed)" : "");
+}
+
+// "Expand Handyman Invoice INV-1001.pdf", and "… (void).pdf" for a void
+// invoice, so a cancelled bill saved beside the one that replaced it is never
+// read as money owed. Sent and paid share a name: the PAID stamp on the sheet
+// says which.
+export function invoicePdfCopyFilename(number: string, options: { void?: boolean } = {}): string {
+  return paperFilename("Invoice", number, options.void ? " (void)" : "");
+}
+
+// Characters no file system takes are dropped rather than escaped, so the
+// name stays readable.
+function paperFilename(paper: "Proposal" | "Invoice", id: string, suffix: string): string {
+  const name = id
     .replace(/\s+/g, " ")
     // eslint-disable-next-line no-control-regex
     .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "")
     .trim();
-  const signed = options.signed ? " (signed)" : "";
-  return `Expand Handyman Proposal${id ? ` ${id}` : ""}${signed}.pdf`;
+  return `Expand Handyman ${paper}${name ? ` ${name}` : ""}${suffix}.pdf`;
 }

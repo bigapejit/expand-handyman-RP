@@ -184,5 +184,5 @@ The proposal paper of a sent or approved proposal, or the invoice paper of a sen
 _Avoid_: Proposal PDF, proposal document, attachment
 
 **Render pass**:
-The short-lived key the PDF renderer opens a proposal paper with, instead of a signing link. Each one is made for a single PDF copy, of one proposal in one state, stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view.
+The short-lived key the PDF renderer opens a proposal or invoice paper with, instead of a signing or invoice link. Each one is made for a single PDF copy, of one proposal in one state or one invoice in one paper state (sent, paid or void), stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view and is never logged.
 _Avoid_: Paper token, report token
