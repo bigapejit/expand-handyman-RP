@@ -5,6 +5,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import {
   FileSignature,
   Inbox,
+  Landmark,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -13,8 +14,8 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Component, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Component, Fragment, Suspense, useState, type ReactNode } from "react";
 
 import { Brand } from "@/components/brand";
 import { Monogram } from "@/components/monogram";
@@ -33,6 +34,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useStore, waitingDeposits } from "@/components/prototype-money-in/store";
 import { api } from "@/convex/_generated/api";
 
 const navigation = [
@@ -60,7 +62,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navigation.map((item) => (
-                <SidebarMenuItem key={item.href}>
+                <Fragment key={item.href}>
+                <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={
                       item.href === "/"
@@ -83,7 +86,18 @@ export function AppSidebar() {
                       <UnreadBadge />
                     </Quiet>
                   ) : null}
+                  {item.href === "/invoices" ? (
+                    <Suspense>
+                      <MoneyInBadge on="B" />
+                    </Suspense>
+                  ) : null}
                 </SidebarMenuItem>
+                {item.href === "/invoices" ? (
+                  <Suspense>
+                    <MoneyInItem pathname={pathname} />
+                  </Suspense>
+                ) : null}
+                </Fragment>
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -93,6 +107,53 @@ export function AppSidebar() {
         <AccountCard />
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+// PROTOTYPE (#130): throwaway. The Money in nav item for variant A of the
+// money-in prototype (and as the door to it from any other page), and the
+// count badge: on Money in under A, on Invoices under B, nowhere under C.
+function moneyInVariant(pathname: string, params: URLSearchParams): "A" | "B" | "C" | null {
+  if (!pathname.startsWith("/money-in")) return null;
+  const v = params.get("variant");
+  return v === "B" || v === "C" ? v : "A";
+}
+
+function MoneyInItem({ pathname }: { pathname: string }) {
+  const params = useSearchParams();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const variant = moneyInVariant(pathname, params);
+  if (variant === "B" || variant === "C") return null;
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={variant === "A"}
+        render={
+          <Link href="/money-in?variant=A" onClick={() => isMobile && setOpenMobile(false)}>
+            <Landmark aria-hidden />
+            <span>Money in</span>
+          </Link>
+        }
+      />
+      <MoneyInBadge on="A" />
+    </SidebarMenuItem>
+  );
+}
+
+function MoneyInBadge({ on }: { on: "A" | "B" }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const { statuses } = useStore();
+  const variant = moneyInVariant(pathname, params);
+  const count = waitingDeposits(statuses).length;
+  if (variant !== on || count === 0) return null;
+  return (
+    <SidebarMenuBadge
+      aria-label={`${count} waiting`}
+      className="rounded-full bg-emerald-600 text-white peer-hover/menu-button:text-white peer-data-active/menu-button:text-white"
+    >
+      {count}
+    </SidebarMenuBadge>
   );
 }
 
