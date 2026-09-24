@@ -3,7 +3,8 @@
 import { useQuery } from "convex/react";
 
 import { HubSection } from "@/components/hub-section";
-import { LeadAsked, LeadChat, SendOnThumbtack, StageChip } from "@/components/lead-panel";
+import { StageChip } from "@/components/deal-chips";
+import { LeadAsked, LeadChat, SendOnThumbtack } from "@/components/lead-chat";
 import { FieldHeading } from "@/components/side-panel";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -17,9 +18,9 @@ const dayFormat = new Intl.DateTimeFormat("en-US", {
 });
 
 // The customer's leads, newest first, each laid open with what they asked and
-// the whole Thumbtack chat, under the customer page's sites. Read-only, as
-// on the board: replies go out on Thumbtack, and the stage is moved from the
-// board's panel. A customer the owner added by hand has no leads, so their
+// the whole Thumbtack chat, under the customer page's sites. Read-only:
+// replies go out on Thumbtack, and the stage, its **Deal**'s, is moved on the
+// **Pipeline**. A customer the owner added by hand has no leads, so their
 // page shows no Thumbtack section at all, not even while it loads.
 export function CustomerThumbtack({ customerId }: { customerId: string }) {
   const leads = useQuery(api.leads.forCustomer, {

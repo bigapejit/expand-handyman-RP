@@ -4,12 +4,12 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   FileSignature,
-  Inbox,
   LayoutDashboard,
   LogOut,
   MapPin,
   ReceiptText,
   ShieldCheck,
+  SquareKanban,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,7 +40,7 @@ const navigation = [
   // Straight after the Dashboard: the Site is the page the owner works from.
   { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Customers", href: "/customers", icon: Users },
-  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
+  { title: "Pipeline", href: "/pipeline", icon: SquareKanban },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
   { title: "Staff", href: "/staff", icon: ShieldCheck },
@@ -78,7 +78,7 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/pipeline" ? (
                     <Quiet>
                       <UnreadBadge />
                     </Quiet>
@@ -96,10 +96,11 @@ export function AppSidebar() {
   );
 }
 
-// Unread Thumbtack leads on the nav item. The sidebar renders outside the
-// owner gate and `unreadCount` throws for anyone but the owner, so it asks only
-// once Convex knows the owner is signed in (the gate's own query, shared), and
-// shows nothing until it hears back or while there are none.
+// Unread Thumbtack leads on open deals, on the **Pipeline**'s nav item. The
+// sidebar renders outside the owner gate and `unreadCount` throws for anyone
+// but the owner, so it asks only once Convex knows the owner is signed in (the
+// gate's own query, shared), and shows nothing until it hears back or while
+// there are none.
 function UnreadBadge() {
   const auth = useConvexAuth();
   const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");

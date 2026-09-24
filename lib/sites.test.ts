@@ -4,6 +4,7 @@ import {
   createSiteName,
   siteActivityLabel,
   siteCityLine,
+  siteAddressLine,
   siteDeleteRefusal,
   siteStreetLine,
 } from "./sites";
@@ -64,6 +65,13 @@ describe("the paper's two address lines", () => {
   it("leaves out the parts a site does not have", () => {
     expect(siteStreetLine({ ...site, addressLine2: "" })).toBe("4410 NE 94th St");
     expect(siteCityLine({ ...site, postalCode: "" })).toBe("Vancouver, WA");
+  });
+
+  it("joins both into one line for a card or a map link", () => {
+    expect(siteAddressLine(site)).toBe("4410 NE 94th St, Apt 2, Vancouver, WA 98665");
+    expect(siteAddressLine({ ...site, addressLine2: "", postalCode: "" })).toBe(
+      "4410 NE 94th St, Vancouver, WA",
+    );
   });
 });
 

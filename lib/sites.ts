@@ -44,6 +44,11 @@ export function siteCityLine(site: SiteAddress) {
   return joinParts([site.city, regionLine]);
 }
 
+/** Both lines as one, `4410 NE 94th St, Apt 2, Vancouver, WA 98665`, for a card or a map link. */
+export function siteAddressLine(site: SiteAddress) {
+  return joinParts([siteStreetLine(site), siteCityLine(site)]);
+}
+
 function joinParts(parts: string[], separator = ", ") {
   return parts
     .map((part) => part.trim())

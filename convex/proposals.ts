@@ -16,7 +16,7 @@ import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import { lookUpSiteTax } from "./salesTax";
-import { advanceForCustomer } from "./leads";
+import { advanceForSite } from "./deals";
 import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
@@ -808,8 +808,9 @@ export const sendWithLink = internalMutation({
       sentAt: now,
       updatedAt: now,
     });
-    // A proposal sent is a Thumbtack lead quoted (CONTEXT.md, **Stage**).
-    await advanceForCustomer(ctx, customer._id, "sent");
+    // A proposal sent moves the site's open **Deal**s to Sent out
+    // (CONTEXT.md, **Stage**).
+    await advanceForSite(ctx, site, "sent");
     await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
   },
 });
@@ -1012,8 +1013,8 @@ export const approveWithLink = internalMutation({
       updatedAt: now,
     });
     await endSigningLinks(ctx, proposal._id, "approved", now);
-    // And an approved one is the customer's Thumbtack leads won.
-    await advanceForCustomer(ctx, site.customerId, "approved");
+    // And an approved one is the site's open **Deal**s won.
+    await advanceForSite(ctx, site, "approved");
     // The offer's PDF copy is not the signed copy, and goes with the state it
     // printed. The signed copy is made on its first download.
     await discardPdfCopy(ctx, proposal);

@@ -2,16 +2,15 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
-  mutation,
   query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { requireOwner } from "./auth";
-import { leadStage } from "./schema";
+import { dealForLead, moveDeal } from "./deals";
 import { normalizePhone } from "../lib/customer";
+import { isOpen, stageOnCustomerReply } from "../lib/pipeline";
 import {
-  OPEN_STAGES,
   PLACEHOLDER_CATEGORY,
   UNNAMED_CUSTOMER,
   eventKind,
@@ -19,9 +18,6 @@ import {
   isUnread,
   parseLeadEvent,
   parseMessageEvent,
-  stageOnCustomerReply,
-  stageOnProposalApproved,
-  stageOnProposalSent,
   type ParsedLead,
   type ParsedMessage,
 } from "../lib/thumbtack";
@@ -30,7 +26,9 @@ type Outcome = Doc<"thumbtackEvents">["outcome"];
 
 // One Thumbtack webhook delivery, already authorized by convex/http.ts. The
 // event is logged whatever becomes of it, in the same transaction as what it
-// wrote, so the log never claims a lead that is not there.
+// wrote, so the log never claims a lead that is not there. Every lead is a
+// **Deal** from the moment it lands (convex/deals.ts), and the deal holds its
+// stage.
 export const receive = internalMutation({
   args: { body: v.any() },
   handler: async (ctx, { body }) => {
@@ -79,15 +77,28 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
     return { outcome: "duplicate" };
   if (existing) {
     // A message got here first and made a stand-in; the lead's own details
-    // replace it, and the stage, chat and Unread it has gathered stay. The
-    // customer is matched as a fresh lead's would be, so a returning customer
-    // whose reply beat the lead webhook still ends up with one record.
+    // replace it, and the deal's stage, the chat and Unread it has gathered
+    // stay. The customer is matched as a fresh lead's would be, so a
+    // returning customer whose reply beat the lead webhook still ends up with
+    // one record.
     await ctx.db.patch(existing._id, { ...fields, phone });
+    const deal = await dealForLead(ctx, existing);
+    // The stand-in's job was only "Thumbtack message", begun at the first
+    // message; the lead says what and when.
+    if (deal.title === PLACEHOLDER_CATEGORY)
+      await ctx.db.patch(deal._id, {
+        title: fields.category,
+        createdAt: fields.arrivedAt,
+        updatedAt: Date.now(),
+      });
     const matched =
       (await customerOfThumbtackCustomer(ctx, fields.thumbtackCustomerId, existing._id)) ??
       (await customerWithPhone(ctx, phone));
     if (matched && matched !== existing.customerId) {
       await ctx.db.patch(existing._id, { customerId: matched });
+      // A site the owner had put on the stand-in's deal is the stand-in's,
+      // and a deal's site must be its own customer's, so the deal leaves it.
+      await ctx.db.patch(deal._id, { customerId: matched, siteId: undefined });
       await dropBareStandIn(ctx, existing.customerId);
     } else await fillPlaceholderCustomer(ctx, existing.customerId, parsed);
     return { outcome: "lead", note: "Filled in a placeholder made by an earlier message." };
@@ -103,14 +114,10 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
       // stays on the lead, as sent, so the owner can still read it.
       ...thumbtackPhone(phone),
     }));
-  const now = Date.now();
-  await ctx.db.insert("leads", {
-    ...fields,
-    phone,
-    customerId,
-    stage: "new",
-    stageChangedAt: now,
-  });
+  const leadId = await ctx.db.insert("leads", { ...fields, phone, customerId });
+  const lead = await ctx.db.get(leadId);
+  if (!lead) throw new Error("The lead did not save.");
+  await dealForLead(ctx, lead);
   return { outcome: "lead" };
 }
 
@@ -140,26 +147,29 @@ async function receiveMessage(ctx: MutationCtx, body: unknown): Promise<Received
   });
   // Deliveries may come out of order; the latest send wins.
   const latest = (held: number | undefined) => Math.max(held ?? 0, parsed.sentAt);
-  // Only the customer answering moves a lead: to Talking, once the owner has
-  // written too. The owner's own message alone moves nothing.
-  const stage =
-    parsed.from === "customer"
-      ? stageOnCustomerReply(lead.stage, lead.lastBusinessMessageAt !== undefined)
-      : lead.stage;
   await ctx.db.patch(lead._id, {
     lastMessageAt: latest(lead.lastMessageAt),
     ...(parsed.from === "customer"
       ? { lastCustomerMessageAt: latest(lead.lastCustomerMessageAt) }
       : { lastBusinessMessageAt: latest(lead.lastBusinessMessageAt) }),
-    ...(stage === lead.stage ? {} : { stage, stageChangedAt: Date.now() }),
   });
+  // Only the customer answering moves the lead's deal: to Talking, once the
+  // owner has written too. The owner's own message alone moves nothing.
+  if (parsed.from === "customer") {
+    const deal = await dealForLead(ctx, lead);
+    await moveDeal(
+      ctx,
+      deal,
+      stageOnCustomerReply(deal.stage, lead.lastBusinessMessageAt !== undefined),
+    );
+  }
   return { outcome: "message", ...(note ? { note } : {}) };
 }
 
 // A message for a lead the app never saw, as for a lead from before the
 // webhook was switched on. It still needs a lead to sit under, so one is made
-// with what the message says, and the lead's own webhook fills it in if it
-// ever comes.
+// with what the message says, with its deal, and the lead's own webhook fills
+// both in if it ever comes.
 async function placeholderLead(ctx: MutationCtx, message: ParsedMessage) {
   const thumbtackCustomerId = message.thumbtackCustomerId ?? "";
   const customerId =
@@ -170,7 +180,6 @@ async function placeholderLead(ctx: MutationCtx, message: ParsedMessage) {
       email: "",
       phone: "",
     }));
-  const now = Date.now();
   const leadId = await ctx.db.insert("leads", {
     customerId,
     negotiationId: message.negotiationId,
@@ -181,12 +190,11 @@ async function placeholderLead(ctx: MutationCtx, message: ParsedMessage) {
     details: [],
     location: { city: "", state: "", zipCode: "" },
     attachments: [],
-    stage: "new",
-    stageChangedAt: now,
   });
   const lead = await ctx.db.get(leadId);
   if (!lead) throw new Error("The placeholder lead did not save.");
-  return lead;
+  const deal = await dealForLead(ctx, lead);
+  return { ...lead, dealId: deal._id };
 }
 
 // The placeholder's customer takes the lead's name and number, but only while
@@ -215,7 +223,7 @@ function thumbtackPhone(raw: string) {
 async function dropBareStandIn(ctx: MutationCtx, customerId: Id<"customers">) {
   const customer = await ctx.db.get(customerId);
   if (!customer || customer.email || customer.phone) return;
-  for (const table of ["leads", "sites"] as const) {
+  for (const table of ["leads", "deals", "sites"] as const) {
     const held = await ctx.db
       .query(table)
       .withIndex("by_customer", (q) => q.eq("customerId", customerId))
@@ -260,42 +268,16 @@ async function customerWithPhone(ctx: QueryCtx, phone: string) {
   return null;
 }
 
-async function lastMessage(ctx: QueryCtx, leadId: Id<"leads">) {
-  const message = await ctx.db
-    .query("leadMessages")
-    .withIndex("by_lead", (q) => q.eq("leadId", leadId))
-    .order("desc")
-    .first();
-  return message ? { text: message.text, from: message.from, sentAt: message.sentAt } : null;
+// A lead's stage, which its deal holds. A lead from before deals that
+// `migrations:dealsFromLeads` has not reached yet still reads the stage it
+// carried itself, so the window between deploy and migration shows no change.
+async function stageOfLead(ctx: QueryCtx, lead: Doc<"leads">) {
+  const deal = lead.dealId ? await ctx.db.get(lead.dealId) : null;
+  return deal?.stage ?? lead.stage ?? "new";
 }
 
-// The **Thumbtack board**: every lead, newest first, with who it is from, the
-// last word in its chat and whether it is Unread. The page splits open from
-// Closed.
-export const board = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireOwner(ctx);
-    const leads = await ctx.db.query("leads").take(1000);
-    const rows = await Promise.all(
-      leads.map(async (lead) => {
-        const customer = await ctx.db.get(lead.customerId);
-        return {
-          ...lead,
-          customerName: customer?.name ?? "",
-          // The lead's raw number stands in when the customer holds none.
-          phone: customer?.phone || lead.phone || "",
-          phoneFrom: customer?.phoneFrom,
-          lastMessage: await lastMessage(ctx, lead._id),
-          unread: isUnread(lead),
-        };
-      }),
-    );
-    return rows.sort((a, b) => b.arrivedAt - a.arrivedAt);
-  },
-});
-
-// A customer's leads, newest first, each with its whole **Thumbtack chat**.
+// A customer's leads, newest first, each with its whole **Thumbtack chat**
+// and its deal's stage.
 export const forCustomer = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, { customerId }) => {
@@ -307,6 +289,7 @@ export const forCustomer = query({
     const rows = await Promise.all(
       leads.map(async (lead) => ({
         ...lead,
+        stage: await stageOfLead(ctx, lead),
         unread: isUnread(lead),
         messages: await ctx.db
           .query("leadMessages")
@@ -319,77 +302,17 @@ export const forCustomer = query({
   },
 });
 
-// One lead's **Thumbtack chat**, oldest first, for the board's panel: `board`
-// carries only the last message. Null when there is no such lead.
-export const thread = query({
-  args: { leadId: v.id("leads") },
-  handler: async (ctx, { leadId }) => {
-    await requireOwner(ctx);
-    if (!(await ctx.db.get(leadId))) return null;
-    return await ctx.db
-      .query("leadMessages")
-      .withIndex("by_lead", (q) => q.eq("leadId", leadId))
-      .order("asc")
-      .collect();
-  },
-});
-
-// Opening a lead clears **Unread**; nothing on Thumbtack does.
-export const open = mutation({
-  args: { leadId: v.id("leads") },
-  handler: async (ctx, { leadId }) => {
-    await requireOwner(ctx);
-    if (!(await ctx.db.get(leadId))) throw new Error("Lead not found.");
-    await ctx.db.patch(leadId, { openedAt: Date.now() });
-  },
-});
-
-// The owner moving a lead by hand, to any stage: only the app's own moves are
-// forward-only.
-export const setStage = mutation({
-  args: { leadId: v.id("leads"), stage: leadStage },
-  handler: async (ctx, { leadId, stage }) => {
-    await requireOwner(ctx);
-    const lead = await ctx.db.get(leadId);
-    if (!lead) throw new Error("Lead not found.");
-    if (lead.stage === stage) return;
-    await ctx.db.patch(leadId, { stage, stageChangedAt: Date.now() });
-  },
-});
-
-// The nav badge: open leads the owner has not opened since the customer wrote.
+// The nav badge: Unread leads whose deal is still open. Unread is read first,
+// so only the few leads with news cost a deal read; the newest leads first,
+// since they are the ones likely to have any.
 export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
     await requireOwner(ctx);
     let count = 0;
-    for (const stage of OPEN_STAGES) {
-      const leads = await ctx.db
-        .query("leads")
-        .withIndex("by_stage", (q) => q.eq("stage", stage))
-        .take(1000);
-      count += leads.filter(isUnread).length;
+    for (const lead of await ctx.db.query("leads").order("desc").take(1000)) {
+      if (isUnread(lead) && isOpen(await stageOfLead(ctx, lead))) count++;
     }
     return count;
   },
 });
-
-// The app moving a customer's leads when a proposal to them is sent or
-// approved (CONTEXT.md, **Stage**). Every lead of the customer moves: a
-// proposal is for a site, and nothing ties it to one of their leads.
-export async function advanceForCustomer(
-  ctx: MutationCtx,
-  customerId: Id<"customers">,
-  event: "sent" | "approved",
-) {
-  const move = event === "sent" ? stageOnProposalSent : stageOnProposalApproved;
-  const leads = await ctx.db
-    .query("leads")
-    .withIndex("by_customer", (q) => q.eq("customerId", customerId))
-    .collect();
-  const now = Date.now();
-  for (const lead of leads) {
-    const stage = move(lead.stage);
-    if (stage !== lead.stage) await ctx.db.patch(lead._id, { stage, stageChangedAt: now });
-  }
-}

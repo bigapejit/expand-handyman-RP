@@ -9,6 +9,7 @@ import {
   formatPhone,
   normalizeEmail,
   parseCustomer,
+  parseDealCustomer,
 } from "../lib/customer";
 
 const valid = {
@@ -98,6 +99,29 @@ describe("parseCustomer", () => {
   });
   test("rejects fields over the 500 character cap", () => {
     expect(() => parseCustomer({ ...valid, name: "x".repeat(501) })).toThrow();
+  });
+});
+
+describe("parseDealCustomer", () => {
+  test("takes a name alone, as the New deal dialog may", () => {
+    expect(parseDealCustomer({ name: " Tom Brandt ", email: "", phone: "" })).toEqual({
+      name: "Tom Brandt",
+      email: "",
+      phone: "",
+    });
+  });
+  test("still refuses a bad phone or email when one is typed", () => {
+    expect(() => parseDealCustomer({ name: "Tom", email: "", phone: "555-12" })).toThrow(
+      "Enter a valid US phone number.",
+    );
+    expect(() => parseDealCustomer({ name: "Tom", email: "tom@", phone: "" })).toThrow(
+      "Enter a valid email address.",
+    );
+  });
+  test("requires a name", () => {
+    expect(() => parseDealCustomer({ name: "  ", email: "", phone: "" })).toThrow(
+      /customer name/i,
+    );
   });
 });
 
