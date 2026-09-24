@@ -18,8 +18,10 @@ import { discardPdfCopy } from "./pdfCopyFiles";
 import {
   freezeOffer,
   offerOf,
+  offerTitle,
   paperOf,
   sendBlockersFor,
+  type Offer,
   type StaffPaper,
 } from "./offers";
 import { lookUpSiteTax } from "./salesTax";
@@ -107,7 +109,6 @@ export const forSite = query({
         .collect(),
       proposalsAtSite(ctx, site._id),
     ]);
-    const bySolutionId = new Map(solutions.map((s) => [s._id, s] as const));
     return {
       customerEmail,
       solutions: solutions.map((solution) => ({
@@ -120,39 +121,36 @@ export const forSite = query({
       })),
       // In number order, so an edit never reshuffles the list under the
       // cursor.
-      proposals: await Promise.all(
-        proposals
-          .sort((x, y) => x.number - y.number)
-          .map(async (proposal) => {
-            const read = proposalForOwner(proposal, site, (id) => bySolutionId.get(id));
-            return {
-              ...read,
-              // What Send would refuse, asked the way `sendWithLink` asks
-              // it, so the button names the same reasons.
-              sendBlockers:
-                proposal.state === "draft"
-                  ? [
-                      ...sendBlockers(
-                        read.solutions.map((solution) => solution.priceCents),
-                        proposal.tax,
-                      ),
-                      ...depositBlockers(read.payment),
-                      ...recipientBlockers(customerEmail),
-                    ]
-                  : [],
-              sentAt: proposal.sentAt ?? null,
-              sentTo: proposal.frozen?.sentTo ?? null,
-              ...(await linkHistory(ctx, proposal._id)),
-              ...decisionForOwner(proposal),
-              // Approving one proposal leaves the site's others alone, so
-              // the panel says how many are still out for the owner to
-              // retire by hand.
-              otherSentAtSite: proposals.filter(
-                (other) => other._id !== proposal._id && other.state === "sent",
-              ).length,
-            };
-          }),
-      ),
+      proposals: (
+        await Promise.all(
+          proposals
+            .sort((x, y) => x.number - y.number)
+            .map(async (proposal) => {
+              const offer = await offerOf(ctx, proposal);
+              if (!offer) return [];
+              return [
+                {
+                  ...proposalForOwner(proposal, site, offer),
+                  // What Send would refuse, asked of the same offer the way
+                  // `sendWithLink` asks it, so the button names the same
+                  // reasons.
+                  sendBlockers:
+                    proposal.state === "draft" ? sendBlockersFor(offer, customerEmail) : [],
+                  sentAt: proposal.sentAt ?? null,
+                  sentTo: proposal.frozen?.sentTo ?? null,
+                  ...(await linkHistory(ctx, proposal._id)),
+                  ...decisionForOwner(proposal),
+                  // Approving one proposal leaves the site's others alone, so
+                  // the panel says how many are still out for the owner to
+                  // retire by hand.
+                  otherSentAtSite: proposals.filter(
+                    (other) => other._id !== proposal._id && other.state === "sent",
+                  ).length,
+                },
+              ];
+            }),
+        )
+      ).flat(),
     };
   },
 });
@@ -177,21 +175,17 @@ export const list = query({
       const customer = customers.get(site.customerId);
       if (!customer) continue;
 
-      const solutions = new Map<Id<"solutions">, Doc<"solutions">>();
-      for (const id of proposal.solutionIds) {
-        const solution = await ctx.db.get(id);
-        if (solution) solutions.set(id, solution);
-      }
-      const read = proposalForOwner(proposal, site, (id) => solutions.get(id));
+      const offer = await offerOf(ctx, proposal);
+      if (!offer) continue;
       rows.push({
-        proposalId: read.proposalId,
+        proposalId: proposal._id,
         siteId: site._id,
         customerId: customer._id,
         customerName: customer.name,
-        code: read.code,
-        title: read.title,
-        state: read.state,
-        totalCents: read.money.totalCents,
+        code: offer.code,
+        title: offerTitle(proposal, offer),
+        state: proposal.state,
+        totalCents: offer.totalCents,
       });
     }
     return rows;
@@ -268,19 +262,16 @@ export const dashboard = query({
 // wrong, and the row is left out rather than pointing nowhere.
 async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
   const site = await ctx.db.get(proposal.siteId);
-  if (!site || !proposal.frozen) return null;
-  const offer = frozenOffer(proposal.frozen);
+  const frozen = proposal.frozen;
+  if (!site || !frozen) return null;
   return {
     proposalId: proposal._id,
     siteId: site._id,
     customerId: site.customerId,
-    customerName: proposal.frozen.customerName,
-    code: offer.code,
-    title: proposalDisplayName(
-      proposal.name,
-      offer.solutions.map((solution) => solution.title),
-    ),
-    totalCents: offer.money.totalCents,
+    customerName: frozen.customerName,
+    code: frozen.code,
+    title: offerTitle(proposal, frozen),
+    totalCents: frozen.totalCents,
   };
 }
 
@@ -548,17 +539,10 @@ export const remove = mutation({
 });
 
 // A proposal as the tab lists it and the panel edits it: its solutions in the
-// order it offers them, and every figure derived from them in one place, so no
-// reader works out money of its own. Past Draft every figure is the one Send
-// froze, and the Proposal ID with them.
-function proposalForOwner(
-  proposal: Doc<"proposals">,
-  site: Doc<"sites">,
-  solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
-) {
-  const offer = proposal.frozen
-    ? frozenOffer(proposal.frozen)
-    : liveOffer(proposal, site, solutionById);
+// order it offers them, and every figure read off its offer (convex/offers.ts),
+// so no reader works out money of its own. Past Draft every figure is the one
+// Send froze, and the Proposal ID with them.
+function proposalForOwner(proposal: Doc<"proposals">, site: Doc<"sites">, offer: Offer) {
   return {
     proposalId: proposal._id,
     siteId: site._id,
@@ -567,68 +551,25 @@ function proposalForOwner(
     // The name as stored, for the field to show, and the name as read, for
     // everything that has to call the proposal something.
     name: proposal.name ?? null,
-    title: proposalDisplayName(
-      proposal.name,
-      offer.solutions.map((solution) => solution.title),
-    ),
+    title: offerTitle(proposal, offer),
     state: proposal.state,
     recommended: proposal.recommended,
-    solutions: offer.solutions,
+    solutions: offer.solutions.map((solution) => ({
+      solutionId: solution.solutionId,
+      title: solution.title,
+      priceCents: solution.priceCents,
+    })),
     notes: offer.notes ?? null,
     tax: offer.tax,
-    money: offer.money,
+    money: {
+      subtotalCents: offer.subtotalCents,
+      taxCents: offer.taxCents,
+      totalCents: offer.totalCents,
+    },
     // The percent the proposal keeps even under a set amount, for switching
     // back to it.
     depositPercent: offer.depositPercent,
-    payment: splitPayment(offer.money.totalCents, storedDeposit(offer)),
-  };
-}
-
-function liveOffer(
-  proposal: Doc<"proposals">,
-  site: Doc<"sites">,
-  solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
-) {
-  // An id naming a solution since deleted is simply not there.
-  const priced = proposal.solutionIds.flatMap((id) => {
-    const solution = solutionById(id);
-    return solution ? [{ solution, price: priceStoredSolution(solution) }] : [];
-  });
-  return {
-    code: proposalCode(site.name, proposal.number),
-    solutions: priced.map(({ solution, price }) => ({
-      solutionId: solution._id,
-      title: solution.title,
-      priceCents: price?.priceCents ?? null,
-    })),
-    notes: proposal.notes,
-    tax: proposal.tax,
-    money: proposalMoney(
-      priced.map(({ price }) => price),
-      proposal.tax,
-    ),
-    depositPercent: proposal.depositPercent,
-    depositCents: proposal.depositCents,
-  };
-}
-
-function frozenOffer(frozen: FrozenProposal) {
-  return {
-    code: frozen.code,
-    solutions: frozen.solutions.map((solution) => ({
-      solutionId: solution.solutionId,
-      title: solution.title,
-      priceCents: solution.priceCents as number | null,
-    })),
-    notes: frozen.notes,
-    tax: frozen.tax,
-    money: {
-      subtotalCents: frozen.subtotalCents,
-      taxCents: frozen.taxCents,
-      totalCents: frozen.totalCents,
-    },
-    depositPercent: frozen.depositPercent,
-    depositCents: frozen.depositCents,
+    payment: splitPayment(offer.totalCents, storedDeposit(offer)),
   };
 }
 
