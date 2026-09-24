@@ -219,7 +219,8 @@ export type SendBlocker =
   | "unpriced_solution"
   | "no_tax_rate"
   | "deposit_over_total"
-  | "no_email";
+  | "no_email"
+  | "deal_moved";
 
 // Every reason at once, in the order they read: what the Proposal is missing,
 // then what is wrong with what it holds. A Draft may hold zero Solutions and
@@ -258,6 +259,21 @@ export function recipientBlockers(email: string | null): SendBlocker[] {
   return email === null ? ["no_email"] : [];
 }
 
+/**
+ * A proposal made for a **Deal** is that deal's offer at that site. Had the
+ * deal moved to another site (or to none) since, sending would make an offer
+ * the deal never shows or follows; the owner moves it back or drafts afresh.
+ * `deal` is the deal's site now, `undefined` when the deal is gone; `null`
+ * when the proposal was made for no deal.
+ */
+export function dealBlockers(
+  deal: { siteId?: string } | null | undefined,
+  siteId: string,
+): SendBlocker[] {
+  if (deal === null) return [];
+  return deal?.siteId === siteId ? [] : ["deal_moved"];
+}
+
 export function sendBlockerMessage(blocker: SendBlocker): string {
   switch (blocker) {
     case "no_solutions":
@@ -270,6 +286,8 @@ export function sendBlockerMessage(blocker: SendBlocker): string {
       return "The deposit is more than this Proposal's total.";
     case "no_email":
       return "The customer has no email address to send it to.";
+    case "deal_moved":
+      return "The deal this Proposal is for has moved to another site.";
   }
 }
 

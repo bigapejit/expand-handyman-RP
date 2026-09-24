@@ -580,6 +580,37 @@ describe("board", () => {
     );
   });
 
+  test("Send refuses a proposal whose deal has moved since the draft was made", async () => {
+    const { owner, customer, site, row } = fixture();
+    const customerId = await customer();
+    const here = await site(customerId);
+    const there = await site(customerId, "88 Main St");
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    const solutionId = await owner.mutation(api.solutions.create, { siteId: here, title: "Fix gate" });
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      description: "Rehang the gate.",
+      lineItems: [{ name: "Gate labor", quantity: 2, unitCostCents: 25_000, unit: "HR" }],
+    });
+    const proposalId = await owner.action(api.proposals.create, { siteId: here, dealId });
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
+    await owner.mutation(api.deals.setSite, { dealId, siteId: there });
+    // The panel's button says so first, and Send says the same.
+    const tab = await owner.query(api.proposals.forSite, { siteId: here });
+    expect(tab.proposals.find((p) => p.proposalId === proposalId)?.sendBlockers).toEqual(["deal_moved"]);
+    await expect(owner.action(api.proposals.send, { proposalId })).rejects.toThrow(/deal_moved/);
+    expect(await row(dealId)).toMatchObject({ stage: "new", proposal: null });
+    // Moved back, it goes, and moves its deal.
+    await owner.mutation(api.deals.setSite, { dealId, siteId: here });
+    await owner.action(api.proposals.send, { proposalId });
+    expect(await row(dealId)).toMatchObject({ stage: "quoted", proposal: { proposalId } });
+  });
+
   test("two free jobs at one site: the offer goes to the one touched last, not both", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();

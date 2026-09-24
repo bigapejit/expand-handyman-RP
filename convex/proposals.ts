@@ -52,6 +52,7 @@ import {
   proposalMoney,
   recipientBlockers,
   sendBlockerMessage,
+  dealBlockers,
   sendBlockers,
   splitPayment,
   storedDeposit,
@@ -132,6 +133,7 @@ export const forSite = query({
                       ),
                       ...depositBlockers(read.payment),
                       ...recipientBlockers(customerEmail),
+                      ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
                     ]
                   : [],
               sentAt: proposal.sentAt ?? null,
@@ -741,6 +743,12 @@ export const send = action({
   },
 });
 
+// The deal a proposal was made for, for `dealBlockers`: null when it was made
+// for none, undefined when that deal is gone.
+async function dealOfProposal(ctx: QueryCtx, proposal: Doc<"proposals">) {
+  return proposal.dealId ? (await ctx.db.get(proposal.dealId)) ?? undefined : null;
+}
+
 // Freezes the offer as it stands (FRSG's frozen block, plus the Proposal ID,
 // the customer's name, the site's address, the email it goes to and the
 // Estimator), mints the link and schedules its email. The email is scheduled,
@@ -776,6 +784,7 @@ export const sendWithLink = internalMutation({
       ),
       ...depositBlockers(splitPayment(money.totalCents, storedDeposit(proposal))),
       ...recipientBlockers(sentTo),
+      ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
     ]);
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
