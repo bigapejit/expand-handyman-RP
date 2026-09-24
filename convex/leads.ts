@@ -98,11 +98,22 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
       await ctx.db.patch(existing._id, { customerId: matched });
       // A site the owner had put on the stand-in's deal is the stand-in's,
       // and a deal's site must be its own customer's, so the deal leaves it,
-      // and with it any proposal sent from there.
+      // and with it any proposal sent from there. A stage that proposal had
+      // moved it to was the stand-in's too: the deal goes back to where the
+      // chat so far puts it, New or Talking.
+      const stage = !deal.proposalId
+        ? deal.stage
+        : existing.lastCustomerMessageAt === undefined
+          ? "new"
+          : stageOnCustomerReply("new", existing.lastBusinessMessageAt !== undefined);
+      const now = Date.now();
       await ctx.db.patch(deal._id, {
         customerId: matched,
         siteId: undefined,
         proposalId: undefined,
+        stage,
+        ...(stage === deal.stage ? {} : { stageChangedAt: now }),
+        updatedAt: now,
       });
       await dropBareStandIn(ctx, existing.customerId);
     } else await fillPlaceholderCustomer(ctx, existing.customerId, parsed);

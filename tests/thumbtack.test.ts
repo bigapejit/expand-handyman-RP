@@ -242,7 +242,8 @@ describe("a lead event", () => {
         createdAt: 0,
         updatedAt: 0,
       });
-      await ctx.db.patch(standIn._id, { siteId, proposalId });
+      // ...and that proposal had moved the stand-in's deal to Sent out.
+      await ctx.db.patch(standIn._id, { siteId, proposalId, stage: "quoted" });
     });
 
     expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
@@ -259,6 +260,9 @@ describe("a lead event", () => {
     const moved = (await deals()).find((d) => d._id === standIn._id);
     expect(moved?.siteId).toBeUndefined();
     expect(moved?.proposalId).toBeUndefined();
+    // The stage that proposal set goes with it; only the owner has written
+    // on this lead, so it is back at New.
+    expect(moved?.stage).toBe("new");
   });
 
   test("arriving twice is a duplicate with one lead", async () => {
