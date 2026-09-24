@@ -248,8 +248,8 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   if (held) return held;
   const now = Date.now();
   const moved =
-    lead.stage === "quoted" || lead.stage === "won"
-      ? await proposalThatMoved(ctx, lead.customerId, lead.arrivedAt, lead.stage === "won")
+    (lead.stage === "quoted" || lead.stage === "won") && lead.stageChangedAt !== undefined
+      ? await proposalThatMoved(ctx, lead.customerId, lead.stageChangedAt, lead.stage === "won")
       : null;
   const dealId = await ctx.db.insert("deals", {
     customerId: lead.customerId,
@@ -270,13 +270,15 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   return deal;
 }
 
-// Which of a customer's proposals the old board's move stood for: the
-// latest sent from any of their sites since the lead arrived, or, for a lead
-// at Won, the approved one. Null when none is found.
+// Which of a customer's proposals the old board's move stood for. That move
+// stamped the lead's `stageChangedAt` in the same transaction as the
+// proposal's own send (`sentAt`) or approval (`approvedAt`), so the proposal
+// whose stamp matches is the one; a lead the owner moved by hand since
+// matches nothing and takes none. A minute's slack covers clocks read twice.
 async function proposalThatMoved(
   ctx: QueryCtx,
   customerId: Id<"customers">,
-  since: number,
+  stageChangedAt: number,
   won: boolean,
 ) {
   const sites = await ctx.db
@@ -284,19 +286,21 @@ async function proposalThatMoved(
     .withIndex("by_customer", (q) => q.eq("customerId", customerId))
     .collect();
   let pick: SentProposal | null = null;
+  let gap = 60_000;
   for (const site of sites) {
     const proposals = await ctx.db
       .query("proposals")
       .withIndex("by_site", (q) => q.eq("siteId", site._id))
       .collect();
     for (const p of proposals) {
-      if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
-      const better = !pick
-        ? true
-        : won && (p.state === "approved") !== (pick.state === "approved")
-          ? p.state === "approved"
-          : (p.sentAt ?? 0) > (pick.sentAt ?? 0);
-      if (better) pick = { ...p, state: p.state };
+      if (p.state === "draft" || !p.frozen) continue;
+      const stamp = won ? p.approvedAt : p.sentAt;
+      if (stamp === undefined) continue;
+      const off = Math.abs(stamp - stageChangedAt);
+      if (off <= gap) {
+        gap = off;
+        pick = { ...p, state: p.state };
+      }
     }
   }
   return pick;

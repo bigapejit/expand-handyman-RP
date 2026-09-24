@@ -603,28 +603,39 @@ describe("dealsFromLeads", () => {
     const customerId = await customer();
     const siteId = await site(customerId);
     const proposalId = await send(siteId);
-    await t.run((ctx) =>
-      ctx.db.insert("leads", {
-        customerId,
-        negotiationId: "902",
-        thumbtackCustomerId: "c-1",
-        arrivedAt: Date.UTC(2026, 8, 20),
-        category: "Fence Repair",
-        description: "Gate sags.",
-        details: [],
-        location: { city: "Vancouver", state: "WA", zipCode: "98660" },
-        attachments: [],
-        stage: "quoted",
-        stageChangedAt: Date.now(),
-      }),
-    );
-    expect(await t.mutation(internal.migrations.dealsFromLeads, {})).toEqual({ made: 1 });
-    const [row] = await owner.query(api.deals.board, {});
-    expect(row).toMatchObject({
+    const movedAt = Date.now();
+    // A later offer to the same customer is another job's: the stamp says
+    // which send moved this lead.
+    vi.advanceTimersByTime(3 * 86_400_000);
+    await send(siteId);
+    const legacyLead = (negotiationId: string, stageChangedAt: number) =>
+      t.run((ctx) =>
+        ctx.db.insert("leads", {
+          customerId,
+          negotiationId,
+          thumbtackCustomerId: "c-1",
+          arrivedAt: Date.UTC(2026, 8, 20),
+          category: "Fence Repair",
+          description: "Gate sags.",
+          details: [],
+          location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+          attachments: [],
+          stage: "quoted",
+          stageChangedAt,
+        }),
+      );
+    await legacyLead("902", movedAt);
+    // Moved to Sent out by hand at some other time: no proposal stands for it.
+    await legacyLead("903", movedAt + 3_600_000);
+    expect(await t.mutation(internal.migrations.dealsFromLeads, {})).toEqual({ made: 2 });
+    const rows = await owner.query(api.deals.board, {});
+    const byLead = (id: string) => rows.find((r) => r.lead?.negotiationId === id);
+    expect(byLead("902")).toMatchObject({
       stage: "quoted",
       site: { siteId },
       proposal: { proposalId, state: "sent" },
     });
+    expect(byLead("903")).toMatchObject({ stage: "quoted", site: null, proposal: null });
   });
 });
 
