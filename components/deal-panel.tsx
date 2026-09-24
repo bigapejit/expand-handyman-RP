@@ -66,7 +66,8 @@ export function DealPanel({
   const siteId = deal.site?.siteId ?? null;
   const photos = usePhotoUploads(siteId);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const siteLine = deal.site?.line ?? "";
+  // The site once picked; until then, where Thumbtack said the job is.
+  const siteLine = deal.site?.line ?? deal.lead?.addressLine ?? "";
 
   return (
     <SidePanel
@@ -110,7 +111,7 @@ export function DealPanel({
                     customerName: deal.customerName,
                     phone: deal.phone ? displayPhone(deal.phone) : "",
                     notes: deal.notes,
-                    siteLine: deal.site?.line ?? null,
+                    siteLine: siteLine || null,
                   },
                   now,
                 )}
@@ -365,6 +366,10 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
     setShown(saved);
     if (!dirty) setText(saved);
   }
+  // What the box holds right now, for a save that lands after more typing:
+  // only a save of the latest text clears `dirty`, so the next blur still
+  // sends the newer text rather than letting the older save overwrite it.
+  const latest = useRef(text);
 
   return (
     <div className="space-y-2">
@@ -379,6 +384,7 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
         value={text}
         maxLength={MAX_NOTES}
         onChange={(event) => {
+          latest.current = event.target.value;
           setText(event.target.value);
           setDirty(true);
           setStatus("idle");
@@ -389,10 +395,12 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
             setDirty(false);
             return;
           }
+          const sent = text;
           setStatus("saving");
           setError("");
-          setNotes({ dealId, notes: text })
+          setNotes({ dealId, notes: sent })
             .then(() => {
+              if (latest.current !== sent) return;
               setDirty(false);
               setStatus("saved");
             })

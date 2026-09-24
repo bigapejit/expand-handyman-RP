@@ -810,7 +810,7 @@ export const sendWithLink = internalMutation({
     });
     // A proposal sent moves the site's open **Deal**s to Sent out
     // (CONTEXT.md, **Stage**).
-    await advanceForSite(ctx, site, "sent");
+    await advanceForSite(ctx, site, "sent", now);
     await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
   },
 });
@@ -1014,7 +1014,7 @@ export const approveWithLink = internalMutation({
     });
     await endSigningLinks(ctx, proposal._id, "approved", now);
     // And an approved one is the site's open **Deal**s won.
-    await advanceForSite(ctx, site, "approved");
+    await advanceForSite(ctx, site, "approved", proposal.sentAt ?? now);
     // The offer's PDF copy is not the signed copy, and goes with the state it
     // printed. The signed copy is made on its first download.
     await discardPdfCopy(ctx, proposal);

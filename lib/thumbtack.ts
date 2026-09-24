@@ -254,6 +254,21 @@ export function conversationUrl(negotiationId: string) {
   return `https://www.thumbtack.com/pro-inbox/messages/${negotiationId}`;
 }
 
+/**
+ * Where the customer said the work is, as one line: "12611 SE 7th St,
+ * Vancouver, WA 98684". Thumbtack often sends only a city and zip, and
+ * sometimes nothing, which reads as "". A **Deal** shows this until the
+ * owner picks a site.
+ */
+export function leadAddressLine(location: LeadLocation): string {
+  const street = [location.address1, location.address2].filter((p) => p?.trim()).join(" ");
+  const region = [location.state, location.zipCode].filter((p) => p.trim()).join(" ");
+  return [street, location.city, region]
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 /** "5m ago", "3h ago", "2d ago": how long before `now` something happened. */
 export function timeAgo(at: number, now: number): string {
   const minutes = Math.floor((now - at) / 60_000);

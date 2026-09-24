@@ -7,6 +7,7 @@ import {
   parseLeadEvent,
   parseMessageEvent,
   timeAgo,
+  leadAddressLine,
   webhookAuthorized,
 } from "./thumbtack";
 
@@ -159,6 +160,18 @@ describe("parseMessageEvent", () => {
     const body = messageBody();
     body.data.sentAt = "not a date";
     expect(parseMessageEvent(body)).toEqual({ fault: "The message has no sentAt." });
+  });
+});
+
+describe("leadAddressLine", () => {
+  it("joins what Thumbtack sent and skips what it did not", () => {
+    expect(
+      leadAddressLine({ address1: "12611 SE 7th St", city: "Vancouver", state: "WA", zipCode: "98684" }),
+    ).toBe("12611 SE 7th St, Vancouver, WA 98684");
+    expect(leadAddressLine({ city: "Vancouver", state: "WA", zipCode: "98684" })).toBe(
+      "Vancouver, WA 98684",
+    );
+    expect(leadAddressLine({ city: "", state: "", zipCode: "" })).toBe("");
   });
 });
 

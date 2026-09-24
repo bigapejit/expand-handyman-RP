@@ -257,6 +257,8 @@ function DealCard({
   const unread = deal.lead?.unread ?? false;
   const snippet = firstLine(deal.notes) || firstLine(deal.lead?.description ?? "");
   const value = dealValueCents(deal);
+  // The site once picked; until then, where Thumbtack said the job is.
+  const where = deal.site?.line ?? deal.lead?.addressLine;
   return (
     <button
       type="button"
@@ -286,7 +288,7 @@ function DealCard({
         </span>
       </span>
       <span className="mt-0.5 block truncate text-sm text-slate-700">{deal.title}</span>
-      {deal.site ? <span className="block truncate text-xs text-slate-500">{deal.site.line}</span> : null}
+      {where ? <span className="block truncate text-xs text-slate-500">{where}</span> : null}
       {snippet ? <span className="mt-2 line-clamp-2 text-sm text-slate-600">{snippet}</span> : null}
       <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <SourceBadge source={deal.source} compact />

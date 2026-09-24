@@ -4,6 +4,8 @@ import type { FunctionArgs } from "convex/server";
 import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { WashingtonNoticeToCustomer } from "../lib/expand-business";
+import { SigningConsent } from "../lib/proposal-signing";
 
 const modules = import.meta.glob("../convex/**/*.ts");
 
@@ -79,10 +81,25 @@ function fixture() {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     return proposalId;
   };
+  // The customer approving a sent proposal through its live link.
+  const approve = async (siteId: Id<"sites">, proposalId: Id<"proposals">) => {
+    const tab = await owner.query(api.proposals.forSite, { siteId });
+    const token = tab.proposals.find((p) => p.proposalId === proposalId)?.liveToken;
+    if (!token) throw new Error("No live link.");
+    await t.action(api.proposals.approve, {
+      token,
+      signerName: "Maria Delgado",
+      consentTicked: true,
+      noticeTicked: true,
+      consentWordingVersion: SigningConsent.version,
+      noticeWordingVersion: WashingtonNoticeToCustomer.version,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  };
   // One deal as the **Pipeline** reads it.
   const row = async (dealId: Id<"deals">) =>
     (await owner.query(api.deals.board, {})).find((r) => r._id === dealId);
-  return { t, owner, deals, customers, customer, site, send, row };
+  return { t, owner, deals, customers, customer, site, send, approve, row };
 }
 
 describe("create", () => {
@@ -380,6 +397,22 @@ describe("board", () => {
       siteId,
     });
     expect((await row(dealId))?.proposal).toBeNull();
+  });
+
+  test("approving a proposal leaves a deal that began after it was sent alone", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const proposalId = await send(siteId);
+    vi.advanceTimersByTime(60_000);
+    const later = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    await approve(siteId, proposalId);
+    expect(await row(later)).toMatchObject({ stage: "new", proposal: null });
   });
 });
 

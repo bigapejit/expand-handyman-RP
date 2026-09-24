@@ -16,7 +16,7 @@ import {
   type Stage,
 } from "../lib/pipeline";
 import { siteAddressLine } from "../lib/sites";
-import { isUnread } from "../lib/thumbtack";
+import { isUnread, leadAddressLine } from "../lib/thumbtack";
 
 // The **Pipeline**: every **Deal**, the owner's moves on one, and the moves
 // the app makes for them. Owner-only throughout.
@@ -63,6 +63,8 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
       ? {
           negotiationId: lead.negotiationId,
           unread: isUnread(lead),
+          // Where Thumbtack said the job is, read until the deal has a site.
+          addressLine: leadAddressLine(lead.location),
           description: lead.description,
           details: lead.details,
           attachments: lead.attachments,
@@ -255,11 +257,15 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
 // (CONTEXT.md, **Stage**). A proposal is for a site, so only the customer's
 // open deals at that site move, and those with no site yet, which take this
 // one: a Thumbtack deal rarely has a site until the proposal goes out, and
-// its card then reads the proposal. A deal at another site is another job.
+// its card then reads the proposal. A deal at another site is another job,
+// and so is one that began after the proposal went out (`sentAt`): the
+// board reads a deal's proposal the same way, so a deal is never closed by
+// an offer it does not show.
 export async function advanceForSite(
   ctx: MutationCtx,
   site: Doc<"sites">,
   event: "sent" | "approved",
+  sentAt: number,
 ) {
   const move = event === "sent" ? stageOnProposalSent : stageOnProposalApproved;
   const deals = await ctx.db
@@ -267,7 +273,8 @@ export async function advanceForSite(
     .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
     .collect();
   for (const deal of deals) {
-    if (!isOpen(deal.stage) || (deal.siteId && deal.siteId !== site._id)) continue;
+    if (!isOpen(deal.stage) || deal.createdAt > sentAt) continue;
+    if (deal.siteId && deal.siteId !== site._id) continue;
     if (!deal.siteId) await ctx.db.patch(deal._id, { siteId: site._id, updatedAt: Date.now() });
     await moveDeal(ctx, deal, move(deal.stage));
   }
