@@ -96,9 +96,25 @@ export function customerErrors(error: z.ZodError): CustomerErrors {
   return errors;
 }
 
-/** Throws the first field-naming message, for callers with no field to blame. */
-export function parseCustomer(input: CustomerInput): Customer {
-  const result = customerSchema.safeParse(input);
+/**
+ * The rules for saving a customer: a new one, or one with a way to reach them,
+ * needs an email or a phone; one made with a deal from a name alone may be
+ * saved again with only the name until the owner learns more, so a slip in the
+ * name can be fixed without inventing a number.
+ */
+export function customerSchemaFor(stored?: { email: string; phone: string }) {
+  return stored && !stored.email && !stored.phone ? dealCustomerSchema : customerSchema;
+}
+
+/**
+ * Throws the first field-naming message, for callers with no field to blame.
+ * `stored` is the customer being saved again, when there is one.
+ */
+export function parseCustomer(
+  input: CustomerInput,
+  stored?: { email: string; phone: string },
+): Customer {
+  const result = customerSchemaFor(stored).safeParse(input);
   if (!result.success) throw new Error(result.error.issues[0].message);
   return result.data;
 }

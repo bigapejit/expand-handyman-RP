@@ -121,7 +121,7 @@ export const update = mutation({
     await requireOwner(ctx);
     const stored = await ctx.db.get(customerId);
     if (!stored) throw new Error("Customer not found.");
-    const customer = parseCustomer(a);
+    const customer = parseCustomer(a, stored);
     await ctx.db.patch(customerId, {
       ...customer,
       ...(customer.phone === stored.phone ? {} : { phoneFrom: undefined }),

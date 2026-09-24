@@ -28,7 +28,7 @@ import { useCustomers } from "@/hooks/use-customers";
 import {
   contactWarnings,
   customerErrors,
-  customerSchema,
+  customerSchemaFor,
   displayPhone,
   type CustomerErrors,
   type CustomerInput,
@@ -124,7 +124,7 @@ function CustomerForm({
       onSubmit={async (e) => {
         e.preventDefault();
         setError("");
-        const parsed = customerSchema.safeParse(value);
+        const parsed = customerSchemaFor(customer).safeParse(value);
         if (!parsed.success) return setFieldErrors(customerErrors(parsed.error));
         setFieldErrors({});
         setBusy(true);

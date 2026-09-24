@@ -9,7 +9,7 @@ import {
 import { requireOwner } from "./auth";
 import { dealForLead, moveDeal } from "./deals";
 import { normalizePhone } from "../lib/customer";
-import { isOpen, stageOnCustomerReply } from "../lib/pipeline";
+import { OPEN_STAGES, stageOnCustomerReply } from "../lib/pipeline";
 import {
   PLACEHOLDER_CATEGORY,
   UNNAMED_CUSTOMER,
@@ -318,16 +318,25 @@ export const forCustomer = query({
   },
 });
 
-// The nav badge: Unread leads whose deal is still open. Unread is read first,
-// so only the few leads with news cost a deal read; the newest leads first,
-// since they are the ones likely to have any.
+// The nav badge: Unread leads whose deal is still open. Read from the open
+// deals, the board's own working set, so the count matches the board however
+// many leads there have ever been. (A lead from before deals counts once the
+// Pipeline page has given it one, on its first open after the deploy.)
 export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
     await requireOwner(ctx);
+    const open = (
+      await Promise.all(
+        OPEN_STAGES.map((stage) =>
+          ctx.db.query("deals").withIndex("by_stage", (q) => q.eq("stage", stage)).collect(),
+        ),
+      )
+    ).flat();
     let count = 0;
-    for (const lead of await ctx.db.query("leads").order("desc").take(1000)) {
-      if (isUnread(lead) && isOpen(await stageOfLead(ctx, lead))) count++;
+    for (const deal of open) {
+      const lead = deal.leadId ? await ctx.db.get(deal.leadId) : null;
+      if (lead && isUnread(lead)) count++;
     }
     return count;
   },

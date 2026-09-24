@@ -458,6 +458,28 @@ describe("stages", () => {
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
   });
 
+  test("an Unread lead counts however many newer leads have come since", async () => {
+    const { t, owner, receive, leads } = fixture();
+    await receive(leadEvent());
+    await receive(messageEvent("m-1", "Customer", "2026-09-23T17:05:00Z"));
+    const [{ customerId }] = await leads();
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 1000; i++)
+        await ctx.db.insert("leads", {
+          customerId,
+          negotiationId: `later-${i}`,
+          thumbtackCustomerId: "c-1",
+          arrivedAt: Date.now() + i,
+          category: "Fence Repair",
+          description: "Gate sags.",
+          details: [],
+          location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+          attachments: [],
+        });
+    });
+    expect(await owner.query(api.leads.unreadCount, {})).toBe(1);
+  });
+
   test("the customer page's leads read their deal's stage", async () => {
     const { owner, receive, deals } = fixture();
     await receive(leadEvent());
