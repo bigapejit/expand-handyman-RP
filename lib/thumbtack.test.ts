@@ -219,7 +219,7 @@ describe("stages", () => {
       "Talking",
       "Booked",
       "Estimating",
-      "Quoted",
+      "Sent out",
       "Won",
       "Lost",
     ]);
