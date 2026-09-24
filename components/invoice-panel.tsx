@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { Eye } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { HubLoading } from "@/components/customer-hub-shell";
 import { InvoiceChip } from "@/components/invoice-chips";
@@ -20,22 +21,36 @@ import { cn } from "@/lib/utils";
 // mean the same thing. The Invoices tab opens it over its list, and the
 // Proposals tab over an approved proposal's panel, which comes back when this
 // one closes. A link naming no invoice, or another customer's, just shows the
-// tab.
-export function InvoicePanelHost({ customerId }: { customerId: string }) {
+// tab, and whatever panel the tab had open (`otherwise`).
+export function InvoicePanelHost({
+  customerId,
+  otherwise = null,
+}: {
+  customerId: string;
+  otherwise?: ReactNode;
+}) {
   const { openId, close } = useSidePanel(InvoicePanelParam);
-  if (!openId) return null;
+  if (!openId) return otherwise;
   return (
-    <OpenInvoice key={openId} invoiceId={openId} customerId={customerId} onClose={close} />
+    <OpenInvoice
+      key={openId}
+      invoiceId={openId}
+      customerId={customerId}
+      otherwise={otherwise}
+      onClose={close}
+    />
   );
 }
 
 function OpenInvoice({
   invoiceId,
   customerId,
+  otherwise,
   onClose,
 }: {
   invoiceId: string;
   customerId: string;
+  otherwise: ReactNode;
   onClose: () => void;
 }) {
   const today = usePacificToday();
@@ -48,7 +63,7 @@ function OpenInvoice({
       </SidePanel>
     );
   }
-  if (invoice === null || invoice.customerId !== customerId) return null;
+  if (invoice === null || invoice.customerId !== customerId) return otherwise;
   return <InvoicePanel invoice={invoice} onClose={onClose} />;
 }
 

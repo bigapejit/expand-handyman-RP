@@ -141,17 +141,21 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
           ))}
         </ol>
       )}
-      {tab && openProposal && invoicePanel.openId === null ? (
-        <ProposalPanel
-          key={openProposal.proposalId}
-          tab={tab}
-          proposal={openProposal}
-          onOpen={open}
-          onOpenInvoice={invoicePanel.open}
-          onClose={close}
-        />
-      ) : null}
-      <InvoicePanelHost customerId={customerId} />
+      <InvoicePanelHost
+        customerId={customerId}
+        otherwise={
+          tab && openProposal ? (
+            <ProposalPanel
+              key={openProposal.proposalId}
+              tab={tab}
+              proposal={openProposal}
+              onOpen={open}
+              onOpenInvoice={invoicePanel.open}
+              onClose={close}
+            />
+          ) : null
+        }
+      />
     </HubSection>
   );
 }
