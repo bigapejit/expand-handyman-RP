@@ -674,6 +674,49 @@ describe("board", () => {
     expect(await row(second)).toMatchObject({ stage: "lost", proposal: null });
   });
 
+  test("Send refuses an offer made for no deal when every open job here has one out", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    const p1 = await send(siteId, a);
+    const p2 = await send(siteId, b);
+    // A draft from before deals, made for none: two jobs each with an offer
+    // out, and no way to tell which this fresh one replaces.
+    const solutionId = await owner.mutation(api.solutions.create, { siteId, title: "Fix gate" });
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      description: "Rehang the gate.",
+      lineItems: [{ name: "Gate labor", quantity: 2, unitCostCents: 25_000, unit: "HR" }],
+    });
+    const proposalId = await owner.action(api.proposals.create, { siteId });
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
+    const tab = await owner.query(api.proposals.forSite, { siteId });
+    expect(tab.proposals.find((p) => p.proposalId === proposalId)?.sendBlockers).toEqual([
+      "deal_ambiguous",
+    ]);
+    await expect(owner.action(api.proposals.send, { proposalId })).rejects.toThrow(/deal_ambiguous/);
+    expect(await row(a)).toMatchObject({ stage: "quoted", proposal: { proposalId: p1 } });
+    expect(await row(b)).toMatchObject({ stage: "quoted", proposal: { proposalId: p2 } });
+    // With one job left open, the fresh offer is plainly its, and replaces
+    // the one still out.
+    await owner.mutation(api.deals.setStage, { dealId: b, stage: "lost" });
+    await owner.action(api.proposals.send, { proposalId });
+    expect(await row(a)).toMatchObject({ stage: "quoted", proposal: { proposalId } });
+  });
+
   test("openAtSite lists the open deals an offer here could be for, newest first", async () => {
     const { owner, customer, site } = fixture();
     const customerId = await customer();
@@ -792,7 +835,7 @@ describe("board", () => {
     const p1 = await send(siteId);
     expect((await row(a))?.proposal?.proposalId).toBe(p1);
     vi.advanceTimersByTime(60_000);
-    const p2 = await send(siteId);
+    const p2 = await send(siteId, a);
     expect((await row(a))?.proposal?.proposalId).toBe(p2);
     // The owner closes the job; the customer signs the older offer anyway.
     await owner.mutation(api.deals.setStage, { dealId: a, stage: "lost" });

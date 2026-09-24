@@ -266,15 +266,18 @@ export async function withNoLiveOffer(ctx: QueryCtx, deals: Doc<"deals">[]) {
   return free;
 }
 
-// The open deals an offer from `site` made now could be for, with no live
-// offer out: what Send asks before sending an offer made for no deal in
-// particular (lib/proposal-pricing.ts, `ambiguityBlockers`).
-export async function freeDealsForOffer(ctx: QueryCtx, site: Doc<"sites">) {
+// The deals Send would pick from for an offer from `site` made now for no
+// deal in particular: those with no live offer out, or, with none free, all
+// it could be for (a fresh offer replacing one still out). More than one is
+// too many to send (lib/proposal-pricing.ts, `ambiguityBlockers`).
+export async function dealsSendWouldPickFrom(ctx: QueryCtx, site: Doc<"sites">) {
   const deals = await ctx.db
     .query("deals")
     .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
     .collect();
-  return withNoLiveOffer(ctx, couldBeFor(deals, site, Date.now()));
+  const could = couldBeFor(deals, site, Date.now());
+  const free = await withNoLiveOffer(ctx, could);
+  return free.length > 0 ? free : could;
 }
 
 // The open deals a proposal from this site could be for, newest first, for

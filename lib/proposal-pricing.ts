@@ -268,12 +268,13 @@ export function recipientBlockers(email: string | null): SendBlocker[] {
  * when the proposal was made for no deal.
  */
 /**
- * An offer made for no deal in particular, with more than one open deal here
- * it could be for, is nobody's until the owner says which: sending it would
- * move a job by guesswork. `freeDeals` is how many could take it.
+ * An offer made for no deal in particular, with more than one deal here Send
+ * would have to pick from, is nobody's until the owner says which: sending
+ * it would move a job by guesswork. `pickFrom` is how many Send would choose
+ * between (convex/deals.ts, `dealsSendWouldPickFrom`).
  */
-export function ambiguityBlockers(unbound: boolean, freeDeals: number): SendBlocker[] {
-  return unbound && freeDeals > 1 ? ["deal_ambiguous"] : [];
+export function ambiguityBlockers(unbound: boolean, pickFrom: number): SendBlocker[] {
+  return unbound && pickFrom > 1 ? ["deal_ambiguous"] : [];
 }
 
 export function dealBlockers(

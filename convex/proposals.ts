@@ -16,7 +16,7 @@ import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import { lookUpSiteTax } from "./salesTax";
-import { advanceForSite, freeDealsForOffer } from "./deals";
+import { advanceForSite, dealsSendWouldPickFrom } from "./deals";
 import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
@@ -96,9 +96,9 @@ export const forSite = query({
     const customer = await ctx.db.get(site.customerId);
     // Where Send would go, or null when the customer has no address to send to.
     const customerEmail = customer ? sendableEmail(customer.email) : null;
-    // For a draft made for no deal in particular: how many open deals here
-    // could take it, more than one being too many to send.
-    const freeDeals = (await freeDealsForOffer(ctx, site)).length;
+    // For a draft made for no deal in particular: how many deals here Send
+    // would have to pick from, more than one being too many to send.
+    const pickFrom = (await dealsSendWouldPickFrom(ctx, site)).length;
     const [solutions, proposals] = await Promise.all([
       ctx.db
         .query("solutions")
@@ -138,7 +138,7 @@ export const forSite = query({
                       ...depositBlockers(read.payment),
                       ...recipientBlockers(customerEmail),
                       ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
-                      ...ambiguityBlockers(proposal.dealId === undefined, freeDeals),
+                      ...ambiguityBlockers(proposal.dealId === undefined, pickFrom),
                     ]
                   : [],
               sentAt: proposal.sentAt ?? null,
@@ -795,7 +795,7 @@ export const sendWithLink = internalMutation({
       ...dealBlockers(await dealOfProposal(ctx, proposal), site._id),
       ...ambiguityBlockers(
         proposal.dealId === undefined,
-        (await freeDealsForOffer(ctx, site)).length,
+        (await dealsSendWouldPickFrom(ctx, site)).length,
       ),
     ]);
     // Refused above; this only tells the type checker so.
