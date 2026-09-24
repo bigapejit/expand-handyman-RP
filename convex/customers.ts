@@ -7,6 +7,7 @@ import { lookUpPlace } from "./places";
 import { decidedAt } from "./signingLinks";
 import { insertSite, place } from "./sites";
 import { parseCustomer } from "../lib/customer";
+import { parseSiteDetails } from "../lib/sites";
 import { proposalActivity, type ProposalOutcome } from "../lib/proposals";
 
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
@@ -48,25 +49,46 @@ export const list = query({
   },
 });
 
-// Name, email and phone, and optionally the first site. An action, because the
-// picked address is looked up with Google before anything is written.
+// Name, email and phone, and optionally the first site with its unit and
+// access notes. An action, because the picked address is looked up with Google
+// before anything is written. Says which site it made, so a customer added
+// with one lands on that site's page.
 export const add = action({
   args: {
     ...contact,
     firstSite: v.optional(
-      v.object({ placeId: v.string(), sessionToken: v.string() }),
+      v.object({
+        placeId: v.string(),
+        sessionToken: v.string(),
+        addressLine2: v.optional(v.string()),
+        accessNotes: v.optional(v.string()),
+      }),
     ),
   },
-  handler: async (ctx, a): Promise<Id<"customers">> => {
+  handler: async (
+    ctx,
+    a,
+  ): Promise<{ customerId: Id<"customers">; siteId: Id<"sites"> | null }> => {
     await requireOwner(ctx);
     const customer = parseCustomer(a);
+    const typed = {
+      addressLine2: a.firstSite?.addressLine2 ?? "",
+      accessNotes: a.firstSite?.accessNotes ?? "",
+    };
+    parseSiteDetails(typed);
     const found = a.firstSite
       ? await lookUpPlace(a.firstSite.placeId, a.firstSite.sessionToken)
       : undefined;
     return ctx.runMutation(internal.customers.insert, {
       ...customer,
-      place: found?.address,
-      unit: found?.unit ?? "",
+      firstSite: found
+        ? {
+            place: found.address,
+            // A unit typed beside the address wins over the one Google read.
+            addressLine2: typed.addressLine2.trim() || found.unit,
+            accessNotes: typed.accessNotes,
+          }
+        : undefined,
     });
   },
 });
@@ -74,16 +96,19 @@ export const add = action({
 // The customer and the first site in one transaction: a refused site leaves no
 // customer behind.
 export const insert = internalMutation({
-  args: { ...contact, place: v.optional(place), unit: v.string() },
-  handler: async (ctx, a) => {
+  args: {
+    ...contact,
+    firstSite: v.optional(
+      v.object({ place, addressLine2: v.string(), accessNotes: v.string() }),
+    ),
+  },
+  handler: async (ctx, { firstSite, ...a }) => {
     await requireOwner(ctx);
     const customerId = await ctx.db.insert("customers", parseCustomer(a));
-    if (a.place)
-      await insertSite(ctx, customerId, a.place, {
-        addressLine2: a.unit,
-        accessNotes: "",
-      });
-    return customerId;
+    const siteId = firstSite
+      ? await insertSite(ctx, customerId, firstSite.place, firstSite)
+      : null;
+    return { customerId, siteId };
   },
 });
 

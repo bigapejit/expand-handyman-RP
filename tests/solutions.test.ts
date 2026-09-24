@@ -122,6 +122,34 @@ describe("solutions.create", () => {
   });
 });
 
+describe("solutions.forSite", () => {
+  test("lists one site's solutions in the order written, as the customer page's tab does", async () => {
+    const { owner, customer, site, proposal, list } = fixture();
+    const customerId = await customer();
+    const home = await site(customerId, "4410NE94TH");
+    const rental = await site(customerId, "1215MAIN");
+    const gutters = await owner.mutation(api.solutions.create, { siteId: home, title: "Gutters" });
+    await owner.mutation(api.solutions.create, { siteId: rental, title: "Deck" });
+    const fence = await owner.mutation(api.solutions.create, { siteId: home, title: "Fence" });
+    await proposal(home, "sent", [gutters]);
+
+    const tab = await owner.query(api.solutions.forSite, { siteId: home });
+    expect(tab.map((s) => [s._id, s.siteName, s.title, s.deletable])).toEqual([
+      [gutters, "4410NE94TH", "Gutters", false],
+      [fence, "4410NE94TH", "Fence", true],
+    ]);
+    // Row for row what the customer page's tab says of the same solutions.
+    expect(tab).toEqual((await list(customerId)).filter((s) => s.siteId === home));
+  });
+
+  test("has none for a site that is gone", async () => {
+    const { t, owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    await t.run((ctx) => ctx.db.delete(siteId));
+    expect(await owner.query(api.solutions.forSite, { siteId })).toEqual([]);
+  });
+});
+
 describe("solutions.update", () => {
   async function oneSolution() {
     const f = fixture();
@@ -421,6 +449,7 @@ describe("owner only", () => {
     for (const caller of [t, stranger]) {
       for (const call of [
         () => caller.query(api.solutions.forCustomer, { customerId }),
+        () => caller.query(api.solutions.forSite, { siteId }),
         () => caller.query(api.catalog.suggestions, { prefix: "pa" }),
         () => caller.mutation(api.solutions.create, { siteId }),
         () => caller.mutation(api.solutions.update, { solutionId, title: "Mine" }),

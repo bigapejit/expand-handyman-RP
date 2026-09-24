@@ -13,11 +13,14 @@ import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
 import { lookUpDraftTax, resetDraftTax } from "./proposals";
 import { deleteSiteSolutions } from "./solutions";
+import { Unknown } from "../lib/expand-business";
 import {
   createSiteName,
   parseSiteDetails,
   sameUnit,
   siteAddress,
+  siteCityLine,
+  siteStreetLine,
 } from "../lib/sites";
 
 // A picked place as Google described it, fetched on the server so no site can
@@ -55,6 +58,90 @@ export const forCustomer = query({
           ).length,
         })),
     );
+  },
+});
+
+// The Sites list: every site across every customer, with its street and city
+// lines, whose it is, how many proposals it has and when it was last touched,
+// the one touched most recently first. The page searches the rows itself.
+// Bounded as the Customers list is, and read in two scans rather than a query
+// per site.
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    const sites = await ctx.db.query("sites").order("desc").take(1000);
+    const proposals = new Map<Id<"sites">, { count: number; lastEdit: number }>();
+    for (const proposal of await ctx.db.query("proposals").take(10_000)) {
+      const held = proposals.get(proposal.siteId);
+      proposals.set(proposal.siteId, {
+        count: (held?.count ?? 0) + 1,
+        lastEdit: Math.max(held?.lastEdit ?? 0, proposal.updatedAt),
+      });
+    }
+    const customerNames = new Map<Id<"customers">, string>();
+    const rows = [];
+    for (const site of sites) {
+      if (!customerNames.has(site.customerId))
+        customerNames.set(
+          site.customerId,
+          (await ctx.db.get(site.customerId))?.name ?? Unknown,
+        );
+      const held = proposals.get(site._id);
+      rows.push({
+        siteId: site._id,
+        customerId: site.customerId,
+        customerName: customerNames.get(site.customerId) ?? Unknown,
+        streetLine: siteStreetLine(site),
+        cityLine: siteCityLine(site),
+        proposalCount: held?.count ?? 0,
+        // The site's own last edit or its proposals' latest, whichever is
+        // newer. A photo's upload time joins them once the site holds photos.
+        lastActivity: Math.max(site.updatedAt, held?.lastEdit ?? 0),
+      });
+    }
+    return rows.sort((x, y) => y.lastActivity - x.lastActivity);
+  },
+});
+
+// The site page's header: the site, its address over two lines, whose it is,
+// its access notes, and the count beside each tab. Read by the id the page
+// address carries, which may be anything a link was typed as, so an id naming
+// no site opens nothing rather than failing.
+export const get = query({
+  args: { siteId: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const siteId = ctx.db.normalizeId("sites", a.siteId);
+    const site = siteId ? await ctx.db.get(siteId) : null;
+    if (!site) return null;
+    const bySite = (table: "proposals" | "solutions" | "invoices") =>
+      ctx.db
+        .query(table)
+        .withIndex("by_site", (q) => q.eq("siteId", site._id))
+        .collect();
+    const [customer, proposals, solutions, invoices] = await Promise.all([
+      ctx.db.get(site.customerId),
+      bySite("proposals"),
+      bySite("solutions"),
+      bySite("invoices"),
+    ]);
+    return {
+      site,
+      streetLine: siteStreetLine(site),
+      cityLine: siteCityLine(site),
+      customerId: site.customerId,
+      customerName: customer?.name ?? Unknown,
+      accessNotes: site.accessNotes,
+      counts: {
+        proposals: proposals.length,
+        solutions: solutions.length,
+        // No site holds a photo until the photos table exists; the count is
+        // read from its site index from then on.
+        photos: 0,
+        invoices: invoices.length,
+      },
+    };
   },
 });
 

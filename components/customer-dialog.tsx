@@ -130,12 +130,12 @@ export function CustomerForm({
             await update({ customerId: customer._id, ...parsed.data });
             id = customer._id;
           } else {
-            id = await add({
+            ({ customerId: id } = await add({
               ...parsed.data,
               firstSite: firstSite
                 ? { placeId: firstSite.placeId, sessionToken }
                 : undefined,
-            });
+            }));
           }
           setBusy(false);
           onSaved(id);

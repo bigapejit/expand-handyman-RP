@@ -69,8 +69,9 @@ function dayPhrase(at: number, now: number, locale?: string, timeZone?: string) 
   }).format(at);
 }
 
-// Days since the epoch, counted in the given zone's calendar.
-function calendarDay(at: number, timeZone?: string) {
+// Days since the epoch, counted in the given zone's calendar. Shared with the
+// Sites list's activity label (lib/sites.ts).
+export function calendarDay(at: number, timeZone?: string) {
   const [year, month, day] = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
     month: "2-digit",

@@ -1,3 +1,5 @@
+import { calendarDay } from "./document-lines";
+
 // A Site's address as stored: the parts Google returns, with no formatted
 // string beside them. One helper prints it, so every surface reads the same.
 export type SiteAddress = {
@@ -79,4 +81,30 @@ export function sameUnit(a: string, b: string) {
 
 function unitKey(unit: string) {
   return unit.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// When a site was last touched, as the Sites list hint reads it: Today,
+// Yesterday, a few days ago, then a short date once it is a week or more back,
+// with the year only when it is not this one. Counted in calendar days, so
+// last night is Yesterday however few hours ago it was. `now`, the locale and
+// the time zone are parameters so a test can pin them; the app passes the
+// clock and neither of the others, and gets the owner's own.
+export function siteActivityLabel(
+  at: number,
+  now: number,
+  locale?: string,
+  timeZone?: string,
+) {
+  const days = calendarDay(now, timeZone) - calendarDay(at, timeZone);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  const year = (when: number) =>
+    new Intl.DateTimeFormat("en-CA", { year: "numeric", timeZone }).format(when);
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: year(at) === year(now) ? undefined : "numeric",
+    timeZone,
+  }).format(at);
 }

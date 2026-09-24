@@ -27,11 +27,12 @@ function setup() {
 }
 type Fixture = ReturnType<typeof setup>;
 async function customer({ owner }: Fixture, name: string) {
-  return owner.action(api.customers.add, {
+  const { customerId } = await owner.action(api.customers.add, {
     name,
     email: "customer@example.com",
     phone: "(555) 123-4567",
   });
+  return customerId;
 }
 async function document(
   { t, owner }: Fixture,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createSiteName, siteAddress, siteCityLine, siteStreetLine } from "./sites";
+import {
+  createSiteName,
+  siteActivityLabel,
+  siteAddress,
+  siteCityLine,
+  siteStreetLine,
+} from "./sites";
 
 describe("createSiteName", () => {
   // FRSG's cases, verbatim.
@@ -84,5 +90,34 @@ describe("the paper's two address lines", () => {
   it("leaves out the parts a site does not have", () => {
     expect(siteStreetLine({ ...site, addressLine2: "" })).toBe("4410 NE 94th St");
     expect(siteCityLine({ ...site, postalCode: "" })).toBe("Vancouver, WA");
+  });
+});
+
+describe("siteActivityLabel", () => {
+  const zone = "America/Los_Angeles";
+  // Wednesday 23 September 2026, 9:00 in Vancouver, WA.
+  const now = new Date("2026-09-23T16:00:00Z").getTime();
+  const label = (iso: string) => siteActivityLabel(new Date(iso).getTime(), now, "en-US", zone);
+
+  it("reads Today for anything since midnight, and for a clock running ahead", () => {
+    expect(label("2026-09-23T07:30:00Z")).toBe("Today");
+    expect(label("2026-09-23T15:59:00Z")).toBe("Today");
+    expect(label("2026-09-23T18:00:00Z")).toBe("Today");
+  });
+
+  it("reads Yesterday for last night, however few hours back", () => {
+    expect(label("2026-09-23T06:30:00Z")).toBe("Yesterday");
+    expect(label("2026-09-22T08:00:00Z")).toBe("Yesterday");
+  });
+
+  it("counts the days back within the week", () => {
+    expect(label("2026-09-21T20:00:00Z")).toBe("2 days ago");
+    expect(label("2026-09-17T20:00:00Z")).toBe("6 days ago");
+  });
+
+  it("gives a short date from a week back, with the year only when it is not this one", () => {
+    expect(label("2026-09-16T20:00:00Z")).toBe("Sep 16");
+    expect(label("2026-01-02T20:00:00Z")).toBe("Jan 2");
+    expect(label("2025-12-30T20:00:00Z")).toBe("Dec 30, 2025");
   });
 });

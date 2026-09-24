@@ -110,12 +110,13 @@ describe("customers.add", () => {
   };
   test("normalizes what the dialog sends", async () => {
     const t = owner();
-    const id = await t.action(api.customers.add, {
+    const { customerId, siteId } = await t.action(api.customers.add, {
       ...valid,
       email: "  Jane@Example.COM ",
       phone: "(555) 123-4567",
     });
-    const saved = await t.run((ctx) => ctx.db.get(id));
+    expect(siteId).toBeNull();
+    const saved = await t.run((ctx) => ctx.db.get(customerId));
     expect(saved).toMatchObject({
       email: "jane@example.com",
       phone: "+15551234567",

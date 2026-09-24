@@ -104,8 +104,8 @@ function fixture() {
     email: "someone@example.com",
     emailVerified: true,
   });
-  const customer = (name = "Maria Delgado", email = "maria@example.com") =>
-    owner.action(api.customers.add, { name, email, phone: "" });
+  const customer = async (name = "Maria Delgado", email = "maria@example.com") =>
+    (await owner.action(api.customers.add, { name, email, phone: "" })).customerId;
   const addSite = (
     customerId: Id<"customers">,
     placeId = "place-94th",
@@ -118,7 +118,23 @@ function fixture() {
       addressLine2,
       accessNotes: "",
     });
-  return { t, owner, stranger, customer, addSite };
+  // A proposal written straight in, last edited when given: only its site and
+  // its last edit matter to the Sites list and the site header.
+  const proposal = (siteId: Id<"sites">, updatedAt = 0) =>
+    t.run((ctx) =>
+      ctx.db.insert("proposals", {
+        siteId,
+        number: 1,
+        state: "draft",
+        solutionIds: [],
+        recommended: false,
+        depositPercent: 50,
+        tax: { source: "lookup" },
+        createdAt: 0,
+        updatedAt,
+      }),
+    );
+  return { t, owner, stranger, customer, addSite, proposal };
 }
 
 const calls = () => google.mock.calls.map(([input]) => new URL(String(input)));
@@ -387,23 +403,74 @@ describe("customers.add", () => {
     expect(google).not.toHaveBeenCalled();
   });
 
-  test("creates the first site with the customer", async () => {
+  test("adds a customer with no site and says there is none", async () => {
     const { owner } = fixture();
-    const customerId = await owner.action(api.customers.add, {
+    const added = await owner.action(api.customers.add, {
+      name: "Maria Delgado",
+      email: "maria@example.com",
+      phone: "",
+    });
+    expect(added.siteId).toBeNull();
+  });
+
+  test("creates the first site with the customer, and says which site it made", async () => {
+    const { owner } = fixture();
+    const { customerId, siteId } = await owner.action(api.customers.add, {
       name: "Maria Delgado",
       email: "maria@example.com",
       phone: "",
       firstSite: { placeId: "place-94th", sessionToken: session },
     });
     const sites = await owner.query(api.sites.forCustomer, { customerId });
-    expect(sites).toMatchObject([{ name: "441094TH", addressLine2: "" }]);
+    expect(sites).toMatchObject([
+      { _id: siteId, name: "441094TH", addressLine2: "", accessNotes: "" },
+    ]);
     const [row] = await owner.query(api.customers.list, {});
     expect(row).toMatchObject({ _id: customerId, siteCount: 1 });
   });
 
+  test("stores the unit and access notes typed beside the first site", async () => {
+    const { owner } = fixture();
+    const { siteId } = await owner.action(api.customers.add, {
+      name: "Maria Delgado",
+      email: "maria@example.com",
+      phone: "",
+      firstSite: {
+        placeId: "place-apt",
+        sessionToken: session,
+        addressLine2: " Apt 4B ",
+        accessNotes: " Gate code 1234 ",
+      },
+    });
+    if (!siteId) throw new Error("No first site.");
+    // A typed unit wins over the one Google read from the picked place.
+    expect(await owner.query(api.sites.get, { siteId })).toMatchObject({
+      streetLine: "1215 Main St, Apt 4B",
+      accessNotes: "Gate code 1234",
+    });
+  });
+
+  test("refuses access notes too long for a site, before asking Google", async () => {
+    const { owner } = fixture();
+    await expect(
+      owner.action(api.customers.add, {
+        name: "Maria Delgado",
+        email: "maria@example.com",
+        phone: "",
+        firstSite: {
+          placeId: "place-94th",
+          sessionToken: session,
+          accessNotes: "x".repeat(1001),
+        },
+      }),
+    ).rejects.toThrow("Keep access notes under 1,000 characters.");
+    expect(google).not.toHaveBeenCalled();
+    expect(await owner.query(api.customers.list, {})).toEqual([]);
+  });
+
   test("keeps the unit of a picked apartment on the first site", async () => {
     const { owner } = fixture();
-    const customerId = await owner.action(api.customers.add, {
+    const { customerId } = await owner.action(api.customers.add, {
       name: "Maria Delgado",
       email: "maria@example.com",
       phone: "",
@@ -529,5 +596,159 @@ describe("customers.update", () => {
         phone: "",
       }),
     ).rejects.toThrow("Owner access required");
+  });
+});
+
+describe("sites.list", () => {
+  test("lists every site with its customer, address and proposal count, last touched first", async () => {
+    const { t, owner, customer, addSite, proposal } = fixture();
+    const maria = await customer();
+    const ben = await customer("Ben Okafor", "ben@example.com");
+    const home = await addSite(maria, "place-94th", "Apt 2");
+    const rental = await addSite(maria, "place-main");
+    const bens = await addSite(ben, "place-apt");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(home, { updatedAt: 1_000 });
+      await ctx.db.patch(rental, { updatedAt: 3_000 });
+      await ctx.db.patch(bens, { updatedAt: 2_000 });
+    });
+    // A proposal edited since its site was lifts the site; an older one
+    // changes nothing but the count.
+    await proposal(home, 5_000);
+    await proposal(home, 500);
+    await proposal(bens, 1_500);
+
+    expect(await owner.query(api.sites.list, {})).toEqual([
+      {
+        siteId: home,
+        customerId: maria,
+        customerName: "Maria Delgado",
+        streetLine: "4410 NE 94th St, Apt 2",
+        cityLine: "Vancouver, WA 98665",
+        proposalCount: 2,
+        lastActivity: 5_000,
+      },
+      {
+        siteId: rental,
+        customerId: maria,
+        customerName: "Maria Delgado",
+        streetLine: "1215 Main St",
+        cityLine: "Vancouver, WA 98660",
+        proposalCount: 0,
+        lastActivity: 3_000,
+      },
+      {
+        siteId: bens,
+        customerId: ben,
+        customerName: "Ben Okafor",
+        streetLine: "1215 Main St, #4",
+        cityLine: "Vancouver, WA 98660",
+        proposalCount: 1,
+        lastActivity: 2_000,
+      },
+    ]);
+  });
+
+  test("moves a site up when it is edited", async () => {
+    const { t, owner, customer, addSite } = fixture();
+    const maria = await customer();
+    const older = await addSite(maria, "place-94th");
+    const newer = await addSite(maria, "place-main");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(older, { updatedAt: 1_000 });
+      await ctx.db.patch(newer, { updatedAt: 2_000 });
+    });
+    await owner.action(api.sites.update, {
+      siteId: older,
+      addressLine2: "",
+      accessNotes: "Side door",
+    });
+    const rows = await owner.query(api.sites.list, {});
+    expect(rows.map((row) => row.siteId)).toEqual([older, newer]);
+  });
+
+  test("is empty with no sites", async () => {
+    const { owner, customer } = fixture();
+    await customer();
+    expect(await owner.query(api.sites.list, {})).toEqual([]);
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { t, stranger } = fixture();
+    for (const caller of [t, stranger])
+      await expect(caller.query(api.sites.list, {})).rejects.toThrow("Owner access required");
+  });
+});
+
+describe("sites.get", () => {
+  test("reads the header: the address over two lines, whose it is, access notes and each tab's count", async () => {
+    const { t, owner, customer, addSite, proposal } = fixture();
+    const customerId = await customer();
+    const siteId = await addSite(customerId, "place-94th", "Apt 2");
+    await owner.action(api.sites.update, {
+      siteId,
+      addressLine2: "Apt 2",
+      accessNotes: "Gate code 1234",
+    });
+    await owner.mutation(api.solutions.create, { siteId, title: "Gutters" });
+    await owner.mutation(api.solutions.create, { siteId, title: "Fence" });
+    const first = await proposal(siteId);
+    await proposal(siteId);
+    await t.run((ctx) =>
+      ctx.db.insert("invoices", {
+        proposalId: first,
+        siteId,
+        customerId,
+        kind: "typed",
+        state: "draft",
+        lines: [],
+        taxRate: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      }),
+    );
+    // Another site's work is not counted here, even the same customer's.
+    const other = await addSite(customerId, "place-main");
+    await owner.mutation(api.solutions.create, { siteId: other, title: "Deck" });
+    await proposal(other);
+
+    expect(await owner.query(api.sites.get, { siteId })).toEqual({
+      site: expect.objectContaining({ _id: siteId, name: "441094TH", customerId }),
+      streetLine: "4410 NE 94th St, Apt 2",
+      cityLine: "Vancouver, WA 98665",
+      customerId,
+      customerName: "Maria Delgado",
+      accessNotes: "Gate code 1234",
+      counts: { proposals: 2, solutions: 2, photos: 0, invoices: 1 },
+    });
+  });
+
+  test("counts nothing on a new site", async () => {
+    const { owner, customer, addSite } = fixture();
+    const siteId = await addSite(await customer());
+    expect((await owner.query(api.sites.get, { siteId }))?.counts).toEqual({
+      proposals: 0,
+      solutions: 0,
+      photos: 0,
+      invoices: 0,
+    });
+  });
+
+  test("opens nothing for an id that names no site", async () => {
+    const { owner, customer, addSite } = fixture();
+    const customerId = await customer();
+    const gone = await addSite(customerId);
+    await owner.mutation(api.sites.remove, { siteId: gone });
+    for (const siteId of [gone, "not-an-id", customerId])
+      expect(await owner.query(api.sites.get, { siteId })).toBeNull();
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { t, stranger, customer, addSite } = fixture();
+    const siteId = await addSite(await customer());
+    for (const caller of [t, stranger])
+      await expect(caller.query(api.sites.get, { siteId })).rejects.toThrow(
+        "Owner access required",
+      );
   });
 });

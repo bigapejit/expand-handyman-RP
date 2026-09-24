@@ -223,6 +223,8 @@ describe("The Invoices page", () => {
       [second.invoiceId, "unpaid"],
     ]);
     expect(rows[0]).toMatchObject({
+      // The site the row opens on.
+      siteId: first.siteId,
       customerId: maria,
       customerName: "Maria Delgado",
       proposalId: first.proposalId,
@@ -339,6 +341,49 @@ describe("The Invoices tab", () => {
     expect(
       await owner.query(api.invoices.forCustomer, { customerId: maria, today: today() }),
     ).toEqual([]);
+  });
+});
+
+describe("The site page's Invoices tab", () => {
+  test("lists every invoice at the site, newest first, drafts and void included, and no other site's", async () => {
+    const { owner, customer, approved, written, sentBlock, today } = fixture();
+    const maria = await customer();
+    const first = await approved(maria);
+    vi.setSystemTime(pdt(9, 3));
+    // Another of Maria's sites, with its own proposal and deposit.
+    const elsewhere = await approved(maria);
+    vi.setSystemTime(pdt(9, 4));
+    const voided = await written(first.proposalId, {
+      state: "void",
+      ...sentBlock(1004),
+      lines: [{ description: "Extra", cents: 1_000 }],
+    });
+    vi.setSystemTime(pdt(9, 5));
+    const draft = await written(first.proposalId, {});
+
+    const tab = await owner.query(api.invoices.forSite, { siteId: first.siteId, today: today() });
+    expect(tab.map((row) => row.invoiceId)).toEqual([draft, voided, first.invoiceId]);
+    // Row for row what the customer page's tab says of the same invoices.
+    const customerTab = await owner.query(api.invoices.forCustomer, {
+      customerId: maria,
+      today: today(),
+    });
+    expect(tab).toEqual(customerTab.filter((row) => row.siteId === first.siteId));
+    expect(customerTab.map((row) => row.invoiceId)).toContain(elsewhere.invoiceId);
+  });
+
+  test("is empty for a site with nothing approved", async () => {
+    const { owner, customer, sent, today } = fixture();
+    const { siteId } = await sent(await customer());
+    expect(await owner.query(api.invoices.forSite, { siteId, today: today() })).toEqual([]);
+  });
+
+  test("refuses a day that is not one", async () => {
+    const { owner, customer, sent } = fixture();
+    const { siteId } = await sent(await customer());
+    await expect(
+      owner.query(api.invoices.forSite, { siteId, today: "tomorrow" }),
+    ).rejects.toThrow(/day/);
   });
 });
 
@@ -624,7 +669,7 @@ describe("The staff paper for an invoice", () => {
 
 describe("A stranger", () => {
   test("is refused everywhere invoices are read, re-sent or set up", async () => {
-    const { stranger, customer, approved, today } = fixture();
+    const { t, stranger, customer, approved, today } = fixture();
     const maria = await customer();
     const { proposalId, invoiceId } = await approved(maria);
     const day = today();
@@ -634,6 +679,10 @@ describe("A stranger", () => {
     );
     await expect(
       stranger.query(api.invoices.forCustomer, { customerId: maria, today: day }),
+    ).rejects.toThrow(refused);
+    const { siteId } = (await t.run((ctx) => ctx.db.get(proposalId)))!;
+    await expect(
+      stranger.query(api.invoices.forSite, { siteId, today: day }),
     ).rejects.toThrow(refused);
     await expect(
       stranger.query(api.invoices.forProposal, { proposalId, today: day }),

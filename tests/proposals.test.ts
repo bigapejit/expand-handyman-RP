@@ -611,8 +611,60 @@ describe("proposals.forCustomer", () => {
   });
 });
 
+describe("proposals.forSite", () => {
+  test("reads one site's tab as the customer page reads it, and nothing of the customer's other sites", async () => {
+    const { t, owner, customer, site, solution, create, tab } = fixture();
+    const customerId = await customer();
+    await t.run((ctx) => ctx.db.patch(customerId, { email: "maria@example.com" }));
+    const franklin = await site(customerId, "1300FRANKLIN");
+    const ninetyFourth = await site(customerId, "441094TH");
+    const deck = await solution(franklin, "Deck", 100_000);
+    await solution(ninetyFourth, "Fence");
+    const second = await create(franklin);
+    await create(ninetyFourth);
+    const third = await create(franklin);
+    await owner.mutation(api.proposals.update, { proposalId: second, solutionIds: [deck] });
+
+    const read = await owner.query(api.proposals.forSite, { siteId: franklin });
+    // Where Send would go, as on the customer page.
+    expect(read.customerEmail).toBe("maria@example.com");
+    expect(read.solutions).toEqual([
+      { solutionId: deck, siteId: franklin, title: "Deck", price: { costCents: 100_000, priceCents: 110_000 } },
+    ]);
+    expect(read.proposals.map((p) => [p.proposalId, p.code])).toEqual([
+      [second, "1300FRANKLIN-P1"],
+      [third, "1300FRANKLIN-P2"],
+    ]);
+    // Row for row what the customer page's tab says of the same proposals.
+    const customerTab = await tab(customerId);
+    expect(read.proposals).toEqual(
+      customerTab.proposals.filter((p) => p.code.startsWith("1300FRANKLIN-")),
+    );
+    expect(read.customerEmail).toBe(customerTab.customerEmail);
+  });
+
+  test("has nothing for a site that is gone", async () => {
+    const { t, owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    await t.run((ctx) => ctx.db.delete(siteId));
+    expect(await owner.query(api.proposals.forSite, { siteId })).toEqual({
+      customerEmail: null,
+      solutions: [],
+      proposals: [],
+    });
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger, customer, site } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    await expect(stranger.query(api.proposals.forSite, { siteId })).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});
+
 describe("proposals.list", () => {
-  test("lists every proposal with its customer, newest first", async () => {
+  test("lists every proposal with its site and customer, newest first", async () => {
     const { owner, customer, site, solution, create, setState } = fixture();
     const maria = await customer("Maria Delgado");
     const sam = await customer("Sam Park");
@@ -620,12 +672,14 @@ describe("proposals.list", () => {
     const deck = await solution(mariaSite, "Deck", 100_000);
     const first = await create(mariaSite);
     await owner.mutation(api.proposals.update, { proposalId: first, solutionIds: [deck] });
-    const second = await create(await site(sam, "441094TH"));
+    const samSite = await site(sam, "441094TH");
+    const second = await create(samSite);
     await setState(second, "sent");
 
     expect(await owner.query(api.proposals.list, {})).toEqual([
       expect.objectContaining({
         proposalId: second,
+        siteId: samSite,
         customerId: sam,
         customerName: "Sam Park",
         code: "441094TH-P1",
@@ -635,6 +689,7 @@ describe("proposals.list", () => {
       }),
       expect.objectContaining({
         proposalId: first,
+        siteId: mariaSite,
         customerId: maria,
         customerName: "Maria Delgado",
         code: "1300FRANKLIN-P1",

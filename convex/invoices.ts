@@ -224,6 +224,22 @@ export const forCustomer = query({
   },
 });
 
+// The site page's Invoices tab: every invoice at the site, newest first,
+// drafts and void included, read by its index, in the rows the customer
+// page's tab reads.
+export const forSite = query({
+  args: { siteId: v.id("sites"), today },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    requireDay(a.today);
+    const invoices = await ctx.db
+      .query("invoices")
+      .withIndex("by_site", (q) => q.eq("siteId", a.siteId))
+      .collect();
+    return (await invoiceRows(ctx, invoices, a.today)).sort(newestSentFirst);
+  },
+});
+
 // An approved proposal's Invoices section: its own invoices, in the order
 // they were made, so the deposit comes first and the final one last. Only an
 // approved proposal has any.

@@ -37,25 +37,38 @@ export const forCustomer = query({
       .withIndex("by_customer", (q) => q.eq("customerId", a.customerId))
       .collect();
     sites.sort((x, y) => x.name.localeCompare(y.name));
-    const perSite = await Promise.all(
-      sites.map(async (site) => {
-        const [solutions, fixed] = await Promise.all([
-          ctx.db
-            .query("solutions")
-            .withIndex("by_site", (q) => q.eq("siteId", site._id))
-            .collect(),
-          solutionsInFixedProposals(ctx, site._id),
-        ]);
-        return solutions.map((solution) => ({
-          ...solutionForOwner(solution),
-          siteName: site.name,
-          deletable: !fixed.has(solution._id),
-        }));
-      }),
-    );
-    return perSite.flat();
+    return (await Promise.all(sites.map((site) => solutionsTab(ctx, site)))).flat();
   },
 });
+
+// The site page's Solutions tab: one site's solutions in the order written,
+// read by its index, as the customer page's tab reads them. A site that is
+// gone has none.
+export const forSite = query({
+  args: { siteId: v.id("sites") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const site = await ctx.db.get(a.siteId);
+    return site ? solutionsTab(ctx, site) : [];
+  },
+});
+
+// One site's solutions as a tab lists them, each saying whether a sent or
+// decided proposal holds it and so it can't be deleted.
+async function solutionsTab(ctx: QueryCtx, site: Doc<"sites">) {
+  const [solutions, fixed] = await Promise.all([
+    ctx.db
+      .query("solutions")
+      .withIndex("by_site", (q) => q.eq("siteId", site._id))
+      .collect(),
+    solutionsInFixedProposals(ctx, site._id),
+  ]);
+  return solutions.map((solution) => ({
+    ...solutionForOwner(solution),
+    siteName: site.name,
+    deletable: !fixed.has(solution._id),
+  }));
+}
 
 // "New solution" has already asked which site; the title is optional because
 // the panel opens straight away for the owner to write one.
