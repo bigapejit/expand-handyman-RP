@@ -214,6 +214,11 @@ export default defineSchema({
     source: dealSource,
     stage: dealStage,
     stageChangedAt: v.number(),
+    // Set while the stage is one a proposal moved the deal to (Send, Approve,
+    // or the old board's move an old lead carries); cleared when the owner
+    // or a customer reply moves it. A stand-in deal's proposal-set stage is
+    // undone when a late lead moves the deal to the customer it matched.
+    stageBy: v.optional(v.literal("proposal")),
     // The owner's own **Notes**, never shown to the customer.
     notes: v.string(),
     // The owner's guess at the job, whole dollars in cents, before any

@@ -243,7 +243,7 @@ describe("a lead event", () => {
         updatedAt: 0,
       });
       // ...and that proposal had moved the stand-in's deal to Sent out.
-      await ctx.db.patch(standIn._id, { siteId, proposalId, stage: "quoted" });
+      await ctx.db.patch(standIn._id, { siteId, proposalId, stage: "quoted", stageBy: "proposal" });
     });
 
     expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
@@ -273,11 +273,24 @@ describe("a lead event", () => {
     if (!standIn) throw new Error("No stand-in deal.");
     // A proposal from the stand-in's site had moved the deal to Sent out, and
     // Change site then let go of the site and the proposal, keeping the stage.
-    await t.run((ctx) => ctx.db.patch(standIn._id, { stage: "quoted" }));
+    await t.run((ctx) => ctx.db.patch(standIn._id, { stage: "quoted", stageBy: "proposal" }));
     expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
     expect(await leads()).toHaveLength(2);
     const moved = (await deals()).find((d) => d._id === standIn._id);
     expect(moved?.stage).toBe("new");
+    expect(moved?.stageBy).toBeUndefined();
+  });
+
+  test("a repointed placeholder keeps a stage the owner chose by hand", async () => {
+    const { owner, receive, leads, deals } = fixture();
+    await receive(leadEvent("700", { customerID: "c-9", phone: "555-000-9999" }));
+    await receive(messageEvent("m-1", "Business", "2026-09-23T16:00:00Z", "777"));
+    const standIn = (await deals()).find((d) => d.title === "Thumbtack message");
+    if (!standIn) throw new Error("No stand-in deal.");
+    await owner.mutation(api.deals.setStage, { dealId: standIn._id, stage: "won" });
+    expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
+    expect(await leads()).toHaveLength(2);
+    expect((await deals()).find((d) => d._id === standIn._id)?.stage).toBe("won");
   });
 
   test("arriving twice is a duplicate with one lead", async () => {
@@ -442,6 +455,19 @@ describe("stages", () => {
     expect((await deals()).map((d) => d.stage)).toEqual(["won", "lost"]);
     // Won and Lost are not open, so an Unread one would not count.
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
+  });
+
+  test("a proposal's move is marked as its own, and the owner's hand clears the mark", async () => {
+    const { t, owner, receive, deals, send } = fixture();
+    await receive(leadEvent("900"));
+    const [before] = await deals();
+    await t.run((ctx) => ctx.db.patch(before.customerId, { email: "olivia@example.com" }));
+    await send(before.customerId);
+    expect((await deals())[0]).toMatchObject({ stage: "quoted", stageBy: "proposal" });
+    await owner.mutation(api.deals.setStage, { dealId: before._id, stage: "booked" });
+    const [after] = await deals();
+    expect(after.stage).toBe("booked");
+    expect(after.stageBy).toBeUndefined();
   });
 
   test("a proposal Send moves the one deal it is for, the one touched last, hand-added or not", async () => {

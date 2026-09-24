@@ -254,11 +254,19 @@ function refuse(fault: string | null) {
   if (fault) throw new Error(fault);
 }
 
-/** A deal to `stage`, stamped with when, unless it is there already. */
-export async function moveDeal(ctx: MutationCtx, deal: Doc<"deals">, stage: Stage) {
+/**
+ * A deal to `stage`, stamped with when and by what, unless it is there
+ * already. Only a proposal's move is worth remembering: see `stageBy`.
+ */
+export async function moveDeal(
+  ctx: MutationCtx,
+  deal: Doc<"deals">,
+  stage: Stage,
+  by?: "proposal",
+) {
   if (deal.stage === stage) return;
   const now = Date.now();
-  await ctx.db.patch(deal._id, { stage, stageChangedAt: now, updatedAt: now });
+  await ctx.db.patch(deal._id, { stage, stageChangedAt: now, stageBy: by, updatedAt: now });
 }
 
 // A lead's **Deal**, made as the lead arrives (or, for a lead from before
@@ -287,7 +295,7 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
     stageChangedAt: lead.stageChangedAt ?? now,
     notes: "",
     leadId: lead._id,
-    ...(moved ? { siteId: moved.siteId, proposalId: moved._id } : {}),
+    ...(moved ? { siteId: moved.siteId, proposalId: moved._id, stageBy: "proposal" as const } : {}),
     createdAt: lead.arrivedAt,
     updatedAt: now,
   });
@@ -439,6 +447,6 @@ export async function advanceForSite(
       updatedAt: Date.now(),
     });
     await ctx.db.patch(proposal._id, { dealId: deal._id });
-    await moveDeal(ctx, deal, move(deal.stage));
+    await moveDeal(ctx, deal, move(deal.stage), "proposal");
   }
 }
