@@ -412,10 +412,13 @@ export const insertDraft = internalMutation({
     await requireOwner(ctx);
     const site = await ctx.db.get(a.siteId);
     if (!site) throw new Error("Site not found.");
+    // The deal must be at this site now, not only when its panel was drawn:
+    // a draft made for a deal that has since moved would never move it.
     if (a.dealId) {
       const deal = await ctx.db.get(a.dealId);
       if (!deal || deal.customerId !== site.customerId)
         throw new Error("That deal is not this customer's.");
+      if (deal.siteId !== site._id) throw new Error("That deal is not at this site any more.");
     }
 
     // Washington or nothing: `none` is the whole of "this site charges no

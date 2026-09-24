@@ -558,6 +558,28 @@ describe("board", () => {
     );
   });
 
+  test("a proposal cannot be made for a deal that has left the site", async () => {
+    const { owner, customer, site } = fixture();
+    const customerId = await customer();
+    const here = await site(customerId);
+    const there = await site(customerId, "88 Main St");
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    // Another tab moved the deal after this panel was drawn.
+    await owner.mutation(api.deals.setSite, { dealId, siteId: there });
+    await expect(owner.action(api.proposals.create, { siteId: here, dealId })).rejects.toThrow(
+      "That deal is not at this site any more.",
+    );
+    await owner.mutation(api.deals.setSite, { dealId, siteId: null });
+    await expect(owner.action(api.proposals.create, { siteId: here, dealId })).rejects.toThrow(
+      "That deal is not at this site any more.",
+    );
+  });
+
   test("two free jobs at one site: the offer goes to the one touched last, not both", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
