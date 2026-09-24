@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { pdfDownloadLabel, usePdfDownload, type PdfSource } from "@/components/pdf-download";
 import { ProposalPaper, type PaperFooter, type PendingSignature } from "@/components/proposal-paper";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { InvoicePaperState } from "@/lib/invoice-paper";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
 import { pdfCopyStateFor, type PdfCopyState } from "@/lib/pdf-copy";
@@ -52,10 +53,42 @@ export function PaperScreen({
   // Who foots the printed sheets (proposal-paper.tsx).
   footer?: PaperFooter;
 }) {
+  const pdfState = pdfCopyStateFor(paper.state);
+  const title = paperTitle(paper.number, paper.name);
+
+  return (
+    <PaperFrame
+      top={
+        download && pdfState ? (
+          <PaperTopWithDownload title={title} source={download} state={pdfState} strip={strip} />
+        ) : (
+          <PaperTop title={title}>
+            <Strip strip={strip} />
+          </PaperTop>
+        )
+      }
+      bar={bar}
+    >
+      <ProposalPaper proposal={paper} pending={pending} footer={footer} />
+    </PaperFrame>
+  );
+}
+
+// The screen itself, whatever paper it carries: the top bar, the sheets
+// fitted to the width, and the sign bar when there is one. The invoice link
+// draws the invoice paper in it (components/invoice-link-page.tsx).
+export function PaperFrame({
+  top,
+  bar,
+  children,
+}: {
+  top: ReactNode;
+  bar?: ReactNode;
+  children: ReactNode;
+}) {
   const { scale, sheetsRef, naturalHeight } = usePaperFit();
   const ready = usePaperReady();
   const scaled = scale < 1;
-  const pdfState = pdfCopyStateFor(paper.state);
 
   return (
     <div
@@ -63,18 +96,7 @@ export function PaperScreen({
       data-paper={ready ? "ready" : "loading"}
       style={{ ["--paper-scale" as string]: String(scale) }}
     >
-      {download && pdfState ? (
-        <PaperTopWithDownload
-          title={paperTitle(paper.number, paper.name)}
-          source={download}
-          state={pdfState}
-          strip={strip}
-        />
-      ) : (
-        <PaperTop title={paperTitle(paper.number, paper.name)}>
-          <Strip strip={strip} />
-        </PaperTop>
-      )}
+      {top}
 
       <div className="paper-sheets" ref={sheetsRef}>
         <div
@@ -84,7 +106,7 @@ export function PaperScreen({
           // one frame of a slightly long page and never a short one.
           style={scaled && naturalHeight !== null ? { height: naturalHeight * scale } : undefined}
         >
-          <ProposalPaper proposal={paper} pending={pending} footer={footer} />
+          {children}
         </div>
       </div>
 
@@ -133,7 +155,7 @@ export function PaperLoading() {
   );
 }
 
-function PaperTop({
+export function PaperTop({
   title,
   actions,
   children,
@@ -155,13 +177,14 @@ function PaperTop({
   );
 }
 
-function Strip({ strip }: { strip?: PaperStrip }) {
+export function Strip({ strip }: { strip?: PaperStrip }) {
   return strip ? <div className={`paper-strip paper-strip-${strip.tone}`}>{strip.body}</div> : null;
 }
 
 // The top bar with the PDF copy's Download at its end, and what stopped the
-// last press said under it.
-function PaperTopWithDownload({
+// last press said under it. The invoice paper's screens draw it too
+// (components/invoice-link-page.tsx, components/staff-invoice-paper.tsx).
+export function PaperTopWithDownload({
   title,
   source,
   state,
@@ -169,7 +192,8 @@ function PaperTopWithDownload({
 }: {
   title: string;
   source: PdfSource;
-  state: PdfCopyState;
+  // Which paper the file is, for the button's words.
+  state: PdfCopyState | InvoicePaperState;
   strip?: PaperStrip;
 }) {
   const { download, ready, working, fault } = usePdfDownload(source);

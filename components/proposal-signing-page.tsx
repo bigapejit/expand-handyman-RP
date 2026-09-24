@@ -3,7 +3,7 @@
 import "@/app/paper-print.css";
 import "@/app/proposal-paper.css";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 
 import { LinkNotLive } from "@/components/link-not-live";
@@ -44,7 +44,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
   const page = useQuery(api.signingLinks.page, { token });
   const opened = useMutation(api.signingLinks.opened);
   const seen = useMutation(api.signingLinks.seen);
-  const approve = useMutation(api.proposals.approve);
+  const approve = useAction(api.proposals.approve);
   const decline = useMutation(api.proposals.declineFromLink);
   const view = useRef<Id<"proposalViews"> | null>(null);
   const logged = useRef(false);

@@ -106,6 +106,24 @@ export const proposalSignature = v.object({
   noticeWordingVersion: v.optional(v.string()),
   sealed: v.object({ document: v.string(), fingerprint: v.string() }),
 });
+// One **Invoice line** (CONTEXT.md): a description and whole cents before
+// tax, negative for a credit.
+export const invoiceLine = v.object({ description: v.string(), cents: v.number() });
+// What Send fixes on an invoice beside its number and date, so later edits to
+// the customer, the site or the proposal never change a sent invoice. The
+// deposit invoice is made sent, so Approve writes it from the frozen offer.
+export const frozenInvoice = v.object({
+  customerName: v.string(),
+  site: v.object({ street: v.string(), city: v.string() }),
+  // The Proposal ID and the proposal's display name, as the paper prints them.
+  proposalCode: v.string(),
+  proposalName: v.string(),
+  sentTo: v.string(),
+});
+// Which paper a sent or void invoice is, as its stamp makes it
+// (lib/invoice-paper.ts, `invoicePaperState`): what a PDF copy of it, and the
+// render pass that prints one, are bound to.
+export const invoicePaperState = v.union(v.literal("sent"), v.literal("paid"), v.literal("void"));
 export const signingLinkEndedReason = v.union(
   v.literal("approved"),
   v.literal("declined"),
@@ -337,18 +355,126 @@ export default defineSchema({
   })
     .index("by_proposal", ["proposalId"])
     .index("by_token", ["token"]),
-  // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
-  // paper with, at `/paper/<token>`. One per render, for one proposal in the
-  // state being rendered and under the signing link it went out under,
-  // expiring within minutes and deleted when the render ends. Reading the
-  // paper through one never touches the view log.
-  renderPasses: defineTable({
-    token: v.string(),
+  // A request for payment on one approved proposal (CONTEXT.md, **Invoice**).
+  // The site and the customer are copied from the proposal when it is made, so
+  // a hub tab and the lists read by index. Money is never stored: it is read
+  // from the lines and the rate (lib/invoice-money.ts).
+  invoices: defineTable({
     proposalId: v.id("proposals"),
-    state: v.union(v.literal("sent"), v.literal("approved")),
-    linkId: v.id("signingLinks"),
-    expiresAt: v.number(),
-  }).index("by_token", ["token"]),
+    siteId: v.id("sites"),
+    customerId: v.id("customers"),
+    kind: v.union(v.literal("deposit"), v.literal("final"), v.literal("typed")),
+    // A typed invoice's title; the other two are named by their kind.
+    title: v.optional(v.string()),
+    state: v.union(v.literal("draft"), v.literal("sent"), v.literal("void")),
+    lines: v.array(invoiceLine),
+    // Copied from the proposal's frozen tax when the invoice is made, 0 where
+    // the proposal charges none (lib/invoice-money.ts, `invoiceTaxRate`).
+    taxRate: v.number(),
+    // Written by Send, with the frozen block: the count from the `invoice`
+    // sequence that `INV-` is printed in front of, and the day it went out,
+    // which is also its due date. A draft has neither.
+    number: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
+    frozen: v.optional(frozenInvoice),
+    // Written by Void, which keeps the number and the link. The reason is the
+    // owner's and never reaches the customer.
+    voidedAt: v.optional(v.number()),
+    voidReason: v.optional(v.string()),
+    // The **PDF copy** (CONTEXT.md; ADR 0002): the invoice paper as a file,
+    // made the first time someone presses Download, with the paper state it
+    // printed. Mark paid, Mark unpaid, Void and Re-send each let it go, and a
+    // draft never has one.
+    pdfCopy: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        paperState: invoicePaperState,
+        renderedAt: v.number(),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_proposal", ["proposalId"])
+    .index("by_customer", ["customerId"])
+    .index("by_site", ["siteId"])
+    .index("by_state_sent", ["state", "sentAt"]),
+  // One per Send or Re-send of an invoice (CONTEXT.md, **Invoice link**): the
+  // shape of `signingLinks`, kept apart so proposal code reads only its own
+  // rows. Only a re-send ends one; Void and Mark paid never do.
+  invoiceLinks: defineTable({
+    invoiceId: v.id("invoices"),
+    token: v.string(),
+    sentTo: v.string(),
+    sentAt: v.number(),
+    email: v.optional(emailOutcome),
+    endedAt: v.optional(v.number()),
+    endedReason: v.optional(v.literal("resent")),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_token", ["token"]),
+  // A **Payment** (CONTEXT.md): that a sent invoice's money arrived, and
+  // nothing about how much or how. At most one per invoice, which Mark paid
+  // checks before it writes one. Never edited: Mark unpaid deletes the row,
+  // and refuses one the app wrote from Stripe. Its presence is what makes the
+  // invoice's **Standing** read Paid.
+  payments: defineTable({
+    invoiceId: v.id("invoices"),
+    // The Pacific calendar day the money arrived, `YYYY-MM-DD`
+    // (lib/invoice-standing.ts, `pacificDay`).
+    receivedOn: v.string(),
+    // Who recorded it: the owner by hand, or, once Pay now exists, the app
+    // from Stripe.
+    source: v.union(v.literal("owner"), v.literal("stripe")),
+    // The recorder's sign-in subject, or `stripe`.
+    recordedBy: v.string(),
+    recordedAt: v.number(),
+    // The Stripe payment a `stripe` row came from, so a webhook delivered
+    // twice finds the row it already wrote. Nothing writes it yet.
+    stripePaymentIntentId: v.optional(v.string()),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
+  // Counters that run across the whole business, one row per name. `invoice`
+  // holds the last Invoice number given; the first is 1001.
+  sequences: defineTable({
+    name: v.literal("invoice"),
+    last: v.number(),
+  }).index("by_name", ["name"]),
+  // The business's few settings the owner edits in the app, in one row. Read
+  // at render time, so a change reaches every paper without a deploy.
+  settings: defineTable({
+    // The Zelle address the invoice paper prints; absent until the owner sets
+    // one, when the paper prints lib/expand-business.ts's default.
+    zelleEmail: v.optional(v.string()),
+  }),
+  // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
+  // paper with, at `/paper/<token>`. One per render, expiring within minutes
+  // and deleted when the render ends, and naming one of two papers: a
+  // proposal in the state being rendered, under the signing link it went out
+  // under; or an invoice in the paper state being rendered, with the day on
+  // its stamp. Reading the paper through one never touches any log.
+  renderPasses: defineTable(
+    v.union(
+      v.object({
+        token: v.string(),
+        proposalId: v.id("proposals"),
+        state: v.union(v.literal("sent"), v.literal("approved")),
+        linkId: v.id("signingLinks"),
+        expiresAt: v.number(),
+      }),
+      v.object({
+        token: v.string(),
+        invoiceId: v.id("invoices"),
+        paperState: invoicePaperState,
+        // The day on a PAID or VOID stamp: marked unpaid and then paid on
+        // another day, the paper is paid again but not the sheet this pass
+        // was made for.
+        stampDay: v.optional(v.string()),
+        expiresAt: v.number(),
+      }),
+    ),
+  ).index("by_token", ["token"]),
   // The proposal half of the view log, the same shape and rules as
   // `documentViews` (ADR 0001).
   proposalViews: defineTable({

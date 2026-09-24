@@ -2,7 +2,15 @@
 
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useQuery } from "convex/react";
-import { FileSignature, FileText, Inbox, LayoutDashboard, LogOut, Users } from "lucide-react";
+import {
+  FileSignature,
+  FileText,
+  Inbox,
+  LayoutDashboard,
+  LogOut,
+  ReceiptText,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Component, useState, type ReactNode } from "react";
@@ -31,6 +39,7 @@ const navigation = [
   { title: "Customers", href: "/customers", icon: Users },
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
+  { title: "Invoices", href: "/invoices", icon: ReceiptText },
   { title: "Documents", href: "/documents", icon: FileText },
 ] as const;
 

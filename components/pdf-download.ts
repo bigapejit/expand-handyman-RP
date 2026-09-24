@@ -5,29 +5,62 @@ import { useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { InvoicePaperState } from "@/lib/invoice-paper";
 import type { PdfCopyState } from "@/lib/pdf-copy";
 import { errorMessage } from "@/lib/utils";
 
-// Download of a proposal's **PDF copy** (CONTEXT.md; ADR 0002), for whichever
-// surface draws the button: the proposal panel, the staff paper page, or the
-// signing page's top bar. It asks for the stored file first and renders only
-// when there is none, so a second press, the owner's or the customer's, never
-// spends another render. Ported from FRSG's PaperDownload, split from its
+// Download of a proposal's or an invoice's **PDF copy** (CONTEXT.md;
+// ADR 0002), for whichever surface draws the button: the proposal or invoice
+// panel, either staff paper page, or the top bar of a signing or invoice
+// link. It asks for the stored file first and renders only when there is
+// none, so a second press, the owner's or the customer's, never spends
+// another render. Ported from FRSG's PaperDownload, split from its
 // button because the panel draws a staff button and the paper a paper one.
 //
-// The owner names the proposal; the customer names nothing but their signing
-// link, which is the whole of their authority. Neither is ever logged as a
-// view. No source reads nothing, for a proposal with no PDF copy to offer.
-export type PdfSource = { proposalId: Id<"proposals"> } | { token: string };
+// The owner names the proposal or the invoice; the customer names nothing but
+// their signing or invoice link, which is the whole of their authority. None
+// is ever logged as a view. No source reads nothing, for a paper with no PDF
+// copy to offer.
+export type PdfSource =
+  | { proposalId: Id<"proposals"> }
+  | { token: string }
+  | { invoiceId: Id<"invoices"> }
+  | { invoiceToken: string };
 
 export function usePdfDownload(source: PdfSource | null) {
   const owner = source && "proposalId" in source ? source : null;
   const customer = source && "token" in source ? source : null;
+  const invoiceOwner = source && "invoiceId" in source ? source : null;
+  const invoiceCustomer =
+    source && "invoiceToken" in source ? { token: source.invoiceToken } : null;
   const ownerFile = useQuery(api.pdfCopies.downloadForOwner, owner ?? "skip");
   const customerFile = useQuery(api.pdfCopies.downloadForCustomer, customer ?? "skip");
+  const invoiceOwnerFile = useQuery(api.pdfCopies.invoiceDownloadForOwner, invoiceOwner ?? "skip");
+  const invoiceCustomerFile = useQuery(
+    api.pdfCopies.invoiceDownloadForCustomer,
+    invoiceCustomer ?? "skip",
+  );
   const renderForOwner = useAction(api.pdfCopies.renderForOwner);
   const renderForCustomer = useAction(api.pdfCopies.renderForCustomer);
-  const stored = owner ? ownerFile : customerFile;
+  const renderInvoiceForOwner = useAction(api.pdfCopies.renderInvoiceForOwner);
+  const renderInvoiceForCustomer = useAction(api.pdfCopies.renderInvoiceForCustomer);
+  const stored = owner
+    ? ownerFile
+    : customer
+      ? customerFile
+      : invoiceOwner
+        ? invoiceOwnerFile
+        : invoiceCustomerFile;
+  // What a press with no stored file asks the server to make.
+  const render = owner
+    ? () => renderForOwner(owner)
+    : customer
+      ? () => renderForCustomer(customer)
+      : invoiceOwner
+        ? () => renderInvoiceForOwner(invoiceOwner)
+        : invoiceCustomer
+          ? () => renderInvoiceForCustomer(invoiceCustomer)
+          : null;
 
   const [working, setWorking] = useState(false);
   // What stopped the last press, in the server's words: someone who presses
@@ -44,11 +77,9 @@ export function usePdfDownload(source: PdfSource | null) {
     try {
       const file = stored
         ? { outcome: "ready" as const, ...stored }
-        : owner
-          ? await renderForOwner(owner)
-          : customer
-            ? await renderForCustomer(customer)
-            : null;
+        : render
+          ? await render()
+          : null;
       if (!file) return;
       if (file.outcome === "unavailable") {
         setFault(file.reason);
@@ -66,8 +97,12 @@ export function usePdfDownload(source: PdfSource | null) {
   return { download, ready, working, fault };
 }
 
-// The button's words: a signed proposal's file is the signed copy.
-export function pdfDownloadLabel(state: PdfCopyState, working: boolean): string {
+// The button's words: a signed proposal's file is the signed copy, and every
+// other paper's, an invoice's whatever its stamp, is the PDF.
+export function pdfDownloadLabel(
+  state: PdfCopyState | InvoicePaperState,
+  working: boolean,
+): string {
   if (working) return "Preparing…";
   return state === "approved" ? "Download signed copy" : "Download PDF";
 }

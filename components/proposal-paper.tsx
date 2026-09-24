@@ -107,7 +107,7 @@ export function ProposalPaper({
 // rather than fixed to the sheet because a `position: fixed` running header
 // repeats on every printed page in some browsers and on the first page only in
 // others, and this document is the deliverable.
-function Letterhead() {
+export function Letterhead() {
   return (
     <header className="pd-letterhead">
       {/* eslint-disable-next-line @next/next/no-img-element */}

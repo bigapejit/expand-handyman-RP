@@ -15,14 +15,21 @@ const ProposalSigningPage = dynamic(
   { loading: () => <SignLoading /> },
 );
 
-// `/sign/<token>`: one address for every signing link, whether it opens a
-// document or a proposal (CONTEXT.md, **Signing link**). A token naming
-// nothing goes to the document page, which has always answered one with
-// "This link is no longer live".
+// The invoice paper, loaded the same way for the same reason.
+const InvoiceLinkPage = dynamic(
+  () => import("@/components/invoice-link-page").then((m) => m.InvoiceLinkPage),
+  { loading: () => <SignLoading /> },
+);
+
+// `/sign/<token>`: one address for every link Expand sends, whether it opens a
+// document, a proposal (CONTEXT.md, **Signing link**) or an invoice
+// (**Invoice link**). A token naming nothing goes to the document page, which
+// has always answered one with "This link is no longer live".
 export function SignRoute({ token }: { token: string }) {
   const kind = useQuery(api.signingLinks.resolve, { token });
   if (kind === undefined) return <SignLoading />;
   if (kind === "proposal") return <ProposalSigningPage token={token} />;
+  if (kind === "invoice") return <InvoiceLinkPage token={token} />;
   if (kind === "ended") return <LinkNotLive what="proposal" />;
   return <SigningPage token={token} />;
 }

@@ -27,6 +27,12 @@ export const ExpandBusiness = {
   waRegistrationExpires: Unknown,
 };
 
+// Where the invoice paper tells customers to send a Zelle payment until the
+// owner sets another address in the app (convex/settings.ts). A setting rather
+// than a constant above, because the mailbox behind it may change without a
+// deploy.
+export const DefaultZelleEmail = "pay@expandhandyman.com";
+
 // The block under the company name on every sheet: where Expand works, how to
 // reach it, and its registrations. No street address.
 export function letterheadContactLines(): string[] {

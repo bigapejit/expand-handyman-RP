@@ -10,6 +10,7 @@ import {
 } from "./_generated/server";
 import { isOwner } from "./auth";
 import { seenUpdate } from "./documents";
+import { invoiceLinkForToken } from "./invoiceLinks";
 import { emailOutcome } from "./schema";
 import { proposalDisplayName } from "../lib/proposal-pricing";
 import { noticeToCustomerApplies } from "../lib/proposal-signing";
@@ -202,13 +203,17 @@ function decision(proposal: Doc<"proposals">): Pick<PaperProposal, "signature" |
   return {};
 }
 
-// What the `/sign/<token>` page is looking at. Documents and proposals share
-// the address, so the page asks here first and draws whichever it is. A token
-// naming nothing is left to the document page, which has always said "This
-// link is no longer live" for one; a proposal's ended link says the same.
+// What the `/sign/<token>` page is looking at. Documents, proposals and
+// invoices share the address, so the page asks here first and draws whichever
+// it is. A token naming nothing is left to the document page, which has always
+// said "This link is no longer live" for one; an ended proposal link says
+// the same, and so does the invoice page for an ended invoice link.
 export const resolve = query({
   args: { token: v.string() },
-  handler: async (ctx, a): Promise<"document" | "proposal" | "ended" | "unknown"> => {
+  handler: async (
+    ctx,
+    a,
+  ): Promise<"document" | "proposal" | "invoice" | "ended" | "unknown"> => {
     const token = a.token.trim();
     if (!token) return "unknown";
     const document = await ctx.db
@@ -217,6 +222,9 @@ export const resolve = query({
       .unique();
     if (document) return "document";
     if (await paperStillOpenedBy(ctx, token)) return "proposal";
+    // An invoice link's own page says when it no longer opens anything, in
+    // words about an invoice rather than an answer the customer owes.
+    if (await invoiceLinkForToken(ctx, token)) return "invoice";
     return (await linkForToken(ctx, token)) ? "ended" : "unknown";
   },
 });
