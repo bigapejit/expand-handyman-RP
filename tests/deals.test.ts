@@ -543,6 +543,32 @@ describe("board", () => {
     expect((await row(second))?.stage).toBe("new");
   });
 
+  test("an approval for a deal closed by hand does not win another job at the site", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const first = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const second = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    await owner.mutation(api.deals.setNotes, { dealId: first, notes: "Quoting this one" });
+    const p1 = await send(siteId);
+    expect((await row(first))?.proposal?.proposalId).toBe(p1);
+    await owner.mutation(api.deals.setStage, { dealId: first, stage: "lost" });
+    await approve(siteId, p1);
+    expect(await row(first)).toMatchObject({ stage: "lost", proposal: { proposalId: p1, state: "approved" } });
+    expect(await row(second)).toMatchObject({ stage: "new", proposal: null });
+  });
+
   test("two open jobs at one site each take their own offer, and only the signed one closes", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();

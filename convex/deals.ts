@@ -384,8 +384,16 @@ export async function advanceForSite(
   // Approved: the customer signed the deal that holds this offer. Nobody
   // holding it means an older deal from before this was recorded, or two
   // offers out at once on one deal, which then reads the signed one.
+  // An approval belongs to whichever deal holds the offer, open or not: a
+  // deal the owner had already closed keeps its stage, and no other job at
+  // the site is won on its behalf.
+  const holders = deals.filter(holding);
   let targets =
-    event === "sent" ? candidates.filter(free) : candidates.filter(holding);
+    event === "approved" && holders.length > 0
+      ? holders
+      : event === "sent"
+        ? candidates.filter(free)
+        : candidates.filter(holding);
   if (targets.length === 0 && event === "approved") targets = candidates.filter(free);
   if (targets.length === 0) targets = candidates.filter(outOnAnother);
   // One offer is for one job. With more than one deal it could be for, the
