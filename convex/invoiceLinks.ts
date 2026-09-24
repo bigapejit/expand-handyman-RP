@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { invoiceStamp, paymentFor } from "./payments";
 import { emailOutcome } from "./schema";
 import { zelleEmail } from "./settings";
 import { invoiceNumberLabel } from "../lib/invoice-money";
@@ -59,8 +60,8 @@ export async function invoiceLinkForToken(ctx: QueryCtx, token: string) {
 }
 
 // The invoice a token still opens onto, or nothing. A link opens its invoice
-// until a re-send ends it. Only a sent invoice has a paper to show here; the
-// stamped paper of a void one comes with Void.
+// until a re-send ends it, whether the invoice is sent or void: Void keeps the
+// link, and the paper it opens is stamped VOID. A draft is never linked.
 export async function invoiceStillOpenedBy(
   ctx: QueryCtx,
   token: string,
@@ -68,15 +69,28 @@ export async function invoiceStillOpenedBy(
   const link = await invoiceLinkForToken(ctx, token);
   if (!link || link.endedAt !== undefined) return null;
   const invoice = await ctx.db.get(link.invoiceId);
-  if (!invoice || invoice.state !== "sent") return null;
+  if (!invoice || invoice.state === "draft") return null;
   return { link, invoice };
 }
 
-// A sent invoice as its paper, read wholly from what Send fixed, with the
-// Zelle address as the settings hold it now.
+// A sent or void invoice as its paper, read wholly from what Send fixed and
+// stamped from its payment or its Void, with the Zelle address as the
+// settings hold it now.
+export async function sentInvoicePaperOf(
+  ctx: QueryCtx,
+  invoice: Doc<"invoices">,
+): Promise<PaperInvoice | null> {
+  const [zelle, payment] = await Promise.all([
+    zelleEmail(ctx),
+    paymentFor(ctx, invoice._id),
+  ]);
+  return sentInvoicePaper(invoice, zelle, payment);
+}
+
 export function sentInvoicePaper(
   invoice: Doc<"invoices">,
   zelle: string,
+  payment: Pick<Doc<"payments">, "receivedOn"> | null,
 ): PaperInvoice | null {
   const { frozen, number, sentAt } = invoice;
   if (invoice.state === "draft" || !frozen || number === undefined || sentAt === undefined)
@@ -91,17 +105,18 @@ export function sentInvoicePaper(
     lines: invoice.lines,
     taxRate: invoice.taxRate,
     zelleEmail: zelle,
+    stamp: invoiceStamp(invoice, payment),
   };
 }
 
-// What the customer's invoice link shows: the paper, or nothing once the link
-// opens nothing. A query, and the page reports no open: nothing is logged.
+// What the customer's invoice link shows: the paper, stamped once paid or
+// void, or nothing once the link opens nothing. A query, and the page reports no open: nothing is logged.
 export const page = query({
   args: { token: v.string() },
   handler: async (ctx, a): Promise<{ paper: PaperInvoice } | null> => {
     const opened = await invoiceStillOpenedBy(ctx, a.token);
     if (!opened) return null;
-    const paper = sentInvoicePaper(opened.invoice, await zelleEmail(ctx));
+    const paper = await sentInvoicePaperOf(ctx, opened.invoice);
     return paper ? { paper } : null;
   },
 });

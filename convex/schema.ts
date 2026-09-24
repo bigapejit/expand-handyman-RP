@@ -305,6 +305,28 @@ export default defineSchema({
   })
     .index("by_invoice", ["invoiceId"])
     .index("by_token", ["token"]),
+  // A **Payment** (CONTEXT.md): that a sent invoice's money arrived, and
+  // nothing about how much or how. At most one per invoice, which Mark paid
+  // checks before it writes one. Never edited: Mark unpaid deletes the row,
+  // and refuses one the app wrote from Stripe. Its presence is what makes the
+  // invoice's **Standing** read Paid.
+  payments: defineTable({
+    invoiceId: v.id("invoices"),
+    // The Pacific calendar day the money arrived, `YYYY-MM-DD`
+    // (lib/invoice-standing.ts, `pacificDay`).
+    receivedOn: v.string(),
+    // Who recorded it: the owner by hand, or, once Pay now exists, the app
+    // from Stripe.
+    source: v.union(v.literal("owner"), v.literal("stripe")),
+    // The recorder's sign-in subject, or `stripe`.
+    recordedBy: v.string(),
+    recordedAt: v.number(),
+    // The Stripe payment a `stripe` row came from, so a webhook delivered
+    // twice finds the row it already wrote. Nothing writes it yet.
+    stripePaymentIntentId: v.optional(v.string()),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
   // Counters that run across the whole business, one row per name. `invoice`
   // holds the last Invoice number given; the first is 1001.
   sequences: defineTable({

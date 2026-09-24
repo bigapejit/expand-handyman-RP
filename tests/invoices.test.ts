@@ -500,18 +500,27 @@ describe("Re-send", () => {
     const { proposalId } = await approved(await customer());
     const draft = await written(proposalId, { kind: "final" });
     await expect(owner.action(api.invoices.resend, { invoiceId: draft })).rejects.toThrow(
-      /Only a sent invoice can be re-sent/,
+      /Only a sent or void invoice can be re-sent/,
     );
   });
 
-  test("is refused for a void invoice while its link has no paper to open, and its link stays", async () => {
-    const { t, owner, customer, approved, links } = fixture();
+  test("works on a void invoice: the fresh link opens the paper stamped VOID and the old one ends", async () => {
+    const { t, owner, customer, approved, links, letters, deliver } = fixture();
     const { invoiceId } = await approved(await customer());
-    await t.run((ctx) => ctx.db.patch(invoiceId, { state: "void", voidedAt: Date.now() }));
-    await expect(owner.action(api.invoices.resend, { invoiceId })).rejects.toThrow(
-      /Only a sent invoice can be re-sent/,
-    );
-    expect((await links(invoiceId)).map((link) => link.endedAt)).toEqual([undefined]);
+    const [old] = await links(invoiceId);
+    await owner.mutation(api.invoices.voidInvoice, { invoiceId });
+
+    vi.setSystemTime(pdt(9, 4));
+    await owner.action(api.invoices.resend, { invoiceId });
+    await deliver();
+
+    const fresh = (await links(invoiceId)).find((link) => link.endedAt === undefined)!;
+    expect(fresh.token).not.toBe(old.token);
+    expect(await t.query(api.invoiceLinks.page, { token: old.token })).toBeNull();
+    const page = await t.query(api.invoiceLinks.page, { token: fresh.token });
+    expect(page?.paper.stamp).toEqual({ kind: "void", day: "2026-09-01" });
+    expect(letters()).toHaveLength(1);
+    expect((await t.run((ctx) => ctx.db.get(invoiceId)))!.state).toBe("void");
   });
 });
 
@@ -579,6 +588,7 @@ describe("The staff paper for an invoice", () => {
       lines: [{ description: "Fix gate", cents: 55_000 }],
       taxRate: 0.089,
       zelleEmail: "pay@expandhandyman.com",
+      stamp: null,
     });
   });
 
