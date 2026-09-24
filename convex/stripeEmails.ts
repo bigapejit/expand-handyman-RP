@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -30,6 +30,12 @@ import { signingPath, signingUrl } from "../lib/signing-link";
 // the same when, by the time the letters go, the invoice was voided or paid
 // or another payment set off since the return committed.
 
+const stillOnItsWay = v.object({
+  paymentIntentId: v.string(),
+  amountCents: v.number(),
+  acceptedOn: v.string(),
+});
+
 export const sendReturnedPayment = internalAction({
   args: {
     paymentIntentId: v.string(),
@@ -43,8 +49,9 @@ export const sendReturnedPayment = internalAction({
     // Another bank payment for the invoice still on its way when the return
     // committed, from a second session minted before either completed: the
     // customer's money may yet arrive that way, so only the owner is written
-    // to.
-    stillOnItsWay: v.optional(v.object({ amountCents: v.number(), acceptedOn: v.string() })),
+    // to. Its payment intent names its row, so the action can tell whether
+    // it came back too before the letters went.
+    stillOnItsWay: v.optional(stillOnItsWay),
   },
   handler: async (ctx, a) => {
     const amount = formatCentsExact(a.amountCents, "en-US");
@@ -59,27 +66,20 @@ export const sendReturnedPayment = internalAction({
     // nothing, or the live link to an address the invoice no longer goes to.
     const { notAsked, token, customerName, to } = await ctx.runQuery(
       internal.stripeEmails.askAgain,
-      { invoiceId: a.invoiceId },
+      { invoiceId: a.invoiceId, stillOnItsWay: a.stillOnItsWay },
     );
     const letter = { ...a, customerName, to };
-    let customer: OwnerLetter["customer"];
-    // One the mutation already left unasked is not asked here even if the
-    // other payment has come back too since: that return writes letters of
-    // its own. The owner is told the invoice as it now stands, so a Void, a
-    // Mark paid or the other payment confirming since is what the letter
-    // says, not the payment that was on its way when this came back. When
-    // nothing now stands in the way, the other payment came back as well,
-    // and the letter says so rather than that it is still on its way.
-    if (a.stillOnItsWay) customer = notAsked ?? { kind: "came_back_too", ...a.stillOnItsWay };
-    else {
-      const emailed = notAsked ? false : await sendCustomerLetter(letter, amount, token);
-      // Kept for the owner's grey note, which otherwise could only guess.
-      await ctx.runMutation(internal.stripeEmails.recordCustomerLetter, {
-        paymentIntentId: a.paymentIntentId,
-        emailed,
-      });
-      customer = notAsked ?? (emailed ? { kind: "emailed" } : { kind: "not_emailed" });
-    }
+    // The owner is told the invoice as it now stands, so a Void, a Mark paid
+    // or the other payment confirming since is what the letter says, not the
+    // payment that was on its way when this came back.
+    const emailed = notAsked ? false : await sendCustomerLetter(letter, amount, token);
+    // Kept for the owner's grey note, which otherwise could only guess.
+    await ctx.runMutation(internal.stripeEmails.recordCustomerLetter, {
+      paymentIntentId: a.paymentIntentId,
+      emailed,
+    });
+    const customer: OwnerLetter["customer"] =
+      notAsked ?? (emailed ? { kind: "emailed" } : { kind: "not_emailed" });
 
     const owner = await sendEmail({
       to: ExpandBusiness.email,
@@ -100,15 +100,16 @@ export const sendReturnedPayment = internalAction({
 
 // Whether the customer is to be asked to pay the invoice again, through
 // which link and at which address, all as they stand now. `notAsked` says why
-// not, or is null while the invoice still owes: sent, with no payment and
-// none on its way, which is when the link has its Pay button back. A void
+// not, or is null while the invoice still owes and nobody else has asked:
+// sent, with no payment and none on its way, which is when the link has its
+// Pay button back, and no other return writing letters of its own. A void
 // invoice says so before a payment on it, since its paper reads VOID whatever
 // Stripe wrote. The name and address are the ones the invoice last went to,
 // which a Re-send moves to the customer's email as it is then; a sent
 // invoice always has them, and only a draft, which Stripe never sees, can be
 // deleted.
 export const askAgain = internalQuery({
-  args: { invoiceId: v.id("invoices") },
+  args: { invoiceId: v.id("invoices"), stillOnItsWay: v.optional(stillOnItsWay) },
   handler: async (
     ctx,
     a,
@@ -122,7 +123,7 @@ export const askAgain = internalQuery({
     if (!frozen) throw new Error("A returned payment's invoice was never sent.");
     const token = (await linkToPayAgain(ctx, a.invoiceId))?.token ?? null;
     return {
-      notAsked: await whyNotAskAgain(ctx, a.invoiceId),
+      notAsked: await whyNotAskAgain(ctx, a.invoiceId, a.stillOnItsWay),
       token,
       customerName: frozen.customerName,
       to: frozen.sentTo,
@@ -133,6 +134,7 @@ export const askAgain = internalQuery({
 async function whyNotAskAgain(
   ctx: QueryCtx,
   invoiceId: Id<"invoices">,
+  wasOnItsWay: Infer<typeof stillOnItsWay> | undefined,
 ): Promise<NotAsked | null> {
   const invoice = await ctx.db.get(invoiceId);
   if (!invoice || invoice.state !== "sent") return { kind: "voided" };
@@ -144,6 +146,25 @@ async function whyNotAskAgain(
       amountCents: other.amountCents,
       acceptedOn: pacificDay(other.acceptedAt),
     };
+  // The payment that was on its way when this came back is no longer, and
+  // the invoice owes. Only its own return wrote letters asking the customer
+  // to pay again: one that confirmed and was then refunded in full or lost
+  // in a dispute wrote none, nor did one whose row is not found, so this
+  // return's letter is the only one that will ask.
+  if (wasOnItsWay) {
+    const rows = await ctx.db
+      .query("stripePayments")
+      .withIndex("by_payment_intent", (q) =>
+        q.eq("stripePaymentIntentId", wasOnItsWay.paymentIntentId),
+      )
+      .collect();
+    if (rows.some((row) => row.status === "returned"))
+      return {
+        kind: "came_back_too",
+        amountCents: wasOnItsWay.amountCents,
+        acceptedOn: wasOnItsWay.acceptedOn,
+      };
+  }
   return null;
 }
 
@@ -229,21 +250,18 @@ type OwnerLetter = {
   customerName: string;
   to: string;
   // What became of the customer: asked to pay again, not reachable, or left
-  // alone because the invoice no longer asks for the money, or because
-  // another bank payment was on its way when this one came back, which has
-  // since come back too and written letters of its own.
-  customer:
-    | { kind: "emailed" }
-    | { kind: "not_emailed" }
-    | NotAsked
-    | { kind: "came_back_too"; amountCents: number; acceptedOn: string };
+  // alone.
+  customer: { kind: "emailed" } | { kind: "not_emailed" } | NotAsked;
   stripeUrl: string;
 };
 
 // Why the customer was left alone: another bank payment of theirs is still on
-// its way, or, by the time the letters went, the invoice was voided or paid.
+// its way, or was when this one came back and has since come back too, with
+// letters of its own; or, by the time the letters went, the invoice was
+// voided or paid.
 type NotAsked =
   | { kind: "still_on_its_way"; amountCents: number; acceptedOn: string }
+  | { kind: "came_back_too"; amountCents: number; acceptedOn: string }
   | { kind: "voided" }
   | { kind: "paid" };
 

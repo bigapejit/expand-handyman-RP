@@ -553,7 +553,8 @@ async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
 // the other still is, the invoice reads Payment on its way and the link has
 // no Pay button, so the customer is not asked to pay again and only the
 // owner is told. The letters go after this commits, so the action asks all
-// of this again before it writes to the customer.
+// of this again before it writes to the customer, and asks the other
+// payment's row, by its payment intent, whether it came back too.
 async function recordReturned(
   ctx: MutationCtx,
   payment: StripePaymentFacts,
@@ -581,6 +582,7 @@ async function recordReturned(
     ...(other
       ? {
           stillOnItsWay: {
+            paymentIntentId: other.stripePaymentIntentId,
             amountCents: other.amountCents,
             acceptedOn: pacificDay(other.acceptedAt),
           },

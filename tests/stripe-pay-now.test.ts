@@ -1090,6 +1090,70 @@ describe("A Returned payment", () => {
     expect(customer[0].headers["idempotency-key"]).toBe("returned-payment/pi_test_2/customer");
   });
 
+  // The other bank payment confirmed and then its money went back, before
+  // this return's letters went. Only a return writes letters, so nobody else
+  // asks the customer to pay the invoice that owes again: this return does.
+  const otherEndedAfterConfirming = async (
+    f: ReturnType<typeof fixture>,
+    ended: (other: { id: string; payment_intent: string }) => Record<string, unknown>,
+  ) => {
+    const { invoiceId } = await f.approved();
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId)));
+    vi.setSystemTime(pdt(9, 2));
+    const other = { id: "cs_test_2", payment_intent: "pi_test_2" };
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId, other)));
+    vi.setSystemTime(pdt(9, 5));
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId)),
+      "insufficient funds",
+    );
+    await f.apply(
+      f.event(
+        "checkout.session.async_payment_succeeded",
+        f.bankSession(invoiceId, { ...other, payment_status: "paid" }),
+      ),
+    );
+    vi.setSystemTime(pdt(9, 6));
+    await f.apply(ended(other));
+    await f.deliver();
+
+    const customer = f.letters("returned_payment_customer");
+    expect(customer).toHaveLength(1);
+    expect(customer[0].headers["idempotency-key"]).toBe("returned-payment/pi_test_1/customer");
+    expect(f.letters("returned_payment_owner")[0].body.text).toBe(
+      [
+        "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
+        "",
+        "The customer (Maria Delgado, maria@example.com) has been emailed to pay again.",
+        "",
+        "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
+      ].join("\n"),
+    );
+    expect(
+      (await f.stripeRows()).find((row) => row.stripePaymentIntentId === "pi_test_1"),
+    ).toMatchObject({ status: "returned", customerEmailed: true });
+  };
+
+  test("while another bank payment was on its way, which confirmed and was refunded in full before the letters went, asks the customer to pay again", async () => {
+    const f = fixture();
+    await otherEndedAfterConfirming(f, (other) =>
+      f.event(
+        "charge.refunded",
+        f.charge({ id: "ch_test_2", payment_intent: other.payment_intent }),
+      ),
+    );
+  });
+
+  test("while another bank payment was on its way, which confirmed and was lost in a dispute before the letters went, asks the customer to pay again", async () => {
+    const f = fixture();
+    await otherEndedAfterConfirming(f, (other) =>
+      f.event(
+        "charge.dispute.closed",
+        f.dispute({ id: "dp_test_2", charge: "ch_test_2", payment_intent: other.payment_intent }),
+      ),
+    );
+  });
+
   test("while another bank payment was on its way, which confirmed before the letters went, tells the owner the invoice was paid since", async () => {
     const f = fixture();
     const { invoiceId } = await f.approved();
