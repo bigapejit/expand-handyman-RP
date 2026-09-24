@@ -38,6 +38,9 @@ The record of every view and owner preview of a document or proposal: who opened
 **Signed document**:
 The completed PDF containing the customer's signature, retained for later download.
 
+**Photo**:
+A picture the owner took at a site, kept on the site with the time it was taken. It has no caption. Only the owner sees photos.
+
 **Solution**:
 One priced piece of handyman work at a site: a title, a scope of work and its line items. Its price is never typed; it is worked out from the line items and the markup, rounded up to the whole dollar, plus any material allowance. A solution with neither line items nor a material allowance has no price, which is different from a price of $0.
 _Avoid_: Option, estimate, task, job
