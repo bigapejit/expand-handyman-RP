@@ -88,9 +88,9 @@ function OpenInvoice({
 // Everything about one invoice: its header, its lines and money, the sending
 // block, its payment, and a footer. A draft's lines are open for writing, with
 // Send in the sending block and Delete in the footer; once sent, the lines are
-// read only, Mark paid or Mark unpaid sits under the sending block, Download
-// joins the footer for the PDF copy, and so does Void while nothing is
-// recorded as paid.
+// read only, the payment block sits under the sending block, Download joins
+// the footer for the PDF copy, and so does Void while no payment stands and
+// none is on its way.
 function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: () => void }) {
   const update = useMutation(api.invoices.update);
   const remove = useMutation(api.invoices.remove);
