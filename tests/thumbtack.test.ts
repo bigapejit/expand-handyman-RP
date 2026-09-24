@@ -206,12 +206,17 @@ describe("a lead event", () => {
     await receive(messageEvent("m-1", "Business", "2026-09-23T16:00:00Z", "777"));
     expect(await customers()).toHaveLength(2);
     // Meanwhile the owner put a site on the stand-in's deal and a proposal
-    // went out from it: both are the stand-in's, not the real customer's.
+    // went out from it. Neither belongs with the deal once it is the real
+    // customer's. (The site sits under the real customer here so the bare
+    // stand-in is still dropped; whose site it was makes no difference to
+    // what the deal must let go of.)
     const standIn = (await deals()).find((d) => d.title === "Thumbtack message");
     if (!standIn) throw new Error("No stand-in deal.");
+    const real = (await customers()).find((c) => c._id !== standIn.customerId);
+    if (!real) throw new Error("No real customer.");
     await t.run(async (ctx) => {
       const siteId = await ctx.db.insert("sites", {
-        customerId: standIn.customerId,
+        customerId: real._id,
         name: "1300FRANKLIN",
         addressLine1: "1300 Franklin St",
         addressLine2: "",
