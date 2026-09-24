@@ -3,7 +3,6 @@ import { v, type Infer } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { fixedInvoicePaperOf, invoiceStillOpenedBy } from "./invoiceLinks";
-import { invoiceStamp, paymentFor } from "./payments";
 import type { pdfSheet } from "./schema";
 import { paperStillOpenedBy, sentPaper, signingLinksForProposal } from "./signingLinks";
 import {
@@ -247,33 +246,4 @@ function invoiceSheetOf(paper: PaperInvoice): {
 } {
   const paperState = invoicePaperState(paper);
   return paper.stamp ? { paperState, stampDay: paper.stamp.day } : { paperState };
-}
-
-// Superseded by the adapters above, and gone once convex/pdfCopies.ts reads
-// them instead.
-export type PdfCopy = NonNullable<Doc<"proposals">["pdfCopy"]>;
-
-export function currentPdfCopyOf(proposal: Doc<"proposals">): PdfCopy | null {
-  const copy = proposal.pdfCopy;
-  if (!copy) return null;
-  return copy.state === pdfCopyStateFor(proposal.state) ? copy : null;
-}
-
-export type InvoicePdfCopy = NonNullable<Doc<"invoices">["pdfCopy"]>;
-
-export async function invoicePaperStateOf(
-  ctx: QueryCtx,
-  invoice: Doc<"invoices">,
-): Promise<InvoicePaperState | null> {
-  if (invoice.state === "draft") return null;
-  return invoicePaperState({ stamp: invoiceStamp(invoice, await paymentFor(ctx, invoice._id)) });
-}
-
-export async function currentInvoicePdfCopyOf(
-  ctx: QueryCtx,
-  invoice: Doc<"invoices">,
-): Promise<InvoicePdfCopy | null> {
-  const copy = invoice.pdfCopy;
-  if (!copy) return null;
-  return copy.paperState === (await invoicePaperStateOf(ctx, invoice)) ? copy : null;
 }

@@ -149,9 +149,9 @@ function fixture() {
     return link.token;
   };
   const download = (invoiceId: Id<"invoices">) =>
-    owner.action(api.pdfCopies.renderInvoiceForOwner, { invoiceId });
+    owner.action(api.pdfCopies.render, { paper: { invoiceId } });
   const stored = (invoiceId: Id<"invoices">) =>
-    owner.query(api.pdfCopies.invoiceDownloadForOwner, { invoiceId });
+    owner.query(api.pdfCopies.download, { paper: { invoiceId } });
   const copyOf = async (invoiceId: Id<"invoices">) =>
     (await t.run((ctx) => ctx.db.get(invoiceId)))?.pdfCopy ?? null;
   // Every file in Convex storage, and every render pass still standing.
@@ -206,7 +206,7 @@ describe("the owner's Download", () => {
       filename: "Expand Handyman Invoice INV-1001.pdf",
     });
     // A later press renders nothing new.
-    expect(await owner.action(api.pdfCopies.renderInvoiceForOwner, { invoiceId })).toMatchObject(
+    expect(await owner.action(api.pdfCopies.render, { paper: { invoiceId } })).toMatchObject(
       { outcome: "ready" },
     );
     expect(renders).toHaveLength(1);
@@ -379,8 +379,8 @@ describe("an invoice's render pass", () => {
   test("never outlives its minutes, even when the render never ends", async () => {
     const { t, deliver, deposit, passes } = fixture();
     const { invoiceId } = await deposit();
-    await t.mutation(internal.pdfCopies.mintInvoiceRenderPass, {
-      invoiceId,
+    await t.mutation(internal.pdfCopies.mintRenderPass, {
+      paper: { invoiceId },
       token: "a".repeat(43),
     });
     expect(await passes()).toHaveLength(1);
@@ -409,7 +409,7 @@ describe("which invoices keep a PDF copy", () => {
       outcome: "unavailable",
       reason: "Only a sent or void invoice has a PDF.",
     });
-    expect(await owner.query(api.pdfCopies.invoiceDownloadForOwner, { invoiceId: draftId }))
+    expect(await owner.query(api.pdfCopies.download, { paper: { invoiceId: draftId } }))
       .toBeNull();
     expect(renders).toHaveLength(0);
     expect(await passes()).toHaveLength(0);
@@ -498,9 +498,9 @@ describe("who may download an invoice", () => {
     const { invoiceId } = await deposit();
 
     await expect(
-      stranger.query(api.pdfCopies.invoiceDownloadForOwner, { invoiceId }),
+      stranger.query(api.pdfCopies.download, { paper: { invoiceId } }),
     ).rejects.toThrow(/Owner access required/);
-    await expect(t.action(api.pdfCopies.renderInvoiceForOwner, { invoiceId })).rejects.toThrow(
+    await expect(t.action(api.pdfCopies.render, { paper: { invoiceId } })).rejects.toThrow(
       /Owner access required/,
     );
     expect(renders).toHaveLength(0);
@@ -511,13 +511,13 @@ describe("who may download an invoice", () => {
     const { invoiceId, token } = await deposit();
     const viewsBefore = await t.run((ctx) => ctx.db.query("proposalViews").collect());
 
-    expect(await t.query(api.pdfCopies.invoiceDownloadForCustomer, { token })).toBeNull();
-    expect(await t.action(api.pdfCopies.renderInvoiceForCustomer, { token })).toMatchObject({
+    expect(await t.query(api.pdfCopies.download, { paper: { invoiceToken: token } })).toBeNull();
+    expect(await t.action(api.pdfCopies.render, { paper: { invoiceToken: token } })).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Invoice INV-1001.pdf",
     });
     // The same bytes the owner gets.
-    expect(await t.query(api.pdfCopies.invoiceDownloadForCustomer, { token })).toEqual(
+    expect(await t.query(api.pdfCopies.download, { paper: { invoiceToken: token } })).toEqual(
       await stored(invoiceId),
     );
     expect(renders).toHaveLength(1);
@@ -529,7 +529,7 @@ describe("who may download an invoice", () => {
     const { invoiceId, token } = await deposit();
     await owner.mutation(api.invoices.voidInvoice, { invoiceId });
 
-    expect(await t.action(api.pdfCopies.renderInvoiceForCustomer, { token })).toMatchObject({
+    expect(await t.action(api.pdfCopies.render, { paper: { invoiceToken: token } })).toMatchObject({
       outcome: "ready",
       filename: "Expand Handyman Invoice INV-1001 (void).pdf",
     });
@@ -542,16 +542,16 @@ describe("who may download an invoice", () => {
     await download(invoiceId);
     // The new link has the file; the old one still gets nothing.
     expect(
-      await t.query(api.pdfCopies.invoiceDownloadForCustomer, {
-        token: await liveToken(invoiceId),
+      await t.query(api.pdfCopies.download, {
+        paper: { invoiceToken: await liveToken(invoiceId) },
       }),
     ).not.toBeNull();
     const signing = (await t.run((ctx) => ctx.db.query("signingLinks").collect()))[0].token;
     const rendersBefore = renders.length;
 
     for (const token of [replaced, signing, "no-such-link"]) {
-      expect(await t.query(api.pdfCopies.invoiceDownloadForCustomer, { token })).toBeNull();
-      expect(await t.action(api.pdfCopies.renderInvoiceForCustomer, { token })).toEqual({
+      expect(await t.query(api.pdfCopies.download, { paper: { invoiceToken: token } })).toBeNull();
+      expect(await t.action(api.pdfCopies.render, { paper: { invoiceToken: token } })).toEqual({
         outcome: "unavailable",
         reason: "This invoice is not available.",
       });
@@ -567,7 +567,7 @@ describe("who may download an invoice", () => {
       return printPdf(request);
     };
 
-    expect(await t.action(api.pdfCopies.renderInvoiceForCustomer, { token })).toEqual({
+    expect(await t.action(api.pdfCopies.render, { paper: { invoiceToken: token } })).toEqual({
       outcome: "unavailable",
       reason: "This invoice is not available.",
     });
@@ -580,7 +580,7 @@ describe("who may download an invoice", () => {
 
     const said = { outcome: "unavailable", reason: "This deployment does not render PDFs." };
     expect(await download(invoiceId)).toEqual(said);
-    expect(await t.action(api.pdfCopies.renderInvoiceForCustomer, { token })).toEqual(said);
+    expect(await t.action(api.pdfCopies.render, { paper: { invoiceToken: token } })).toEqual(said);
     expect(renders).toHaveLength(0);
     expect(await passes()).toHaveLength(0);
   });
