@@ -29,6 +29,26 @@ export async function mintInvoiceLink(
   return ctx.db.insert("invoiceLinks", link);
 }
 
+// Every link an invoice has had, in no particular order.
+export function invoiceLinksFor(ctx: QueryCtx, invoiceId: Id<"invoices">) {
+  return ctx.db
+    .query("invoiceLinks")
+    .withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+    .collect();
+}
+
+// Ends the invoice's live link, which only a re-send does. The row stays, as
+// the record of where the invoice went and how that link finished.
+export async function endInvoiceLinks(
+  ctx: MutationCtx,
+  invoiceId: Id<"invoices">,
+  now: number,
+) {
+  for (const link of await invoiceLinksFor(ctx, invoiceId))
+    if (link.endedAt === undefined)
+      await ctx.db.patch(link._id, { endedAt: now, endedReason: "resent" });
+}
+
 export async function invoiceLinkForToken(ctx: QueryCtx, token: string) {
   const trimmed = token.trim();
   if (!trimmed) return null;
