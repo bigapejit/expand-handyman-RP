@@ -202,6 +202,29 @@ export const setSite = mutation({
   },
 });
 
+// Every lead's deal, for the leads from before deals. The Pipeline page asks
+// for this as it opens, so old leads are on the board from the first visit
+// after the deploy whether or not the CLI migration has run; each run after
+// the first finds nothing to make. Every lead fits one transaction: there are
+// dozens, not thousands.
+export async function dealsForOldLeads(ctx: MutationCtx) {
+  let made = 0;
+  for (const lead of await ctx.db.query("leads").take(1000)) {
+    if (lead.dealId && (await ctx.db.get(lead.dealId))) continue;
+    await dealForLead(ctx, lead);
+    made++;
+  }
+  return { made };
+}
+
+export const backfillLeads = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    return dealsForOldLeads(ctx);
+  },
+});
+
 // Opening a deal clears **Unread** on its lead; nothing on Thumbtack does. A
 // deal with no lead has nothing to clear.
 export const open = mutation({
@@ -365,6 +388,19 @@ export async function advanceForSite(
     event === "sent" ? candidates.filter(free) : candidates.filter(holding);
   if (targets.length === 0 && event === "approved") targets = candidates.filter(free);
   if (targets.length === 0) targets = candidates.filter(outOnAnother);
+  // One offer is for one job. With more than one deal it could be for, the
+  // one the owner touched last is the one being quoted; the others wait for
+  // their own. A deal already holding this offer is always the one.
+  if (targets.length > 1 && !targets.some(holding)) {
+    targets = [
+      targets.reduce((best, deal) =>
+        deal.updatedAt > best.updatedAt ||
+        (deal.updatedAt === best.updatedAt && deal.createdAt > best.createdAt)
+          ? deal
+          : best,
+      ),
+    ];
+  }
   for (const deal of targets) {
     // The deal takes the site if it had none, and remembers this proposal as
     // its own, so the card reads this offer and no later one at the site.

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { dealForLead } from "./deals";
+import { dealsForOldLeads } from "./deals";
 import { findSite, insertSite, place } from "./sites";
 import {
   MAX_LOOKUP,
@@ -131,13 +131,5 @@ export const moveOntoSites = internalMutation({
 //   npx convex run --prod migrations:dealsFromLeads
 export const dealsFromLeads = internalMutation({
   args: {},
-  handler: async (ctx) => {
-    let made = 0;
-    for (const lead of await ctx.db.query("leads").take(1000)) {
-      if (lead.dealId && (await ctx.db.get(lead.dealId))) continue;
-      await dealForLead(ctx, lead);
-      made++;
-    }
-    return { made };
-  },
+  handler: (ctx) => dealsForOldLeads(ctx),
 });

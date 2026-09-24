@@ -429,7 +429,7 @@ describe("stages", () => {
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
   });
 
-  test("a proposal Send moves Booked and Estimating deals to Sent out, hand-added ones too", async () => {
+  test("a proposal Send moves the one deal it is for, the one touched last, hand-added or not", async () => {
     const { t, owner, receive, deals, send } = fixture();
     await receive(leadEvent("900"));
     const [lead] = await deals();
@@ -443,7 +443,9 @@ describe("stages", () => {
     await t.run((ctx) => ctx.db.patch(lead.customerId, { email: "olivia@example.com" }));
 
     await send(lead.customerId);
-    expect((await deals()).map((d) => d.stage)).toEqual(["quoted", "quoted"]);
+    // Two open jobs and one offer: the hand-added deal was touched last, so
+    // it is the one quoted; the lead's deal waits for its own.
+    expect((await deals()).map((d) => d.stage)).toEqual(["booked", "quoted"]);
   });
 
   test("an Unread lead counts only while its deal is open", async () => {

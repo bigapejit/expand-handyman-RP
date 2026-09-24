@@ -516,6 +516,33 @@ describe("board", () => {
     expect(await row(dealId)).toMatchObject({ site: { siteId: there }, proposal: null });
   });
 
+  test("two free jobs at one site: the offer goes to the one touched last, not both", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const first = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    const second = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    await owner.mutation(api.deals.setNotes, { dealId: first, notes: "Quoting this one" });
+    const p1 = await send(siteId);
+    expect(await row(first)).toMatchObject({ stage: "quoted", proposal: { proposalId: p1 } });
+    expect(await row(second)).toMatchObject({ stage: "new", proposal: null });
+    await approve(siteId, p1);
+    expect((await row(first))?.stage).toBe("won");
+    expect((await row(second))?.stage).toBe("new");
+  });
+
   test("two open jobs at one site each take their own offer, and only the signed one closes", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
@@ -678,6 +705,34 @@ describe("dealsFromLeads", () => {
       proposal: { proposalId, state: "sent" },
     });
     expect(byLead("903")).toMatchObject({ stage: "quoted", site: null, proposal: null });
+  });
+});
+
+describe("backfillLeads", () => {
+  test("puts a lead from before deals on the board, and finds nothing the next time", async () => {
+    const { t, owner, customer } = fixture();
+    const customerId = await customer();
+    await t.run((ctx) =>
+      ctx.db.insert("leads", {
+        customerId,
+        negotiationId: "904",
+        thumbtackCustomerId: "c-1",
+        arrivedAt: Date.UTC(2026, 8, 20),
+        category: "Fence Repair",
+        description: "Gate sags.",
+        details: [],
+        location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+        attachments: [],
+        stage: "talking",
+        stageChangedAt: Date.UTC(2026, 8, 21),
+      }),
+    );
+    expect(await owner.query(api.deals.board, {})).toHaveLength(0);
+    expect(await owner.mutation(api.deals.backfillLeads, {})).toEqual({ made: 1 });
+    expect(await owner.query(api.deals.board, {})).toMatchObject([
+      { title: "Fence Repair", stage: "talking", source: "thumbtack" },
+    ]);
+    expect(await owner.mutation(api.deals.backfillLeads, {})).toEqual({ made: 0 });
   });
 });
 
