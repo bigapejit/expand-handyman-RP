@@ -58,7 +58,7 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
     phoneFrom: customer?.phoneFrom,
     email: customer?.email ?? "",
     site: site ? { siteId: site._id, name: site.name, line: siteAddressLine(site) } : null,
-    proposal: site ? await proposalOf(ctx, site._id, deal.createdAt, deal.stage === "won") : null,
+    proposal: await proposalOf(ctx, deal, site),
     lead: lead
       ? {
           negotiationId: lead.negotiationId,
@@ -76,33 +76,19 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
   };
 }
 
-// The proposal out on a deal: the latest one sent from its site since the
-// deal began, so a repeat customer's old job at the same site is not read as
-// this one's. On a Won deal the approved one wins over anything sent after
-// it: a site may have two offers out at once, and the one the customer
-// signed is the deal's whichever went out last. A deal reopened and offered
-// again reads its newest offer, as any open deal does. Drafts are the
-// owner's own and say nothing yet. Null when none.
-async function proposalOf(
-  ctx: QueryCtx,
-  siteId: Id<"sites">,
-  since: number,
-  won: boolean,
-) {
-  const proposals = await ctx.db
-    .query("proposals")
-    .withIndex("by_site", (q) => q.eq("siteId", siteId))
-    .collect();
-  let latest: (Doc<"proposals"> & { state: "sent" | "approved" | "declined" }) | null = null;
-  for (const p of proposals) {
-    if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
-    const better = !latest
-      ? true
-      : won && (p.state === "approved") !== (latest.state === "approved")
-        ? p.state === "approved"
-        : (p.sentAt ?? 0) > (latest.sentAt ?? 0);
-    if (better) latest = { ...p, state: p.state };
-  }
+type SentProposal = Doc<"proposals"> & { state: "sent" | "approved" | "declined" };
+
+// The proposal out on a deal. A deal remembers the proposal that last moved
+// it (`proposalId`, written when one is sent or approved), so two jobs at
+// one site, or two offers out at once, each read their own. A deal moved
+// before that was recorded, or only by hand, falls back to the latest offer
+// sent from its site since the deal began. Drafts are the owner's own and
+// say nothing yet. Null when none.
+async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">, site: Doc<"sites"> | null) {
+  let latest: SentProposal | null = null;
+  const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
+  if (held && held.state !== "draft" && held.frozen) latest = { ...held, state: held.state };
+  else if (site) latest = await latestSentFrom(ctx, site._id, deal.createdAt);
   if (!latest?.frozen) return null;
   // **Opened**: only a Sent one's current link can be, and only by the customer.
   const live =
@@ -119,6 +105,21 @@ async function proposalOf(
     sentAt: live?.sentAt ?? latest.sentAt ?? latest.updatedAt,
     opened: live ? await customerViewedLink(ctx, live.token) : false,
   };
+}
+
+// The latest offer sent from a site since `since`, for a deal that never
+// recorded which proposal moved it.
+async function latestSentFrom(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
+  const proposals = await ctx.db
+    .query("proposals")
+    .withIndex("by_site", (q) => q.eq("siteId", siteId))
+    .collect();
+  let latest: SentProposal | null = null;
+  for (const p of proposals) {
+    if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
+    if (!latest || (p.sentAt ?? 0) > (latest.sentAt ?? 0)) latest = { ...p, state: p.state };
+  }
+  return latest;
 }
 
 // The New deal dialog: a deal in New for a customer already on file, or for
@@ -284,6 +285,7 @@ export async function advanceForSite(
   ctx: MutationCtx,
   site: Doc<"sites">,
   event: "sent" | "approved",
+  proposal: Doc<"proposals">,
   sentAt: number,
 ) {
   const move = event === "sent" ? stageOnProposalSent : stageOnProposalApproved;
@@ -301,7 +303,13 @@ export async function advanceForSite(
   for (const deal of deals) {
     if (!isOpen(deal.stage) || deal.createdAt > sentAt) continue;
     if (deal.siteId && deal.siteId !== site._id) continue;
-    if (!deal.siteId) await ctx.db.patch(deal._id, { siteId: site._id, updatedAt: Date.now() });
+    // The deal takes the site if it had none, and remembers this proposal as
+    // its own, so the card reads this offer and no later one at the site.
+    await ctx.db.patch(deal._id, {
+      ...(deal.siteId ? {} : { siteId: site._id }),
+      proposalId: proposal._id,
+      updatedAt: Date.now(),
+    });
     await moveDeal(ctx, deal, move(deal.stage));
   }
 }

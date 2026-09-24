@@ -458,6 +458,31 @@ describe("board", () => {
     });
   });
 
+  test("two jobs at one site each keep their own proposal, won one after the other", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const first = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const p1 = await send(siteId);
+    await approve(siteId, p1);
+    vi.advanceTimersByTime(30 * 86_400_000);
+    const second = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    const p2 = await send(siteId);
+    await approve(siteId, p2);
+    expect(await row(first)).toMatchObject({ stage: "won", proposal: { proposalId: p1, state: "approved" } });
+    expect(await row(second)).toMatchObject({ stage: "won", proposal: { proposalId: p2, state: "approved" } });
+  });
+
   test("a lead from before deals is moved too, getting its deal on the way", async () => {
     const { t, owner, customer, site, send, deals } = fixture();
     const customerId = await customer();

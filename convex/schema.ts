@@ -221,6 +221,9 @@ export default defineSchema({
     ballparkCents: v.optional(v.number()),
     // The **Lead** behind a Thumbtack deal.
     leadId: v.optional(v.id("leads")),
+    // The proposal that last moved the deal, by being sent or approved: the
+    // offer the card and panel read. Absent on a deal no proposal has moved.
+    proposalId: v.optional(v.id("proposals")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
