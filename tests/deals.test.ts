@@ -67,15 +67,19 @@ function fixture() {
         updatedAt: 0,
       }),
     );
-  // A proposal from `siteId` sent through the real Send.
-  const send = async (siteId: Id<"sites">) => {
+  // A proposal from `siteId` sent through the real Send; made for `dealId`
+  // when one is given, as the Quick panel's New proposal makes it.
+  const send = async (siteId: Id<"sites">, dealId?: Id<"deals">) => {
     const solutionId = await owner.mutation(api.solutions.create, { siteId, title: "Fix gate" });
     await owner.mutation(api.solutions.update, {
       solutionId,
       description: "Rehang the gate.",
       lineItems: [{ name: "Gate labor", quantity: 2, unitCostCents: 25_000, unit: "HR" }],
     });
-    const proposalId = await owner.action(api.proposals.create, { siteId });
+    const proposalId = await owner.action(api.proposals.create, {
+      siteId,
+      ...(dealId ? { dealId } : {}),
+    });
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
     await owner.action(api.proposals.send, { proposalId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -516,6 +520,44 @@ describe("board", () => {
     expect(await row(dealId)).toMatchObject({ site: { siteId: there }, proposal: null });
   });
 
+  test("a proposal made for a deal moves that deal, whichever was touched last", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    const p1 = await send(siteId, a);
+    expect(await row(a)).toMatchObject({ stage: "quoted", proposal: { proposalId: p1 } });
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+    await approve(siteId, p1);
+    expect((await row(a))?.stage).toBe("won");
+    expect((await row(b))?.stage).toBe("new");
+  });
+
+  test("a proposal cannot be made for another customer's deal", async () => {
+    const { owner, customer, site } = fixture();
+    const siteId = await site(await customer());
+    const other = await owner.mutation(api.deals.create, {
+      customer: { customerId: await customer("Someone Else") },
+      title: "Deck boards",
+      source: "repeat",
+    });
+    await expect(owner.action(api.proposals.create, { siteId, dealId: other })).rejects.toThrow(
+      "That deal is not this customer's.",
+    );
+  });
+
   test("two free jobs at one site: the offer goes to the one touched last, not both", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
@@ -869,6 +911,30 @@ describe("dealsFromLeads", () => {
 });
 
 describe("backfillLeads", () => {
+  test("reaches every lead, a page at a time", async () => {
+    const { t, owner, customer } = fixture();
+    const customerId = await customer();
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 250; i++)
+        await ctx.db.insert("leads", {
+          customerId,
+          negotiationId: `old-${i}`,
+          thumbtackCustomerId: "c-1",
+          arrivedAt: Date.UTC(2026, 8, 20) + i,
+          category: "Fence Repair",
+          description: "Gate sags.",
+          details: [],
+          location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+          attachments: [],
+        });
+    });
+    expect(await owner.mutation(api.deals.backfillLeads, {})).toEqual({ made: 200, more: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const leads = await t.run((ctx) => ctx.db.query("leads").collect());
+    expect(leads.filter((lead) => lead.dealId)).toHaveLength(250);
+    expect(await owner.mutation(api.deals.backfillLeads, {})).toEqual({ made: 0, more: true });
+  });
+
   test("puts a lead from before deals on the board, and finds nothing the next time", async () => {
     const { t, owner, customer } = fixture();
     const customerId = await customer();

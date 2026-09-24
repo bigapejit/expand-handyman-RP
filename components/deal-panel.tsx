@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   CalendarPlus,
   Camera,
@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  FilePlus,
   LoaderCircle,
   Mail,
   MapPin,
@@ -17,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { SourceBadge, StageChip } from "@/components/deal-chips";
@@ -41,7 +43,7 @@ import {
   type Stage,
 } from "@/lib/pipeline";
 import { telHref } from "@/lib/proposal-paper";
-import { proposalStateLabel } from "@/lib/proposals";
+import { proposalPanelHref, proposalStateLabel } from "@/lib/proposals";
 import { conversationUrl } from "@/lib/thumbtack";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -128,6 +130,7 @@ export function DealPanel({
           >
             <CalendarPlus data-icon="inline-start" aria-hidden /> Add to Google Calendar
           </Button>
+          {siteId ? <NewProposalButton dealId={deal._id} siteId={siteId} /> : null}
           <Button
             size="lg"
             variant="outline"
@@ -230,6 +233,49 @@ export function DealPanel({
 
 // The deal's one figure under the contact: the proposal out on it once there
 // is one, else the owner's ballpark, else nothing.
+// **New proposal** for this deal: the draft is made for the deal, at the
+// deal's site, so Send moves this deal and no other job at the site, and the
+// owner lands in the draft on the site's Proposals tab. Only a deal with a
+// site can have one; a proposal is for a site.
+function NewProposalButton({ dealId, siteId }: { dealId: Id<"deals">; siteId: Id<"sites"> }) {
+  const create = useAction(api.proposals.create);
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <>
+      <Button
+        size="lg"
+        variant="outline"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            const proposalId = await create({ siteId, dealId });
+            router.push(proposalPanelHref(siteId, proposalId));
+          } catch (err) {
+            setError(errorMessage(err));
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? (
+          <LoaderCircle data-icon="inline-start" aria-hidden className="animate-spin" />
+        ) : (
+          <FilePlus data-icon="inline-start" aria-hidden />
+        )}{" "}
+        New proposal
+      </Button>
+      {error ? (
+        <p role="alert" className="basis-full text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function Figure({ deal }: { deal: DealRow }) {
   const text = deal.proposal
     ? `${deal.proposal.code} · ${money(deal.proposal.totalCents)} · ${proposalStateLabel(deal.proposal.state)}`

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { dealStage, handSource } from "./schema";
@@ -202,19 +203,25 @@ export const setSite = mutation({
   },
 });
 
-// Every lead's deal, for the leads from before deals. The Pipeline page asks
-// for this as it opens, so old leads are on the board from the first visit
-// after the deploy whether or not the CLI migration has run; each run after
-// the first finds nothing to make. Every lead fits one transaction: there are
-// dozens, not thousands.
-export async function dealsForOldLeads(ctx: MutationCtx) {
+// Every lead's deal, for the leads from before deals. The sidebar asks for
+// this as the owner's first page opens, so old leads are on the board and in
+// the badge from the first visit after the deploy whether or not the CLI
+// migration has run; each run after the first finds nothing to make. A page
+// of leads at a time, the rest scheduled behind it, so however many leads
+// there are every one is reached; there are dozens, so one page is the norm.
+export async function dealsForOldLeads(ctx: MutationCtx, cursor: string | null = null) {
+  const page = await ctx.db.query("leads").paginate({ cursor, numItems: 200 });
   let made = 0;
-  for (const lead of await ctx.db.query("leads").take(1000)) {
+  for (const lead of page.page) {
     if (lead.dealId && (await ctx.db.get(lead.dealId))) continue;
     await dealForLead(ctx, lead);
     made++;
   }
-  return { made };
+  if (!page.isDone)
+    await ctx.scheduler.runAfter(0, internal.migrations.dealsFromLeads, {
+      cursor: page.continueCursor,
+    });
+  return { made, ...(page.isDone ? {} : { more: true }) };
 }
 
 export const backfillLeads = mutation({

@@ -352,7 +352,9 @@ export const paper = query({
 // the Department of Revenue over the network, and the new draft carries it
 // from the moment the panel opens.
 export const create = action({
-  args: { siteId: v.id("sites") },
+  // `dealId`: the **Deal** this offer is for, when it is made from the deal's
+  // Quick panel; Send then moves that deal and no other at the site.
+  args: { siteId: v.id("sites"), dealId: v.optional(v.id("deals")) },
   handler: async (ctx, a): Promise<Id<"proposals">> => {
     await requireOwner(ctx);
     const { proposalId, taxed } = await ctx.runMutation(internal.proposals.insertDraft, a);
@@ -405,11 +407,16 @@ export async function lookUpDraftTax(
 }
 
 export const insertDraft = internalMutation({
-  args: { siteId: v.id("sites") },
+  args: { siteId: v.id("sites"), dealId: v.optional(v.id("deals")) },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const site = await ctx.db.get(a.siteId);
     if (!site) throw new Error("Site not found.");
+    if (a.dealId) {
+      const deal = await ctx.db.get(a.dealId);
+      if (!deal || deal.customerId !== site.customerId)
+        throw new Error("That deal is not this customer's.");
+    }
 
     // Washington or nothing: `none` is the whole of "this site charges no
     // sales tax", and a Washington site starts with a rate nobody has yet.
@@ -423,6 +430,7 @@ export const insertDraft = internalMutation({
       recommended: false,
       depositPercent: DefaultDepositPercent,
       tax: { source: taxed ? "lookup" : "none" },
+      ...(a.dealId ? { dealId: a.dealId } : {}),
       createdAt: now,
       updatedAt: now,
     });

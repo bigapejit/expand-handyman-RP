@@ -130,6 +130,6 @@ export const moveOntoSites = internalMutation({
 // lead fits one transaction: there are dozens, not thousands. Run from the CLI:
 //   npx convex run --prod migrations:dealsFromLeads
 export const dealsFromLeads = internalMutation({
-  args: {},
-  handler: (ctx) => dealsForOldLeads(ctx),
+  args: { cursor: v.optional(v.string()) },
+  handler: (ctx, { cursor }) => dealsForOldLeads(ctx, cursor ?? null),
 });
