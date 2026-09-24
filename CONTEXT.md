@@ -116,7 +116,7 @@ _Avoid_: Cancel, delete (a draft is deleted, a sent invoice is voided), withdraw
 Emailing a sent invoice again, to the customer's current email address, with a fresh link; the old link stops working. Nothing on the invoice changes, not even its date.
 
 **Payment**:
-The record that a sent invoice's money arrived: the day it arrived and who recorded it, the owner by hand or, later, the app from an online payment. Never edited: the owner takes one back by marking the invoice unpaid. A record the app wrote cannot be taken back by hand.
+The record that a sent invoice's money arrived: the day it arrived and who recorded it, the owner by hand or the app from a Pay now through Stripe. A payment the app wrote also says how the money moved, by card or by bank; one the owner recorded does not. Never edited: the owner takes their own back by marking the invoice unpaid, and a payment the app wrote cannot be taken back by hand. It is removed only when the money itself goes back, by a full refund or a lost dispute handled in Stripe.
 _Avoid_: Transaction, receipt, paid tick (it is a record, not a flag on the invoice)
 
 **Mark paid**:
@@ -124,8 +124,16 @@ The owner recording a payment on a sent invoice, with the day the money arrived,
 _Avoid_: Settle, close, reconcile
 
 **Standing**:
-What an invoice reads about its money: Unpaid, Paid, or Overdue when still unpaid more than seven days after the day it was sent. Read from its payment each time, never stored. A void invoice has none, and an invoice for $0 reads Paid from the moment it is sent.
+What an invoice reads about its money: Unpaid, Paid, Overdue when still unpaid more than seven days after the day it was sent, or Payment on its way while a bank payment is confirming. Read from its payment each time, never stored. A void invoice has none, and an invoice for $0 reads Paid from the moment it is sent.
 _Avoid_: Status (which is draft, sent or void), state, paid flag
+
+**Pay now**:
+The customer paying a sent invoice online from its link, for the full Amount Due and with no fee, through Stripe's own checkout page: by bank, always offered, or by card, offered only when Amount Due is $1,000 or less. The payment then records itself on the invoice. Zelle and check stay on the paper as the other ways to pay.
+_Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Stripe's page, not an app concept), online payment (as the name of the action), card fee or surcharge (there is none)
+
+**Payment on its way**:
+The standing of a sent invoice whose bank payment Stripe has accepted but not yet confirmed, which can take a few business days. Pay now is gone from the link meanwhile, and the invoice does not read Overdue. It reads Paid, stamp and all, once the money is confirmed.
+_Avoid_: Pending, processing, awaiting payment
 
 **Invoice paper**:
 An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines before tax, then Subtotal, Sales Tax at the proposal's rate and Amount Due, and how to pay. Washington requires the tax stated separately on an invoice. No Terms page and no line about the Terms: the invoice sits under the proposal as signed. Stamped VOID in red once voided and PAID in green, with the day, once marked paid.
@@ -136,7 +144,7 @@ Which sheet a sent or void invoice's paper is: sent, paid (stamped PAID) or void
 _Avoid_: Invoice status (the invoice's own state is draft, sent or void, and its standing Unpaid, Paid or Overdue)
 
 **Invoice link**:
-A private link that shows one invoice's paper to the customer, sent in the invoice's email. Nothing is signed through it. It never expires by itself: only a re-send ends it, and a paid or void invoice's link keeps showing the stamped paper.
+A private link that shows one invoice's paper to the customer, sent in the invoice's email, and where Pay now lives while the invoice is unpaid. Nothing is signed through it. It never expires by itself: only a re-send ends it, and a paid or void invoice's link keeps showing the stamped paper.
 _Avoid_: Signing link (for an invoice; the customer signs nothing), payment link
 
 **Proposal ID**:
