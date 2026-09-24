@@ -58,7 +58,7 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
     phoneFrom: customer?.phoneFrom,
     email: customer?.email ?? "",
     site: site ? { siteId: site._id, name: site.name, line: siteAddressLine(site) } : null,
-    proposal: site ? await proposalOf(ctx, site._id, deal.createdAt) : null,
+    proposal: site ? await proposalOf(ctx, site._id, deal.createdAt, deal.stage === "won") : null,
     lead: lead
       ? {
           negotiationId: lead.negotiationId,
@@ -78,11 +78,17 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
 
 // The proposal out on a deal: the latest one sent from its site since the
 // deal began, so a repeat customer's old job at the same site is not read as
-// this one's. An approved one wins over anything sent after it: a site may
-// have two offers out at once, and the one the customer signed is the deal's
-// whichever went out last. Drafts are the owner's own and say nothing yet.
-// Null when none.
-async function proposalOf(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
+// this one's. On a Won deal the approved one wins over anything sent after
+// it: a site may have two offers out at once, and the one the customer
+// signed is the deal's whichever went out last. A deal reopened and offered
+// again reads its newest offer, as any open deal does. Drafts are the
+// owner's own and say nothing yet. Null when none.
+async function proposalOf(
+  ctx: QueryCtx,
+  siteId: Id<"sites">,
+  since: number,
+  won: boolean,
+) {
   const proposals = await ctx.db
     .query("proposals")
     .withIndex("by_site", (q) => q.eq("siteId", siteId))
@@ -92,7 +98,7 @@ async function proposalOf(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
     if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
     const better = !latest
       ? true
-      : (p.state === "approved") !== (latest.state === "approved")
+      : won && (p.state === "approved") !== (latest.state === "approved")
         ? p.state === "approved"
         : (p.sentAt ?? 0) > (latest.sentAt ?? 0);
     if (better) latest = { ...p, state: p.state };

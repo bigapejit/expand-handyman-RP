@@ -436,6 +436,28 @@ describe("board", () => {
     });
   });
 
+  test("a won deal reopened and offered again reads the new offer", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const first = await send(siteId);
+    await approve(siteId, first);
+    expect((await row(dealId))?.stage).toBe("won");
+    await owner.mutation(api.deals.setStage, { dealId, stage: "estimating" });
+    vi.advanceTimersByTime(60_000);
+    const second = await send(siteId);
+    expect(await row(dealId)).toMatchObject({
+      stage: "quoted",
+      proposal: { proposalId: second, state: "sent" },
+    });
+  });
+
   test("a lead from before deals is moved too, getting its deal on the way", async () => {
     const { t, owner, customer, site, send, deals } = fixture();
     const customerId = await customer();
