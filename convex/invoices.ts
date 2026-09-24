@@ -18,7 +18,7 @@ import {
   mintInvoiceLink,
   fixedInvoicePaperOf,
 } from "./invoiceLinks";
-import { paymentFor } from "./payments";
+import { invoiceStamp, paymentFor } from "./payments";
 import { invoiceLine } from "./schema";
 import { zelleEmail } from "./settings";
 import { mintLinkToken } from "./signingLinks";
@@ -130,7 +130,8 @@ const FirstInvoiceNumber = 1001;
 
 // One fresh link to a sent invoice, and the email that carries it, scheduled
 // to run once this mutation commits. The letter is written from the invoice
-// as sent, so it names what the paper prints.
+// as sent, so it names what the paper prints, stamp included: a re-sent paid
+// or void invoice is not a demand for payment.
 export async function emailNewInvoiceLink(
   ctx: MutationCtx,
   send: { invoiceId: Id<"invoices">; token: string; senderName: string; now: number },
@@ -139,6 +140,7 @@ export async function emailNewInvoiceLink(
   const { frozen, number } = invoice ?? {};
   if (!invoice || !frozen || number === undefined)
     throw new Error("Only a sent invoice has a link to email.");
+  const stamp = invoiceStamp(invoice, await paymentFor(ctx, invoice._id));
   const linkId = await mintInvoiceLink(ctx, {
     invoiceId: invoice._id,
     token: send.token,
@@ -159,6 +161,7 @@ export async function emailNewInvoiceLink(
     siteStreet: frozen.site.street,
     firstLine: invoice.lines[0]?.description ?? "",
     amountDueCents: invoiceMoney(invoice.lines, invoice.taxRate).amountDueCents,
+    ...(stamp ? { stamp } : {}),
   });
 }
 
