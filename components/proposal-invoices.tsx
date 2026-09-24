@@ -118,7 +118,7 @@ export function ProposalInvoices({
             <AlertDialogDescription>
               {balanceCents === 0
                 ? "The invoices already sent on this proposal come to its whole price, so the final invoice starts at $0.00. Add lines for any extras before you send it; sent at $0.00, it reads Paid."
-                : `The invoices already sent on this proposal come to more than its price, so the final invoice starts as a credit of ${formatCentsExact(-(prefill?.money.amountDueCents ?? 0))}. Once it is sent, refund the customer by hand and mark it paid.`}
+                : `The invoices already sent on this proposal come to more than its price, so the final invoice starts as a credit of ${formatCentsExact(-(prefill?.money.amountDueCents ?? 0))}, tax included. Once it is sent, refund the customer by hand and mark it paid.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

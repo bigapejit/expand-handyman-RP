@@ -261,7 +261,7 @@ export const panel = query({
       ...row,
       // A typed invoice's title as stored, for its field; the row title above
       // is what everything else calls the invoice.
-      invoiceTitle: invoice.title ?? null,
+      typedTitle: invoice.title ?? null,
       proposalCode: proposal.code,
       proposalName: proposal.name,
       lines: invoice.lines,
@@ -450,6 +450,8 @@ export const sendWithLink = internalMutation({
     refuseSend(invoiceSendBlockers(invoice.lines, sentTo));
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
+    // The draft's paper can say Unknown for a site that has gone; a sent
+    // invoice must never fix that on the customer's copy.
     if (!(await ctx.db.get(invoice.siteId))) throw new Error("Site not found.");
 
     const identity = await ctx.auth.getUserIdentity();
@@ -682,7 +684,8 @@ async function requireDraft(ctx: MutationCtx, invoiceId: Id<"invoices">, act: st
 }
 
 // Lines as stored: whole cents of either sign, descriptions trimmed and cut at
-// a length nothing legitimate reaches, and no more of them than any bill has.
+// a length nothing legitimate reaches, and no more of them than any invoice
+// has.
 function storedLines(lines: readonly InvoiceLine[]): InvoiceLine[] {
   if (lines.length > LinesMax) throw new Error(`An invoice holds at most ${LinesMax} lines.`);
   return lines.map((line) => {

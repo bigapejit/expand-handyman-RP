@@ -209,7 +209,6 @@ function fixture() {
   };
 }
 
-
 // The approved proposal in the fixture is "Fix gate", $550 before tax at
 // 8.9%, and Approve sent its deposit invoice, INV-1001, for $275 before tax.
 const gate = { description: "Fix gate", cents: 55_000 };
@@ -373,7 +372,7 @@ describe("New invoice", () => {
     });
     expect(await panel(invoiceId)).toMatchObject({
       title: "Draft · Invoice",
-      invoiceTitle: null,
+      typedTitle: null,
       sendBlockers: ["no_lines"],
     });
     // Any number of them, beside the final invoice.
@@ -404,7 +403,7 @@ describe("Editing a draft", () => {
     });
     expect(await panel(invoiceId)).toMatchObject({
       title: "Draft · Framing midway",
-      invoiceTitle: "Framing midway",
+      typedTitle: "Framing midway",
       money: { subtotalCents: 35_000, taxCents: 3_115, amountDueCents: 38_115 },
     });
 
@@ -589,7 +588,9 @@ describe("Send", () => {
     expect(letters()).toHaveLength(1);
     expect(letter.headers["idempotency-key"]).toBe(`invoice-link/${link._id}`);
     expect(letter.body).toMatchObject({
+      from: "Expand Handyman <proposals@expandhandyman.com>",
       to: ["maria@example.com"],
+      reply_to: "contact@expandhandyman.com",
       subject: "Your Expand Handyman invoice for 1300 Franklin St",
     });
     expect(String(letter.body.text)).toContain(

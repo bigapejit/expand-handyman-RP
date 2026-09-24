@@ -1,5 +1,6 @@
 "use client";
 
+import type { FunctionArgs } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -7,7 +8,8 @@ import type { PanelInvoice } from "@/components/invoice-sending";
 import { FieldHeading, FieldLabel } from "@/components/side-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { invoiceMoney, type InvoiceLine, type InvoiceMoney } from "@/lib/invoice-money";
+import type { api } from "@/convex/_generated/api";
+import { invoiceMoney, type InvoiceMoney } from "@/lib/invoice-money";
 import { invoiceTaxLabel } from "@/lib/invoice-paper";
 import {
   lineDraftsFrom,
@@ -21,7 +23,7 @@ import { moveInOrder } from "@/lib/proposals";
 import { cn } from "@/lib/utils";
 
 // What one edit of a draft may change (invoices.update).
-export type InvoiceDraftPatch = { title?: string; lines?: InvoiceLine[] };
+export type InvoiceDraftPatch = Omit<FunctionArgs<typeof api.invoices.update>, "invoiceId">;
 
 // The lines as the paper prints them, before tax, then Subtotal, Sales Tax at
 // the invoice's rate and Amount Due. A sent invoice's lines never change, and
@@ -59,9 +61,11 @@ export function InvoiceLines({ invoice }: { invoice: PanelInvoice }) {
 // A **Draft invoice** open for writing: a typed invoice's title, then its
 // lines, each a description and an amount before tax, negative for a credit,
 // added, edited, removed and moved. Text commits when the field is left, so
-// a half-typed amount never becomes the invoice; adding, removing and moving
-// a line is the whole edit, so it stores at once. The totals under the table
-// follow every keystroke, from the same module the server and the paper use.
+// a half-typed amount never becomes the invoice; removing and moving a line
+// is the whole edit, so it stores at once. A line just added waits for its
+// field to be left, so Send does not call it blank before it is written. The
+// totals under the table follow every keystroke, from the same module the
+// server and the paper use.
 export function InvoiceDraftLines({
   invoice,
   onSave,
@@ -69,7 +73,7 @@ export function InvoiceDraftLines({
   invoice: PanelInvoice;
   onSave: (patch: InvoiceDraftPatch) => Promise<boolean>;
 }) {
-  const [title, setTitle] = useState(invoice.invoiceTitle ?? "");
+  const [title, setTitle] = useState(invoice.typedTitle ?? "");
   const [drafts, setDrafts] = useState<InvoiceLineDraft[]>(() => lineDraftsFrom(invoice.lines));
   const nextKey = useRef(0);
   // The row just added, whose description takes the cursor.
@@ -97,11 +101,14 @@ export function InvoiceDraftLines({
     nextKey.current += 1;
     const key = `new-${nextKey.current}`;
     setAdded(key);
-    replace([...drafts, { key, description: "", amount: "" }]);
+    setDrafts((rows) => [...rows, { key, description: "", amount: "" }]);
   };
 
-  const commitTitle = () => {
-    if (title.trim() !== (invoice.invoiceTitle ?? "")) void onSave({ title });
+  // A refused title puts the field back to what the invoice is still called.
+  const commitTitle = async () => {
+    const stored = invoice.typedTitle ?? "";
+    if (title.trim() === stored) return;
+    if (!(await onSave({ title }))) setTitle(stored);
   };
 
   const money = invoiceMoney(
@@ -122,12 +129,12 @@ export function InvoiceDraftLines({
             value={title}
             placeholder="Invoice"
             onChange={(event) => setTitle(event.target.value)}
-            onBlur={commitTitle}
+            onBlur={() => void commitTitle()}
             className="w-full bg-white font-medium"
           />
           <p className="text-xs text-slate-500">
-            What the bill is for, such as &ldquo;Framing midway&rdquo;. Lists show it after
-            the number.
+            What the invoice is for, such as &ldquo;Framing midway&rdquo;. Lists show it
+            after the number.
           </p>
         </div>
       ) : null}
