@@ -5,10 +5,10 @@ Expand Handyman prepares documents for customers to review and sign.
 ## Language
 
 **Customer**:
-A person receiving handyman services. Has zero or more sites; a customer can exist with no site until a proposal is needed.
+The person who pays for handyman work and signs its paperwork. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
 
 **Site**:
-One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. A customer may have many. Every proposal is for exactly one site; documents are not.
+One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many. Documents belong to the customer, not the site.
 _Avoid_: Property, address, location, service address (as the name of the record)
 
 **Site name**:
