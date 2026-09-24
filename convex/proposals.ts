@@ -22,6 +22,7 @@ import {
   offerTitle,
   paperOf,
   sendBlockersFor,
+  type FrozenProposal,
   type Offer,
   type StaffPaper,
 } from "./offers";
@@ -41,27 +42,15 @@ import {
   type LiveSigningLink,
 } from "./signingLinks";
 import { sendableEmail } from "../lib/customer";
-import {
-  ExpandBusiness,
-  proposalTerms,
-  Unknown,
-  WashingtonNoticeToCustomer,
-} from "../lib/expand-business";
-import type { PaperProposal } from "../lib/proposal-paper";
-import { proposalCode } from "../lib/proposals";
+import { ExpandBusiness, WashingtonNoticeToCustomer } from "../lib/expand-business";
 import { signingUrl } from "../lib/signing-link";
-import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
-  depositBlockers,
   depositCentsFault,
   depositPercentFault,
-  proposalDisplayName,
   proposalFaultMessage,
-  proposalMoney,
   recipientBlockers,
   sendBlockerMessage,
-  sendBlockers,
   splitPayment,
   storedDeposit,
   taxRateFault,
@@ -76,7 +65,7 @@ import {
   signingFaults,
   type SigningFault,
 } from "../lib/proposal-signing";
-import { offeredLineItems, priceStoredSolution } from "../lib/solution-pricing";
+import { priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
 
 // Proposals, ported from FRSG's convex/proposals.ts: the offers the owner
@@ -89,7 +78,9 @@ import { isWashingtonRegion } from "../lib/wa-sales-tax";
 // them, so a solution repriced once is repriced in every draft holding it, and
 // a solution deleted drops out of every draft holding it (solutions.remove).
 // Send freezes the offer, and from then on every reader uses the frozen copy
-// and never the live solutions, customer or site.
+// and never the live solutions, customer or site. What the offer is, live or
+// frozen, is read in one place, convex/offers.ts: nothing here prices a draft
+// or lays out a paper of its own.
 
 // The site page's Proposals tab, and everything the panel over it edits: the
 // site's proposals, each as the panel reads it, and its solutions to pick
@@ -825,7 +816,7 @@ export const approveWithLink = internalMutation({
     const signerName = a.signerName.trim().replace(/\s+/g, " ").slice(0, NameMaxLength);
     const userAgent = optionalText(a.userAgent ?? "", UserAgentMaxLength);
     const firstOpenedAt = await firstCustomerView(ctx, link.token);
-    const title = frozenTitle(proposal.name, frozen);
+    const title = offerTitle(proposal, frozen);
     const sealed = sealProposal({
       proposalId: proposal._id,
       number: proposal.number,
@@ -925,7 +916,7 @@ export const declineFromLink = mutation({
       code: frozen.code,
       siteStreet: frozen.site.street,
       siteAddress: siteAddress(frozen),
-      proposalTitle: frozenTitle(proposal.name, frozen),
+      proposalTitle: offerTitle(proposal, frozen),
       ...(reason === undefined ? {} : { reason }),
     });
   },
@@ -981,14 +972,6 @@ function refuseSigning(faults: readonly SigningFault[]) {
   });
 }
 
-// A sent proposal's display name, read from the solution titles Send froze.
-function frozenTitle(name: string | undefined, frozen: FrozenProposal): string {
-  return proposalDisplayName(
-    name,
-    frozen.solutions.map((solution) => solution.title),
-  );
-}
-
 // The site as one line, the way every email names it.
 function siteAddress(frozen: FrozenProposal): string {
   return [frozen.site.street, frozen.site.city].filter(Boolean).join(", ");
@@ -1024,7 +1007,7 @@ async function emailNewLink(
     ownerName: send.ownerName?.trim() || "Your estimator",
     siteStreet: frozen.site.street,
     siteAddress: siteAddress(frozen),
-    proposalTitle: frozenTitle(proposal.name, frozen),
+    proposalTitle: offerTitle(proposal, frozen),
     totalCents: frozen.totalCents,
   });
 }
@@ -1040,8 +1023,6 @@ function refuseSend(blockers: readonly SendBlocker[]) {
     message: blockers.map(sendBlockerMessage).join(" "),
   });
 }
-
-type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
 // The next Proposal number at a site. The site's `lastProposalNumber` only
 // ever climbs, so a deleted draft leaves a gap and a number a customer has
