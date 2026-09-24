@@ -630,7 +630,13 @@ describe("A card payment Stripe completed", () => {
       state: "void",
       payments: [{ receivedOn: "2026-09-02", source: "stripe", method: "card" }],
     });
-    expect((await page(token))?.paper.stamp).toEqual({ kind: "void", day: "2026-09-02" });
+    // The void paper offers no way to pay and says nothing about Stripe, whatever
+    // Stripe recorded on it.
+    expect(await page(token)).toMatchObject({
+      paper: { stamp: { kind: "void", day: "2026-09-02" } },
+      ways: [],
+      stripe: null,
+    });
     // The VOID sheet is still the sheet, so its copy stays.
     expect(await pdfCopyKept(invoiceId, storageId)).toBe(true);
   });

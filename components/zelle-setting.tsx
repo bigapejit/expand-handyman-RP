@@ -65,7 +65,7 @@ function ZelleDialog({ current, onClose }: { current: string; onClose: () => voi
           <DialogTitle>Zelle tag</DialogTitle>
           <DialogDescription>
             The tag customers send a Zelle payment to, as your bank shows it. Every invoice,
-            sent or not, and its Pay sheet name the new tag from now on.
+            sent or not, and its Pay sheet show the new tag from now on.
           </DialogDescription>
         </DialogHeader>
         <form

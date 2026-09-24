@@ -454,7 +454,11 @@ describe("A Stripe payment on a void invoice", () => {
     await stripePaid(invoiceId, "2026-09-02");
 
     const page = await t.query(api.invoiceLinks.page, { token });
-    expect(page?.paper.stamp).toEqual({ kind: "void", day: "2026-09-02" });
+    expect(page).toMatchObject({
+      paper: { stamp: { kind: "void", day: "2026-09-02" } },
+      ways: [],
+      stripe: null,
+    });
     expect((await owner.query(api.invoices.paper, { invoiceId }))?.stamp).toEqual({
       kind: "void",
       day: "2026-09-02",
