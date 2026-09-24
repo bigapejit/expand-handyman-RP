@@ -392,6 +392,35 @@ describe("Stripe payments on one invoice", () => {
     });
   });
 
+  test("list a bank payment still on its way beside one that stands, from a second session minted before either completed", async () => {
+    const { customer, approved, stripePayment, stripePaid, panel } = fixture();
+    const { invoiceId } = await approved(await customer());
+    const paymentId = await stripePaid(invoiceId, "2026-09-01", { stripePaymentIntentId: "pi_c" });
+    await stripePayment(invoiceId, {
+      stripeCheckoutSessionId: "cs_c",
+      stripePaymentIntentId: "pi_c",
+      method: "card",
+      status: "paid",
+      paymentId,
+    });
+    vi.setSystemTime(pdt(9, 2));
+    await stripePayment(invoiceId, {
+      stripeCheckoutSessionId: "cs_b",
+      stripePaymentIntentId: "pi_b",
+    });
+
+    expect(await panel(invoiceId)).toMatchObject({
+      standing: "paid",
+      payments: [{ receivedOn: "2026-09-01", source: "stripe", method: "card" }],
+      onItsWay: {
+        amountCents: 29_948,
+        acceptedOn: "2026-09-02",
+        stripeUrl: "https://dashboard.stripe.com/test/payments/pi_b",
+      },
+      note: null,
+    });
+  });
+
   test("keep Void and Mark paid refused while one stands", async () => {
     const { t, owner, customer, approved, stripePaid } = fixture();
     const { invoiceId } = await approved(await customer());
@@ -471,6 +500,26 @@ describe("A Stripe payment on a void invoice", () => {
       note: null,
     });
     expect(await list("paid")).toEqual([]);
+  });
+
+  test("still on its way to an invoice voided while the customer was on Stripe's page, is shown in the panel", async () => {
+    const { owner, customer, approved, stripePayment, panel } = fixture();
+    const { invoiceId } = await approved(await customer());
+    vi.setSystemTime(pdt(9, 2));
+    await owner.mutation(api.invoices.voidInvoice, { invoiceId });
+    await stripePayment(invoiceId);
+
+    expect(await panel(invoiceId)).toMatchObject({
+      state: "void",
+      standing: null,
+      payments: [],
+      onItsWay: {
+        amountCents: 29_948,
+        acceptedOn: "2026-09-02",
+        stripeUrl: "https://dashboard.stripe.com/test/payments/pi_test_1",
+      },
+      note: null,
+    });
   });
 });
 

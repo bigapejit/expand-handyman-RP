@@ -138,6 +138,17 @@ export function ownerOnItsWay(onItsWay: { amountCents: number; acceptedOn: strin
   };
 }
 
+// Under the amber box's words when the invoice no longer owes the money on
+// its way: a payment already stands, which two sessions minted before either
+// completed can leave beside it, or the invoice is void. Once the bank
+// confirms, that money is more than was owed, and only Stripe can send it
+// back; null while the invoice still owes it.
+export function onItsWayUnowed(invoice: { paid: boolean; void: boolean }): string | null {
+  if (invoice.void) return "The invoice is void. Refund this in Stripe once it confirms.";
+  if (invoice.paid) return "Already paid. Refund one in Stripe once this confirms.";
+  return null;
+}
+
 // Why an invoice is unpaid again after Stripe had its money, as the panel's
 // grey note reads it until the invoice is paid, on its way again or void. The
 // reason is the bank's or Stripe's own words, shown only to the owner.

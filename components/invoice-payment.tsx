@@ -12,7 +12,13 @@ import { api } from "@/convex/_generated/api";
 import { usePacificToday } from "@/hooks/use-pacific-today";
 import { stampDate } from "@/lib/invoice-paper";
 import { pacificDay } from "@/lib/invoice-standing";
-import { ownerOnItsWay, PaidTwice, paidSentence, stripeNoteSentence } from "@/lib/pay-now";
+import {
+  onItsWayUnowed,
+  ownerOnItsWay,
+  PaidTwice,
+  paidSentence,
+  stripeNoteSentence,
+} from "@/lib/pay-now";
 import { errorMessage } from "@/lib/utils";
 
 // Under the sending block, what the invoice's money came to, every
@@ -22,21 +28,28 @@ import { errorMessage } from "@/lib/utils";
 // that came through Stripe only ever goes back there. More than one is money
 // that came twice. While a bank payment is **Payment on its way** the amber box
 // stands where Mark paid would, so the record and the money cannot disagree;
-// after Stripe took one back, the grey note says why the invoice is owed
-// again, above Mark paid. Once void, when and the owner's reason, and any
-// Stripe payment that landed on it anyway. A draft has nothing to say here.
-// Nobody is emailed by anything in this block.
+// and it stands under the payments too, since two sessions minted before
+// either completed can leave one paid and the other still confirming, which
+// the owner must see before it lands as a second payment. After Stripe took
+// one back, the grey note says why the invoice is owed again, above Mark
+// paid. Once void, when and the owner's reason, and any Stripe payment that
+// landed on it anyway or is still on its way to it. A draft has nothing to
+// say here. Nobody is emailed by anything in this block.
 export function InvoicePayment({ invoice }: { invoice: PanelInvoice }) {
   if (invoice.state === "draft") return null;
   if (invoice.state === "void") return <Voided invoice={invoice} />;
+  const paid = invoice.payments.length > 0;
   return (
     <div className="space-y-2">
       <FieldHeading>Payment</FieldHeading>
-      {invoice.payments.length > 0 ? (
-        <Paid invoice={invoice} />
-      ) : invoice.onItsWay ? (
-        <OnItsWay onItsWay={invoice.onItsWay} />
-      ) : (
+      {paid ? <Paid invoice={invoice} /> : null}
+      {invoice.onItsWay ? (
+        <OnItsWay
+          onItsWay={invoice.onItsWay}
+          unowed={onItsWayUnowed({ paid, void: false })}
+        />
+      ) : null}
+      {!paid && !invoice.onItsWay ? (
         <>
           {invoice.note ? <StripeNoteBox note={invoice.note} /> : null}
           {invoice.money.amountDueCents === 0 ? (
@@ -45,7 +58,7 @@ export function InvoicePayment({ invoice }: { invoice: PanelInvoice }) {
             <MarkPaid invoice={invoice} />
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -173,14 +186,25 @@ function PaidBox({
 }
 
 // No Mark paid and no Void while the bank confirms: the money is coming, and
-// the invoice reads Paid by itself once it lands.
-function OnItsWay({ onItsWay }: { onItsWay: NonNullable<PanelInvoice["onItsWay"]> }) {
+// the invoice reads Paid by itself once it lands. On an invoice already paid
+// or void, a line under the words says the money is more than was owed
+// (`onItsWayUnowed`).
+function OnItsWay({
+  onItsWay,
+  unowed,
+}: {
+  onItsWay: NonNullable<PanelInvoice["onItsWay"]>;
+  unowed: string | null;
+}) {
   const { head, body } = ownerOnItsWay(onItsWay);
   return (
     <>
-      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-        <strong className="font-semibold">{head}</strong> {body}
-      </p>
+      <div className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p>
+          <strong className="font-semibold">{head}</strong> {body}
+        </p>
+        {unowed ? <p className="font-medium">{unowed}</p> : null}
+      </div>
       <StripeLink href={onItsWay.stripeUrl}>See it in Stripe</StripeLink>
     </>
   );
@@ -215,8 +239,9 @@ function StripeLink({ href, children }: { href: string | null; children: ReactNo
 }
 
 // A void invoice owes nothing, but a Stripe payment may still have landed on
-// it, voided while the customer was on Stripe's page: that money moved, so it
-// is shown with the word to refund it rather than hidden.
+// it, voided while the customer was on Stripe's page, or a bank payment be
+// on its way to it: that money moved, so it is shown with the word to refund
+// it rather than hidden.
 function Voided({ invoice }: { invoice: PanelInvoice }) {
   return (
     <div className="space-y-2">
@@ -240,6 +265,12 @@ function Voided({ invoice }: { invoice: PanelInvoice }) {
           ) : null}
         </div>
       ))}
+      {invoice.onItsWay ? (
+        <OnItsWay
+          onItsWay={invoice.onItsWay}
+          unowed={onItsWayUnowed({ paid: invoice.payments.length > 0, void: true })}
+        />
+      ) : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   CardUpToCents,
   customerOnItsWay,
   customerReturned,
+  onItsWayUnowed,
   ownerOnItsWay,
   PaidTwice,
   paidSentence,
@@ -140,6 +141,19 @@ describe("The panel's words", () => {
       head: "Payment on its way.",
       body: "A bank payment of $2,854.37 was accepted Sept 23 through Stripe. Banks take up to 4 business days to confirm it, and the invoice reads Paid once they do.",
     });
+  });
+
+  it("says under a payment on its way that it would be paid twice, or on a void invoice, and nothing while the invoice owes it", () => {
+    expect(onItsWayUnowed({ paid: true, void: false })).toBe(
+      "Already paid. Refund one in Stripe once this confirms.",
+    );
+    expect(onItsWayUnowed({ paid: false, void: true })).toBe(
+      "The invoice is void. Refund this in Stripe once it confirms.",
+    );
+    expect(onItsWayUnowed({ paid: true, void: true })).toBe(
+      "The invoice is void. Refund this in Stripe once it confirms.",
+    );
+    expect(onItsWayUnowed({ paid: false, void: false })).toBeNull();
   });
 
   it("keeps a grey note of a returned payment, with the bank's reason", () => {
