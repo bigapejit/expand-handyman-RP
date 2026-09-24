@@ -61,7 +61,7 @@ export function ThumbtackBoardPage() {
           {error}
         </p>
       ) : null}
-      <ThumbtackBoard leads={leads} onOpen={open} />
+      <ThumbtackBoard leads={leads} onOpen={open} onSetStage={move} />
       {lead ? (
         <LiveLeadPanel key={lead._id} lead={lead} onSetStage={move} onClose={close} />
       ) : null}
