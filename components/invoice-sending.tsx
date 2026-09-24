@@ -2,7 +2,7 @@
 
 import { useAction } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Send } from "lucide-react";
 import { useState } from "react";
 
 import { CopyLinkButton, useAppOrigin } from "@/components/copy-link";
@@ -20,25 +20,95 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
+import { invoiceSendBlockerMessage } from "@/lib/invoices";
 import { emailFailed, linkEmailLabel, signingPath } from "@/lib/signing-link";
 import { cn, errorMessage } from "@/lib/utils";
 
 export type PanelInvoice = NonNullable<FunctionReturnType<typeof api.invoices.panel>>;
 
 // The invoice panel's sending block, copied from the proposal's
-// (proposal-sending.tsx): once sent, the live **Invoice link** to copy, what
-// became of its email, **Re-send**, and every link the invoice has had. The
-// link is always there to copy, and said out loud when the email did not go,
-// because then the owner is the only way it reaches the customer. A draft's
-// Send is the next ticket's; until then a draft shows nothing here.
+// (proposal-sending.tsx): a draft's **Send**, with every reason it would be
+// refused listed before it is pressed; once sent, the live **Invoice link** to
+// copy, what became of its email, **Re-send**, and every link the invoice has
+// had. The link is always there to copy, and said out loud when the email did
+// not go, because then the owner is the only way it reaches the customer.
 export function InvoiceSending({ invoice }: { invoice: PanelInvoice }) {
-  if (invoice.state === "draft") return null;
+  if (invoice.state === "draft")
+    return (
+      <div className="space-y-2">
+        <FieldHeading>Send</FieldHeading>
+        <SendDraft invoice={invoice} />
+      </div>
+    );
   return (
     <div className="space-y-2">
       <FieldHeading>Invoice link</FieldHeading>
       <SentLink invoice={invoice} />
       {invoice.links.length > 0 ? <LinkHistory links={invoice.links} /> : null}
     </div>
+  );
+}
+
+function SendDraft({ invoice }: { invoice: PanelInvoice }) {
+  const send = useAction(api.invoices.send);
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [refusal, setRefusal] = useState("");
+  const blocked = invoice.sendBlockers.length > 0;
+
+  const sendNow = async () => {
+    setConfirming(false);
+    setSending(true);
+    try {
+      await send({ invoiceId: invoice.invoiceId });
+      setRefusal("");
+    } catch (err) {
+      setRefusal(errorMessage(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      {refusal ? (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+          {refusal}
+        </p>
+      ) : null}
+      {blocked ? (
+        <ul className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {invoice.sendBlockers.map((blocker) => (
+            <li key={blocker}>{invoiceSendBlockerMessage(blocker)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-slate-600">
+          Gives it the next invoice number and emails {invoice.customerEmail} a private link
+          to it. From then on its lines can&rsquo;t change.
+        </p>
+      )}
+      <Button disabled={blocked || sending} onClick={() => setConfirming(true)}>
+        <Send data-icon="inline-start" aria-hidden /> {sending ? "Sending…" : "Send invoice"}
+      </Button>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this invoice?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {invoice.customerEmail} gets an email with a private link to it, due on
+              receipt. It takes the next invoice number, and its lines are fixed as they stand
+              now.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep drafting</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void sendNow()}>Send invoice</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
