@@ -7,12 +7,26 @@
 - Vercel project: `expand-handyman-rp`, connected to GitHub `main`.
 - Convex production: `dashing-cricket-260`; development: `glorious-donkey-718`.
 - Clerk application: Expand Handyman, separate production and development instances.
-- Clerk allows `andrew@cogtex.ai` and `*@expandhandyman.com`. Production backend access is pinned to the existing owner's Clerk user ID with `OWNER_CLERK_ID`, so changing the owner's primary email preserves access; a verified email listed in `OWNER_EMAIL` counts too. Other accounts on the domain do not receive owner access. The development deployment lists the owner's dev account and `andrew.p@expandhandyman.com`; the browser-test seed pins its QA account in `QA_CLERK_ID` only.
+- Clerk allows `andrew@cogtex.ai` and `*@expandhandyman.com`. Production backend access is pinned to the existing owner's Clerk user ID with `OWNER_CLERK_ID`, so changing the owner's primary email preserves access; a verified email listed in `OWNER_EMAIL` counts too. Other accounts on the domain get in only once invited from the Staff page (see Staff invitations below). The development deployment lists the owner's dev account and `andrew.p@expandhandyman.com`; the browser-test seed pins its QA account in `QA_CLERK_ID` only.
 - Porkbun: staff A record points to Vercel; Clerk API, account portal and email verification CNAME records are configured. Existing website and email records were preserved.
 
 The owner must create their first production account and verify their own email. No production user password was created during setup.
 
 Production Vercel builds run `npx convex deploy` themselves (`vercel.json`), so a push to `main` deploys both; the notes below that say to run it by hand after merging predate that. Deploy Convex by hand with `npx convex deploy --yes` only when the backend must move ahead of the app. Keep `.env.local` and `.env.production.local` out of Git.
+
+## Staff invitations
+
+The console is invite-only. The Staff page lists everyone let in, in the `staff` table, and anyone on it can invite or remove others; the owner's accounts pinned by `OWNER_CLERK_ID`, `OWNER_EMAIL` and, on dev, `QA_CLERK_ID` are always let in and can't be removed. The gate (`convex/auth.ts`) lets in those, a verified email with a `staff` row, and the Clerk id a row learned at its first sign-in.
+
+Invite puts the email on Clerk's sign-up allowlist and has Clerk send an invitation pointing at `APP_ORIGIN/sign-up`. The row moves from Waiting to sign up to Has access the first time the person opens the console. Remove revokes a waiting invitation, deletes the allowlist entry the invite made, deletes a signed-in person's Clerk account, and always deletes the `staff` row last, so they are refused on their next request even if a Clerk call failed.
+
+Convex calls Clerk's Backend API with `CLERK_SECRET_KEY`. Dev already has the test key; production needs the live key from the Clerk dashboard (API keys):
+
+```
+npx convex env set CLERK_SECRET_KEY sk_live_… --prod
+```
+
+Without it, Invite says "Invitations aren't set up on this deployment yet." and removing someone still deletes their row.
 
 ## Legacy uploaded documents
 

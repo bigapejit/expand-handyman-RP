@@ -9,6 +9,7 @@ import {
   LogOut,
   MapPin,
   ReceiptText,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -42,6 +43,7 @@ const navigation = [
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
+  { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
 
 export function AppSidebar() {
@@ -154,7 +156,7 @@ function AccountCard() {
         <Monogram name={name} size="md" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium leading-tight">{name}</span>
-          <span className="block truncate text-[11px] leading-tight text-slate-500">Owner</span>
+          <span className="block truncate text-[11px] leading-tight text-slate-500">Staff</span>
         </span>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" sideOffset={8} className="w-60 gap-2">

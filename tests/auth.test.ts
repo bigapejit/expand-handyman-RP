@@ -23,6 +23,14 @@ describe("isOwner", () => {
     expect(await access({ OWNER_CLERK_ID: "user_owner" }, { ...owner, email: "renamed@example.com" })).toBe(true);
   });
 
+  test("a pinned id matches exactly as Clerk cases it", async () => {
+    const id = "user_3J6OISrWt6DvDROVHAuXmFrad2l";
+    expect(await access({ OWNER_CLERK_ID: id }, { ...owner, subject: id, emailVerified: false })).toBe(true);
+    expect(
+      await access({ OWNER_CLERK_ID: id }, { ...owner, subject: id.toLowerCase(), emailVerified: false }),
+    ).toBe(false);
+  });
+
   test("a verified owner email still counts once an id is pinned", async () => {
     expect(await access({ OWNER_CLERK_ID: "user_someone_else", OWNER_EMAIL: "andrew.p@expandhandyman.com" }, owner)).toBe(true);
   });

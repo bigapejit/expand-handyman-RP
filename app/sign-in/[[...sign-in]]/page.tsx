@@ -12,9 +12,9 @@ export default function Page() {
         fallbackRedirectUrl="/"
       />
       <p className="text-center text-xs text-muted-foreground">
-        First time?{" "}
+        Invited?{" "}
         <Link href="/sign-up" className="underline underline-offset-4">
-          Create your owner account
+          Create your account
         </Link>
       </p>
     </main>
