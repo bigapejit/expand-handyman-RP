@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   FileSignature,
-  Inbox,
+  SquareKanban,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -39,7 +39,8 @@ const navigation = [
   // Straight after the Dashboard: the Site is the page the owner works from.
   { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Customers", href: "/customers", icon: Users },
-  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
+  // PROTOTYPE: the Thumbtack page grown to every deal. /thumbtack still exists.
+  { title: "Pipeline", href: "/pipeline", icon: SquareKanban },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
 ] as const;
@@ -76,7 +77,7 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/pipeline" ? (
                     <Quiet>
                       <UnreadBadge />
                     </Quiet>
