@@ -17,19 +17,11 @@ import { errorMessage } from "@/lib/utils";
 // the URL, and what the owner does here: add a deal, open one, move one.
 export function PipelinePage() {
   const deals = useQuery(api.deals.board);
-  const backfill = useMutation(api.deals.backfillLeads);
   const openDeal = useMutation(api.deals.open);
   const setStage = useMutation(api.deals.setStage);
   const { openId, open, close } = useSidePanel(DealPanelParam);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
-
-  // Leads from before deals get theirs the first time the page opens after
-  // the deploy, so none is missing from the board while the CLI migration
-  // waits to be run. Nothing to do on every visit after.
-  useEffect(() => {
-    backfill({}).catch(() => {});
-  }, [backfill]);
 
   // A link naming a deal that is not there just shows the board.
   const deal = deals?.find((row) => row._id === openId);

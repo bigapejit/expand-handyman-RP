@@ -1,7 +1,7 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
   FileSignature,
   LayoutDashboard,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Component, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 
 import { Brand } from "@/components/brand";
 import { Monogram } from "@/components/monogram";
@@ -104,7 +104,16 @@ export function AppSidebar() {
 function UnreadBadge() {
   const auth = useConvexAuth();
   const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");
-  const unread = useQuery(api.leads.unreadCount, access?.owner ? {} : "skip");
+  const owner = access?.owner === true;
+  const unread = useQuery(api.leads.unreadCount, owner ? {} : "skip");
+  // Leads from before deals get theirs the first time the owner opens any
+  // page after the deploy, so the count, and the board, miss none of them
+  // while the CLI migration waits to be run. Nothing to do on every visit
+  // after; the sidebar is on every page, so this is the place to ask.
+  const backfill = useMutation(api.deals.backfillLeads);
+  useEffect(() => {
+    if (owner) backfill({}).catch(() => {});
+  }, [owner, backfill]);
   if (!unread) return null;
   return (
     <SidebarMenuBadge

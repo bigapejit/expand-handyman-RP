@@ -68,6 +68,12 @@ export function DealPanel({
   const cameraRef = useRef<HTMLInputElement>(null);
   // The site once picked; until then, where Thumbtack said the job is.
   const siteLine = deal.site?.line ?? deal.lead?.addressLine ?? "";
+  // The **Notes** as typed, for the calendar link: a click on it leaves the
+  // box, which saves, but the link was made before the save lands, so it
+  // reads the box rather than the deal. Kept per deal, so another deal in
+  // the same panel reads its own.
+  const [typed, setTyped] = useState<{ dealId: Id<"deals">; text: string } | null>(null);
+  const notes = typed?.dealId === deal._id ? typed.text : deal.notes;
 
   return (
     <SidePanel
@@ -110,7 +116,7 @@ export function DealPanel({
                     title: deal.title,
                     customerName: deal.customerName,
                     phone: deal.phone ? displayPhone(deal.phone) : "",
-                    notes: deal.notes,
+                    notes,
                     siteLine: siteLine || null,
                   },
                   now,
@@ -177,7 +183,11 @@ export function DealPanel({
 
         <StagePicker stage={deal.stage} onPick={(stage) => onSetStage(deal._id, stage)} />
 
-        <NotesField dealId={deal._id} saved={deal.notes} />
+        <NotesField
+          dealId={deal._id}
+          saved={deal.notes}
+          onType={(text) => setTyped({ dealId: deal._id, text })}
+        />
 
         <div className="space-y-2">
           <FieldHeading>Photos</FieldHeading>
@@ -362,7 +372,16 @@ function StagePicker({ stage, onPick }: { stage: Stage; onPick: (stage: Stage) =
 // Only typing makes the box the owner's: until then it follows `saved`, so
 // notes changed on the phone show here, and leaving an untouched box never
 // writes an old copy over them.
-function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
+function NotesField({
+  dealId,
+  saved,
+  onType,
+}: {
+  dealId: Id<"deals">;
+  saved: string;
+  /** Each keystroke's text, for the panel's own use of the notes. */
+  onType: (text: string) => void;
+}) {
   const setNotes = useMutation(api.deals.setNotes);
   const [text, setText] = useState(saved);
   const [dirty, setDirty] = useState(false);
@@ -409,6 +428,7 @@ function NotesField({ dealId, saved }: { dealId: Id<"deals">; saved: string }) {
           setText(event.target.value);
           setDirty(true);
           setStatus("idle");
+          onType(event.target.value);
         }}
         onBlur={() => {
           if (!dirty) return;
