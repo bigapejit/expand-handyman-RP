@@ -48,9 +48,9 @@ export const sendReturnedPayment = internalAction({
     reason: v.optional(v.string()),
     // Another bank payment for the invoice still on its way when the return
     // committed, from a second session minted before either completed: the
-    // customer's money may yet arrive that way, so only the owner is written
-    // to. Its payment intent names its row, so the action can tell whether
-    // it came back too before the letters went.
+    // customer's money may yet arrive that way. Its payment intent names its
+    // row, so the action can tell, as the letters go, whether it is still on
+    // its way, came back too, or ended some other way.
     stillOnItsWay: v.optional(stillOnItsWay),
   },
   handler: async (ctx, a) => {
@@ -147,10 +147,10 @@ async function whyNotAskAgain(
       acceptedOn: pacificDay(other.acceptedAt),
     };
   // The payment that was on its way when this came back is no longer, and
-  // the invoice owes. Only its own return wrote letters asking the customer
-  // to pay again: one that confirmed and was then refunded in full or lost
-  // in a dispute wrote none, nor did one whose row is not found, so this
-  // return's letter is the only one that will ask.
+  // the invoice owes. Only if it came back itself did it write letters asking
+  // the customer to pay again: one that confirmed and was then refunded in
+  // full or lost in a dispute wrote none, so this return's letter is the only
+  // one that will ask.
   if (wasOnItsWay) {
     const rows = await ctx.db
       .query("stripePayments")
