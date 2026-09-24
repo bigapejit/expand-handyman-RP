@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { pdfDownloadLabel, usePdfDownload, type PdfSource } from "@/components/pdf-download";
 import { ProposalPaper, type PaperFooter, type PendingSignature } from "@/components/proposal-paper";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { InvoicePaperState } from "@/lib/invoice-paper";
 import { loadPaperFonts } from "@/lib/paper-fonts";
 import { paperImagesSettled } from "@/lib/paper-images";
 import { pdfCopyStateFor, type PdfCopyState } from "@/lib/pdf-copy";
@@ -181,8 +182,9 @@ export function Strip({ strip }: { strip?: PaperStrip }) {
 }
 
 // The top bar with the PDF copy's Download at its end, and what stopped the
-// last press said under it.
-function PaperTopWithDownload({
+// last press said under it. The invoice paper's screens draw it too
+// (components/invoice-link-page.tsx, components/staff-invoice-paper.tsx).
+export function PaperTopWithDownload({
   title,
   source,
   state,
@@ -190,7 +192,8 @@ function PaperTopWithDownload({
 }: {
   title: string;
   source: PdfSource;
-  state: PdfCopyState;
+  // Which paper the file is, for the button's words.
+  state: PdfCopyState | InvoicePaperState;
   strip?: PaperStrip;
 }) {
   const { download, ready, working, fault } = usePdfDownload(source);

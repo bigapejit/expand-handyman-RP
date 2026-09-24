@@ -19,6 +19,7 @@ import {
   fixedInvoicePaperOf,
 } from "./invoiceLinks";
 import { invoiceStamp, paymentFor } from "./payments";
+import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceLine } from "./schema";
 import { zelleEmail } from "./settings";
 import { mintLinkToken } from "./signingLinks";
@@ -499,7 +500,8 @@ export const resend = action({
 
 // Nothing on the invoice moves, not its lines, number, date, payment or Void:
 // only where it went. The old link ends as `resent`, so the email it sat in
-// stops opening anything, and the letter names the owner who re-sent it. A
+// stops opening anything, and the letter names the owner who re-sent it. The
+// PDF copy goes, as a proposal's does on Re-send. A
 // void invoice is re-sent too, whatever its standing: its link opens the
 // paper stamped VOID (`invoiceStillOpenedBy`).
 export const resendWithLink = internalMutation({
@@ -521,6 +523,7 @@ export const resendWithLink = internalMutation({
     const identity = await ctx.auth.getUserIdentity();
     const now = Date.now();
     await endInvoiceLinks(ctx, invoice._id, now);
+    await discardInvoicePdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, {
       frozen: { ...invoice.frozen, sentTo },
       updatedAt: now,
@@ -538,7 +541,8 @@ export const resendWithLink = internalMutation({
 // arrived, and on which Pacific day, today unless they say otherwise. One
 // payment per invoice; a void one owes nothing to record. A credit is marked
 // paid too, once the owner has refunded it by hand. The paper is stamped PAID
-// with the day, and nobody is emailed.
+// with the day, so a PDF copy of the unstamped sheet goes, and nobody is
+// emailed.
 export const markPaid = mutation({
   args: { invoiceId: v.id("invoices"), receivedOn: v.optional(v.string()) },
   handler: async (ctx, a) => {
@@ -565,12 +569,14 @@ export const markPaid = mutation({
       recordedBy: identity.subject,
       recordedAt: now,
     });
+    await discardInvoicePdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, { updatedAt: now });
   },
 });
 
-// Mark unpaid: the owner's payment taken back, stamp and all, and the invoice
-// reads Unpaid or Overdue again as its sent day says. A payment the app
+// Mark unpaid: the owner's payment taken back, stamp and all, with the PDF
+// copy that bore it, and the invoice reads Unpaid or Overdue again as its sent
+// day says. A payment the app
 // recorded from Stripe is money that really moved, and is never taken back by
 // hand.
 export const markUnpaid = mutation({
@@ -584,6 +590,7 @@ export const markUnpaid = mutation({
     if (payment.source !== "owner")
       throw new Error("This invoice was paid online, so it can't be marked unpaid here.");
     await ctx.db.delete(payment._id);
+    await discardInvoicePdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
   },
 });
@@ -591,8 +598,8 @@ export const markUnpaid = mutation({
 // **Void** (CONTEXT.md): a wrong sent invoice cancelled, with an optional
 // reason the customer never sees. Refused while it is marked paid, so taking
 // money off the books is always a step of its own. It keeps its number, its
-// frozen block and its link, which now opens the paper stamped VOID; nobody
-// is emailed. A void final invoice gives Job done back (`holdsFinalInvoice`),
+// frozen block and its link, which now opens the paper stamped VOID; its PDF
+// copy goes, and nobody is emailed. A void final invoice gives Job done back (`holdsFinalInvoice`),
 // and the next final invoice does not take it off (lib/invoice-money.ts).
 // Exported as `voidInvoice`, since `void` is a word the language keeps.
 export const voidInvoice = mutation({
@@ -606,6 +613,7 @@ export const voidInvoice = mutation({
       throw new Error("This invoice is marked paid. Mark it unpaid first to void it.");
     const now = Date.now();
     const reason = a.reason?.trim().slice(0, VoidReasonMaxLength);
+    await discardInvoicePdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, {
       state: "void",
       voidedAt: now,

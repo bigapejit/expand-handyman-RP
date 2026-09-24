@@ -187,10 +187,13 @@ describe("the render pass", () => {
     await owner.action(api.pdfCopies.renderForOwner, { proposalId });
 
     expect(seen).toMatchObject({
-      proposalId,
-      code: "1300FRANKLIN-P1",
-      state: "sent",
-      customerName: "Maria Delgado",
+      subject: "proposal",
+      paper: {
+        proposalId,
+        code: "1300FRANKLIN-P1",
+        state: "sent",
+        customerName: "Maria Delgado",
+      },
     });
     // Used once: the render is over and the pass with it.
     expect(await t.query(api.pdfCopies.paper, { pass: passOf(renders[0]) })).toBeNull();

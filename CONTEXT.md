@@ -128,6 +128,10 @@ _Avoid_: Status (which is draft, sent or void), state, paid flag
 An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines before tax, then Subtotal, Sales Tax at the proposal's rate and Amount Due, and how to pay. Washington requires the tax stated separately on an invoice. No Terms page and no line about the Terms: the invoice sits under the proposal as signed. Stamped VOID in red once voided and PAID in green, with the day, once marked paid.
 _Avoid_: Invoice document, invoice PDF, bill
 
+**Paper state**:
+Which sheet a sent or void invoice's paper is: sent, paid (stamped PAID) or void (stamped VOID). Every stamp changes the sheet, so an invoice's PDF copy is kept only while the invoice stays in the paper state it printed. A draft invoice has none.
+_Avoid_: Invoice status (the invoice's own state is draft, sent or void, and its standing Unpaid, Paid or Overdue)
+
 **Invoice link**:
 A private link that shows one invoice's paper to the customer, sent in the invoice's email. Nothing is signed through it. It never expires by itself: only a re-send ends it, and a paid or void invoice's link keeps showing the stamped paper.
 _Avoid_: Signing link (for an invoice; the customer signs nothing), payment link
@@ -184,5 +188,5 @@ The proposal paper of a sent or approved proposal, or the invoice paper of a sen
 _Avoid_: Proposal PDF, proposal document, attachment
 
 **Render pass**:
-The short-lived key the PDF renderer opens a proposal paper with, instead of a signing link. Each one is made for a single PDF copy, of one proposal in one state, stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view.
+The short-lived key the PDF renderer opens a proposal or invoice paper with, instead of a signing or invoice link. Each one is made for a single PDF copy, of one proposal in one state or one invoice in one paper state (sent, paid or void), stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view and is never logged.
 _Avoid_: Paper token, report token

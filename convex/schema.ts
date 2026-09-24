@@ -120,6 +120,10 @@ export const frozenInvoice = v.object({
   proposalName: v.string(),
   sentTo: v.string(),
 });
+// Which paper a sent or void invoice is, as its stamp makes it
+// (lib/invoice-paper.ts, `invoicePaperState`): what a PDF copy of it, and the
+// render pass that prints one, are bound to.
+export const invoicePaperState = v.union(v.literal("sent"), v.literal("paid"), v.literal("void"));
 export const signingLinkEndedReason = v.union(
   v.literal("approved"),
   v.literal("declined"),
@@ -284,6 +288,17 @@ export default defineSchema({
     // owner's and never reaches the customer.
     voidedAt: v.optional(v.number()),
     voidReason: v.optional(v.string()),
+    // The **PDF copy** (CONTEXT.md; ADR 0002): the invoice paper as a file,
+    // made the first time someone presses Download, with the paper state it
+    // printed. Mark paid, Mark unpaid, Void and Re-send each let it go, and a
+    // draft never has one.
+    pdfCopy: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        paperState: invoicePaperState,
+        renderedAt: v.number(),
+      }),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -341,17 +356,32 @@ export default defineSchema({
     zelleEmail: v.optional(v.string()),
   }),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
-  // paper with, at `/paper/<token>`. One per render, for one proposal in the
-  // state being rendered and under the signing link it went out under,
-  // expiring within minutes and deleted when the render ends. Reading the
-  // paper through one never touches the view log.
-  renderPasses: defineTable({
-    token: v.string(),
-    proposalId: v.id("proposals"),
-    state: v.union(v.literal("sent"), v.literal("approved")),
-    linkId: v.id("signingLinks"),
-    expiresAt: v.number(),
-  }).index("by_token", ["token"]),
+  // paper with, at `/paper/<token>`. One per render, expiring within minutes
+  // and deleted when the render ends, and naming one of two papers: a
+  // proposal in the state being rendered, under the signing link it went out
+  // under; or an invoice in the paper state being rendered, with the day on
+  // its stamp. Reading the paper through one never touches any log.
+  renderPasses: defineTable(
+    v.union(
+      v.object({
+        token: v.string(),
+        proposalId: v.id("proposals"),
+        state: v.union(v.literal("sent"), v.literal("approved")),
+        linkId: v.id("signingLinks"),
+        expiresAt: v.number(),
+      }),
+      v.object({
+        token: v.string(),
+        invoiceId: v.id("invoices"),
+        paperState: invoicePaperState,
+        // The day on a PAID or VOID stamp: marked unpaid and then paid on
+        // another day, the paper is paid again but not the sheet this pass
+        // was made for.
+        stampDay: v.optional(v.string()),
+        expiresAt: v.number(),
+      }),
+    ),
+  ).index("by_token", ["token"]),
   // The proposal half of the view log, the same shape and rules as
   // `documentViews` (ADR 0001).
   proposalViews: defineTable({

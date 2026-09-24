@@ -1,4 +1,4 @@
-import { Letterhead } from "@/components/proposal-paper";
+import { Letterhead, type PaperFooter } from "@/components/proposal-paper";
 import { ExpandBusiness } from "@/lib/expand-business";
 import { invoiceMoney } from "@/lib/invoice-money";
 import {
@@ -28,7 +28,15 @@ import { cn } from "@/lib/utils";
 // Dates are read the way every date on the proposal paper is
 // (lib/proposal-paper.ts, `paperDate`), so the two papers agree on the day.
 
-export function InvoicePaper({ invoice }: { invoice: PaperInvoice }) {
+export function InvoicePaper({
+  invoice,
+  footer = "page",
+}: {
+  invoice: PaperInvoice;
+  // Who foots the printed sheets, as for the proposal paper
+  // (components/proposal-paper.tsx, PaperFooter).
+  footer?: PaperFooter;
+}) {
   const key = invoice.number.replace(/\W/g, "").toLowerCase();
   const money = invoiceMoney(invoice.lines, invoice.taxRate);
   const voided = invoice.stamp?.kind === "void";
@@ -39,7 +47,7 @@ export function InvoicePaper({ invoice }: { invoice: PaperInvoice }) {
       data-invoice={key}
       aria-label={`Invoice ${invoice.number}`}
     >
-      <InvoicePageRules pageKey={key} number={invoice.number} />
+      {footer === "page" ? <InvoicePageRules pageKey={key} number={invoice.number} /> : null}
 
       <section className="pd-page ip-page">
         <Letterhead />
