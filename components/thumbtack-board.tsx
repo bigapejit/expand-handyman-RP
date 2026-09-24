@@ -7,7 +7,15 @@ import { IndexEmptyState } from "@/components/index-row";
 import { StageChip, type BoardLead } from "@/components/lead-panel";
 import { Segmented } from "@/components/ui/segmented";
 import type { Id } from "@/convex/_generated/dataModel";
-import { OPEN_STAGES, STAGE_LABELS, placeOf, timeAgo, type Stage } from "@/lib/thumbtack";
+import {
+  OPEN_STAGES,
+  STAGE_LABELS,
+  duration,
+  placeOf,
+  timeAgo,
+  waitingOnThem,
+  type Stage,
+} from "@/lib/thumbtack";
 import { cn } from "@/lib/utils";
 
 const Arriving = "Leads arrive here from Thumbtack once the webhook is on.";
@@ -88,8 +96,8 @@ export function ThumbtackBoard({
           </IndexEmptyState>
         ) : (
           <>
-            {/* A phone scrolls the columns sideways; a wide screen shows all three. */}
-            <div className="no-scrollbar -mx-8 flex snap-x snap-mandatory gap-3 overflow-x-auto px-8 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
+            {/* A phone scrolls the columns sideways; a wide screen shows all five. */}
+            <div className="no-scrollbar -mx-8 flex snap-x snap-mandatory gap-3 overflow-x-auto px-8 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
               {OPEN_STAGES.map((stage) => {
                 const inColumn = leads.filter((lead) => lead.stage === stage);
                 const receiving = dragging !== null && dragging.stage !== stage;
@@ -100,7 +108,7 @@ export function ThumbtackBoard({
                     onDragOver={allow(stage)}
                     onDrop={drop(stage)}
                     className={cn(
-                      "w-[82%] max-w-sm shrink-0 snap-start rounded-2xl bg-slate-100/80 p-2 transition-colors lg:w-auto lg:max-w-none",
+                      "w-[82%] max-w-sm shrink-0 snap-start rounded-2xl bg-slate-100/80 p-2 transition-colors lg:w-auto lg:max-w-none lg:min-w-0",
                       receiving && "bg-sky-50 ring-2 ring-sky-300 ring-inset",
                     )}
                   >
@@ -135,7 +143,7 @@ export function ThumbtackBoard({
               })}
             </div>
             {/* Won and Lost have no column: they only appear as somewhere to
-                drop the card in the air, so the board stays three wide. */}
+                drop the card in the air, so the board stays five wide. */}
             <div
               aria-hidden={dragging === null}
               className={cn(
@@ -277,8 +285,33 @@ function LeadCard({
       >
         <Snippet lead={lead} />
       </span>
+      <StageNote lead={lead} now={now} />
     </button>
   );
+}
+
+// What the column alone does not say: in New, that the owner wrote last and
+// the customer has not answered; in Booked and Estimating, how long the lead
+// has sat there.
+function StageNote({ lead, now }: { lead: BoardLead; now: number }) {
+  if (lead.stage === "new" && waitingOnThem(lead) && lead.lastMessage)
+    return (
+      <span
+        suppressHydrationWarning
+        className="mt-2 inline-block max-w-full rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+      >
+        {/* A narrow column breaks the line at the dot, not inside either half. */}
+        <span className="whitespace-nowrap">Waiting on them ·</span>{" "}
+        <span className="whitespace-nowrap">{timeAgo(lead.lastMessage.sentAt, now)}</span>
+      </span>
+    );
+  if (lead.stage === "booked" || lead.stage === "estimating")
+    return (
+      <span suppressHydrationWarning className="mt-2 block text-xs text-slate-500">
+        In {STAGE_LABELS[lead.stage]} for {duration(now - lead.stageChangedAt)}
+      </span>
+    );
+  return null;
 }
 
 function UnreadDot() {

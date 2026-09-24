@@ -4,20 +4,30 @@
 // own samples drift from the spec, both spellings are read, because nobody has
 // seen a real payload yet and a lead that fails to land is the worst outcome.
 
-export type Stage = "new" | "talking" | "quoted" | "won" | "lost";
+export type Stage = "new" | "talking" | "booked" | "estimating" | "quoted" | "won" | "lost";
 
-export const STAGES: readonly Stage[] = ["new", "talking", "quoted", "won", "lost"];
+export const STAGES: readonly Stage[] = [
+  "new",
+  "talking",
+  "booked",
+  "estimating",
+  "quoted",
+  "won",
+  "lost",
+];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   new: "New",
   talking: "Talking",
+  booked: "Booked",
+  estimating: "Estimating",
   quoted: "Quoted",
   won: "Won",
   lost: "Lost",
 };
 
 // Won and Lost are final and leave the Thumbtack board.
-export const OPEN_STAGES: readonly Stage[] = ["new", "talking", "quoted"];
+export const OPEN_STAGES: readonly Stage[] = ["new", "talking", "booked", "estimating", "quoted"];
 
 export type LeadAttachment = {
   fileName: string;
@@ -264,18 +274,25 @@ export function isUnread(lead: { lastCustomerMessageAt?: number; openedAt?: numb
   return (lead.lastCustomerMessageAt ?? 0) > (lead.openedAt ?? 0);
 }
 
+/** The owner wrote last: the ball is in the customer's court. */
+export function waitingOnThem(lead: { lastMessage: { from: "customer" | "business" } | null }) {
+  return lead.lastMessage?.from === "business";
+}
+
 // The moves the app makes for the owner (CONTEXT.md, **Stage**). Each only
 // ever moves a lead forward, never out of a later stage or a final one.
-export function nextStageOnBusinessReply(stage: Stage): Stage {
-  return stage === "new" ? "talking" : stage;
+
+/** A customer's message moves New to Talking, once the owner has written too. */
+export function stageOnCustomerReply(stage: Stage, hadBusinessMessage: boolean): Stage {
+  return stage === "new" && hadBusinessMessage ? "talking" : stage;
 }
 
 export function stageOnProposalSent(stage: Stage): Stage {
-  return stage === "new" || stage === "talking" ? "quoted" : stage;
+  return OPEN_STAGES.includes(stage) && stage !== "quoted" ? "quoted" : stage;
 }
 
 export function stageOnProposalApproved(stage: Stage): Stage {
-  return stage === "new" || stage === "talking" || stage === "quoted" ? "won" : stage;
+  return OPEN_STAGES.includes(stage) ? "won" : stage;
 }
 
 // Not in any payload; the pattern the pro inbox uses, unverified by Thumbtack.
@@ -286,11 +303,17 @@ export function conversationUrl(negotiationId: string) {
 /** "5m ago", "3h ago", "2d ago": how long before `now` something happened. */
 export function timeAgo(at: number, now: number): string {
   const minutes = Math.floor((now - at) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  return minutes < 1 ? "just now" : `${duration(now - at)} ago`;
+}
+
+/** "under a minute", "5m", "3h", "2d": how long a span of `ms` lasts. */
+export function duration(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "under a minute";
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 /** "Vancouver, WA", or whichever half of it Thumbtack sent. */

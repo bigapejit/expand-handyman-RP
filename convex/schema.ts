@@ -134,6 +134,8 @@ export const signingLinkEndedReason = v.union(
 export const leadStage = v.union(
   v.literal("new"),
   v.literal("talking"),
+  v.literal("booked"),
+  v.literal("estimating"),
   v.literal("quoted"),
   v.literal("won"),
   v.literal("lost"),
@@ -194,6 +196,9 @@ export default defineSchema({
     stageChangedAt: v.number(),
     lastMessageAt: v.optional(v.number()),
     lastCustomerMessageAt: v.optional(v.number()),
+    // The owner's latest message on Thumbtack: a customer message after one
+    // is the customer answering, which moves New to Talking.
+    lastBusinessMessageAt: v.optional(v.number()),
     // When the owner last opened the lead in the app. **Unread** is a
     // customer message after it.
     openedAt: v.optional(v.number()),

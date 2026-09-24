@@ -5,16 +5,18 @@ import {
   STAGE_LABELS,
   addressLine,
   conversationUrl,
+  duration,
   estimateLine,
   eventKind,
   isUnread,
-  nextStageOnBusinessReply,
   parseLeadEvent,
   parseMessageEvent,
   placeOf,
+  stageOnCustomerReply,
   stageOnProposalApproved,
   stageOnProposalSent,
   timeAgo,
+  waitingOnThem,
   webhookAuthorized,
 } from "./thumbtack";
 
@@ -190,29 +192,46 @@ describe("isUnread", () => {
 });
 
 describe("stages", () => {
-  it("moves to Talking on the owner's first reply only", () => {
-    expect(nextStageOnBusinessReply("new")).toBe("talking");
-    for (const stage of ["talking", "quoted", "won", "lost"] as const)
-      expect(nextStageOnBusinessReply(stage)).toBe(stage);
+  it("moves to Talking when the customer answers the owner, and only from New", () => {
+    expect(stageOnCustomerReply("new", true)).toBe("talking");
+    expect(stageOnCustomerReply("new", false)).toBe("new");
+    for (const stage of ["talking", "booked", "estimating", "quoted", "won", "lost"] as const)
+      expect(stageOnCustomerReply(stage, true)).toBe(stage);
   });
 
   it("moves to Quoted on a sent proposal, never back", () => {
-    expect(stageOnProposalSent("new")).toBe("quoted");
-    expect(stageOnProposalSent("talking")).toBe("quoted");
+    for (const stage of ["new", "talking", "booked", "estimating"] as const)
+      expect(stageOnProposalSent(stage)).toBe("quoted");
     for (const stage of ["quoted", "won", "lost"] as const)
       expect(stageOnProposalSent(stage)).toBe(stage);
   });
 
   it("moves to Won on an approved proposal, but not out of Lost", () => {
-    for (const stage of ["new", "talking", "quoted"] as const)
+    for (const stage of ["new", "talking", "booked", "estimating", "quoted"] as const)
       expect(stageOnProposalApproved(stage)).toBe("won");
     expect(stageOnProposalApproved("won")).toBe("won");
     expect(stageOnProposalApproved("lost")).toBe("lost");
   });
 
   it("labels every stage and leaves Won and Lost off the open ones", () => {
-    expect(Object.values(STAGE_LABELS)).toEqual(["New", "Talking", "Quoted", "Won", "Lost"]);
-    expect(OPEN_STAGES).toEqual(["new", "talking", "quoted"]);
+    expect(Object.values(STAGE_LABELS)).toEqual([
+      "New",
+      "Talking",
+      "Booked",
+      "Estimating",
+      "Quoted",
+      "Won",
+      "Lost",
+    ]);
+    expect(OPEN_STAGES).toEqual(["new", "talking", "booked", "estimating", "quoted"]);
+  });
+});
+
+describe("waitingOnThem", () => {
+  it("is on when the owner wrote last", () => {
+    expect(waitingOnThem({ lastMessage: { from: "business" } })).toBe(true);
+    expect(waitingOnThem({ lastMessage: { from: "customer" } })).toBe(false);
+    expect(waitingOnThem({ lastMessage: null })).toBe(false);
   });
 });
 
@@ -273,6 +292,15 @@ describe("timeAgo", () => {
     expect(timeAgo(minutes(23 * 60 + 59), now)).toBe("23h ago");
     expect(timeAgo(minutes(24 * 60), now)).toBe("1d ago");
     expect(timeAgo(minutes(40 * 24 * 60), now)).toBe("40d ago");
+  });
+});
+
+describe("duration", () => {
+  it("counts whole minutes, hours, then days, without the ago", () => {
+    expect(duration(30_000)).toBe("under a minute");
+    expect(duration(5 * 60_000)).toBe("5m");
+    expect(duration(3 * 60 * 60_000)).toBe("3h");
+    expect(duration(2 * 24 * 60 * 60_000)).toBe("2d");
   });
 });
 

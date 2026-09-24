@@ -262,14 +262,38 @@ describe("a message event", () => {
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
   });
 
-  test("from the business moves New to Talking and is not Unread", async () => {
+  test("from the business moves nothing and is not Unread", async () => {
     const { owner, receive } = fixture();
     await receive(leadEvent());
+    const arrived = Date.now();
     vi.advanceTimersByTime(60_000);
     await receive(messageEvent("m-1", "Business", "2026-09-23T17:05:00Z"));
     const [row] = await owner.query(api.leads.board, {});
-    expect(row).toMatchObject({ stage: "talking", stageChangedAt: Date.now(), unread: false });
+    expect(row).toMatchObject({
+      stage: "new",
+      stageChangedAt: arrived,
+      unread: false,
+      lastBusinessMessageAt: Date.UTC(2026, 8, 23, 17, 5),
+    });
     expect(row).not.toHaveProperty("lastCustomerMessageAt");
+  });
+
+  test("from the customer after the owner has written moves New to Talking", async () => {
+    const { owner, receive } = fixture();
+    await receive(leadEvent());
+    await receive(messageEvent("m-1", "Business", "2026-09-23T17:05:00Z"));
+    vi.advanceTimersByTime(60_000);
+    await receive(messageEvent("m-2", "Customer", "2026-09-23T17:10:00Z"));
+    const [row] = await owner.query(api.leads.board, {});
+    expect(row).toMatchObject({ stage: "talking", stageChangedAt: Date.now() });
+  });
+
+  test("from the customer before the owner has written stays New", async () => {
+    const { owner, receive } = fixture();
+    await receive(leadEvent());
+    await receive(messageEvent("m-1", "Customer", "2026-09-23T17:05:00Z"));
+    await receive(messageEvent("m-2", "Customer", "2026-09-23T17:06:00Z"));
+    expect((await owner.query(api.leads.board, {}))[0].stage).toBe("new");
   });
 
   test("arriving twice is a duplicate with one message", async () => {
@@ -354,6 +378,19 @@ describe("stages", () => {
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
   });
 
+  test("a proposal Send moves Booked and Estimating leads to Quoted", async () => {
+    const { t, owner, receive, leads, send } = fixture();
+    await receive(leadEvent("900"));
+    await receive(leadEvent("901"));
+    const [first, second] = await leads();
+    await owner.mutation(api.leads.setStage, { leadId: first._id, stage: "booked" });
+    await owner.mutation(api.leads.setStage, { leadId: second._id, stage: "estimating" });
+    await t.run((ctx) => ctx.db.patch(first.customerId, { email: "olivia@example.com" }));
+
+    await send(first.customerId);
+    expect((await leads()).map((l) => l.stage)).toEqual(["quoted", "quoted"]);
+  });
+
   test("the owner can move a lead to any stage", async () => {
     const { owner, receive, leads } = fixture();
     await receive(leadEvent());
@@ -361,6 +398,10 @@ describe("stages", () => {
     await owner.mutation(api.leads.setStage, { leadId: lead._id, stage: "won" });
     await owner.mutation(api.leads.setStage, { leadId: lead._id, stage: "talking" });
     expect((await leads())[0].stage).toBe("talking");
+    await owner.mutation(api.leads.setStage, { leadId: lead._id, stage: "booked" });
+    expect((await leads())[0].stage).toBe("booked");
+    await owner.mutation(api.leads.setStage, { leadId: lead._id, stage: "estimating" });
+    expect((await leads())[0].stage).toBe("estimating");
   });
 });
 

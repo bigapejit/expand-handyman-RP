@@ -141,7 +141,7 @@ export function LeadPanel({
   );
 }
 
-// New, Talking and Quoted on the Segmented; Won and Lost as their own buttons.
+// The open stages on the Segmented; Won and Lost as their own buttons.
 // A closed lead lights no segment, and picking one reopens it.
 function StagePicker({ stage, onPick }: { stage: Stage; onPick: (stage: Stage) => void }) {
   const closed = !OPEN_STAGES.includes(stage);
@@ -149,12 +149,14 @@ function StagePicker({ stage, onPick }: { stage: Stage; onPick: (stage: Stage) =
     <div className="space-y-2">
       <FieldHeading>Stage</FieldHeading>
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<Stage>
-          label="Stage"
-          value={stage}
-          onChange={onPick}
-          options={OPEN_STAGES.map((open) => ({ value: open, label: STAGE_LABELS[open] }))}
-        />
+        <div className="no-scrollbar max-w-full overflow-x-auto [&_button]:whitespace-nowrap">
+          <Segmented<Stage>
+            label="Stage"
+            value={stage}
+            onChange={onPick}
+            options={OPEN_STAGES.map((open) => ({ value: open, label: STAGE_LABELS[open] }))}
+          />
+        </div>
         <span className="flex-1" />
         <Button
           size="sm"
@@ -206,6 +208,8 @@ export function StageChip({ stage }: { stage: Stage }) {
         "shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium",
         stage === "new" && "border-sky-300 bg-sky-50 text-sky-900",
         stage === "talking" && "border-amber-300 bg-amber-50 text-amber-900",
+        stage === "booked" && "border-teal-300 bg-teal-50 text-teal-900",
+        stage === "estimating" && "border-orange-300 bg-orange-50 text-orange-900",
         stage === "quoted" && "border-violet-300 bg-violet-50 text-violet-900",
         stage === "won" && "border-emerald-300 bg-emerald-50 text-emerald-900",
         stage === "lost" && "border-slate-300 bg-slate-100 text-slate-600",

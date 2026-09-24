@@ -17,9 +17,9 @@ import {
   eventKind,
   eventTypeOf,
   isUnread,
-  nextStageOnBusinessReply,
   parseLeadEvent,
   parseMessageEvent,
+  stageOnCustomerReply,
   stageOnProposalApproved,
   stageOnProposalSent,
   type ParsedLead,
@@ -140,12 +140,17 @@ async function receiveMessage(ctx: MutationCtx, body: unknown): Promise<Received
   });
   // Deliveries may come out of order; the latest send wins.
   const latest = (held: number | undefined) => Math.max(held ?? 0, parsed.sentAt);
-  const stage = parsed.from === "business" ? nextStageOnBusinessReply(lead.stage) : lead.stage;
+  // Only the customer answering moves a lead: to Talking, once the owner has
+  // written too. The owner's own message alone moves nothing.
+  const stage =
+    parsed.from === "customer"
+      ? stageOnCustomerReply(lead.stage, lead.lastBusinessMessageAt !== undefined)
+      : lead.stage;
   await ctx.db.patch(lead._id, {
     lastMessageAt: latest(lead.lastMessageAt),
     ...(parsed.from === "customer"
       ? { lastCustomerMessageAt: latest(lead.lastCustomerMessageAt) }
-      : {}),
+      : { lastBusinessMessageAt: latest(lead.lastBusinessMessageAt) }),
     ...(stage === lead.stage ? {} : { stage, stageChangedAt: Date.now() }),
   });
   return { outcome: "message", ...(note ? { note } : {}) };
