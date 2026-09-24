@@ -360,7 +360,7 @@ test("an unknown event type is ignored and logged", async () => {
 });
 
 describe("stages", () => {
-  test("a proposal Send moves the customer's leads to Quoted and Approve to Won", async () => {
+  test("a proposal Send moves the customer's leads to Sent out and Approve to Won", async () => {
     const { t, owner, receive, leads, send, approve } = fixture();
     await receive(leadEvent("900"));
     await receive(leadEvent("901"));
@@ -378,7 +378,7 @@ describe("stages", () => {
     expect(await owner.query(api.leads.unreadCount, {})).toBe(0);
   });
 
-  test("a proposal Send moves Booked and Estimating leads to Quoted", async () => {
+  test("a proposal Send moves Booked and Estimating leads to Sent out", async () => {
     const { t, owner, receive, leads, send } = fixture();
     await receive(leadEvent("900"));
     await receive(leadEvent("901"));

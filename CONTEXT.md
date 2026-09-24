@@ -200,7 +200,7 @@ The phone number Thumbtack sends with a lead, saved as the customer's phone and 
 _Avoid_: Proxy number, masked number
 
 **Stage**:
-Where a lead stands with the owner: New (the lead has arrived and the two sides have not yet both written), Talking (the customer has answered the owner), Booked (the visit is on the owner's calendar), Estimating (the visit is done and the owner is working out the estimate), Quoted (a proposal has been sent), Won or Lost. Thumbtack never says which, so the owner moves it, and the app moves it for them when it can: to Talking when the customer writes after the owner has, to Quoted when a proposal for that customer is sent, to Won when one is approved. The owner's message alone moves nothing, and Booked, Estimating and Lost are only ever set by hand. Won and Lost are final and leave the board.
+Where a lead stands with the owner: New (the lead has arrived and the two sides have not yet both written), Talking (the customer has answered the owner), Booked (the visit is on the owner's calendar), Estimating (the visit is done and the owner is working out the estimate), Sent out (a proposal has been sent), Won or Lost. Thumbtack never says which, so the owner moves it, and the app moves it for them when it can: to Talking when the customer writes after the owner has, to Sent out when a proposal for that customer is sent, to Won when one is approved. The owner's message alone moves nothing, and Booked, Estimating and Lost are only ever set by hand. Won and Lost are final and leave the board.
 _Avoid_: Status (Thumbtack's own, which the app cannot read), hire status, column (where a stage is shown)
 
 **Thumbtack board**:

@@ -21,7 +21,8 @@ export const STAGE_LABELS: Record<Stage, string> = {
   talking: "Talking",
   booked: "Booked",
   estimating: "Estimating",
-  quoted: "Quoted",
+  // Stored as `quoted`; the owner reads it as "Sent out".
+  quoted: "Sent out",
   won: "Won",
   lost: "Lost",
 };
