@@ -1,0 +1,169 @@
+/* PROTOTYPE (#112): throwaway. The few rules the Pay now sketches need
+ * beyond the paper screen's own (app/paper-screen.css): the card of choices
+ * above the paper, the choice rows the sheet shares with it, and the stand-in
+ * for Stripe's checkout page. Sans-serif like the rest of the chrome: none
+ * of it is the paper. */
+
+/* ── B: the card between the top bar and the paper ────────────────────── */
+.pn-card {
+  max-width: 8.5in;
+  margin: 0.3in auto 0;
+  padding: 14px 16px 12px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 14px rgb(0 0 0 / 0.35);
+  font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #111;
+}
+
+.pn-card-onway {
+  background: #f6f2e3;
+  color: #4a4530;
+}
+
+.pn-card-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pn-card-text {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #555;
+}
+
+.pn-card-onway .pn-card-text {
+  color: inherit;
+  margin-top: 0;
+}
+
+/* ── The two choice rows, in the card and in the sheet ────────────────── */
+.pn-choices {
+  display: grid;
+  gap: 8px;
+}
+
+.pn-choice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name amount"
+    "note amount";
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c9c9c9;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pn-choice:hover {
+  border-color: #111;
+}
+
+.pn-choice-name {
+  grid-area: name;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.pn-choice-note {
+  grid-area: note;
+  font-size: 12.5px;
+  color: #555;
+}
+
+.pn-choice-amount {
+  grid-area: amount;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pn-bar-aside {
+  font-size: 13px;
+  color: #555;
+}
+
+@media (max-width: 640px) {
+  .pn-card {
+    margin: 12px 12px 0;
+  }
+
+  .paper-bar-row > .pn-bar-aside {
+    display: none;
+  }
+}
+
+/* ── The stand-in for Stripe's checkout page ──────────────────────────── */
+.pn-checkout {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #f6f9fc;
+  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1a1f36;
+}
+
+.pn-checkout-card {
+  width: min(420px, 100%);
+  padding: 22px 24px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 30px rgb(0 0 0 / 0.12);
+}
+
+.pn-checkout-tag {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a626a4;
+}
+
+.pn-checkout-merchant {
+  margin: 0;
+  font-size: 13px;
+  color: #697386;
+}
+
+.pn-checkout-pay {
+  margin: 2px 0 14px;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.pn-checkout-lines {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 6px;
+  margin: 0 0 14px;
+  padding: 12px 0;
+  border-top: 1px solid #e3e8ee;
+  border-bottom: 1px solid #e3e8ee;
+}
+
+.pn-checkout-lines dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pn-checkout-total {
+  font-weight: 600;
+}
+
+.pn-checkout-method {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  color: #697386;
+}

@@ -16,6 +16,13 @@ const config: NextConfig = {
           },
         ],
       },
+      // PROTOTYPE (#112): the sketches may be framed by their own phone-width
+      // page (app/prototype/pay-now/phone) for headless screenshots. Never
+      // ships: the branch is thrown away.
+      {
+        source: "/prototype/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
     ];
   },
 };
