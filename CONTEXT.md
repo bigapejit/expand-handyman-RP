@@ -135,6 +135,10 @@ _Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Strip
 The standing of a sent invoice whose bank payment Stripe has accepted but not yet confirmed, which can take a few business days. Pay now is gone from the link meanwhile, and the invoice does not read Overdue. It reads Paid, stamp and all, once the money is confirmed.
 _Avoid_: Pending, processing, awaiting payment
 
+**Returned payment**:
+A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and Pay now is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason. The invoice keeps the note until it is paid, on its way again or void.
+_Avoid_: Failed payment (Stripe's word; the money was accepted, then sent back), bounced payment, declined (a card word)
+
 **Invoice paper**:
 An invoice laid out as the customer reads it, the same on screen, printed or as a PDF, on the proposal paper's letterhead: the invoice number, the sent date and Due on receipt, the customer and site with the Proposal ID, the lines before tax, then Subtotal, Sales Tax at the proposal's rate and Amount Due, and how to pay. Washington requires the tax stated separately on an invoice. No Terms page and no line about the Terms: the invoice sits under the proposal as signed. Stamped VOID in red once voided and PAID in green, with the day, once marked paid.
 _Avoid_: Invoice document, invoice PDF, bill
