@@ -62,9 +62,18 @@ type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId
 // Opening a row slides the panel in over the list and puts the solution in the
 // URL, so a reload or a copied link reopens it. Every edit lands as the field
 // is left; nothing here is customer-visible until a proposal is sent.
-export function CustomerSolutions({ customerId }: { customerId: string }) {
+export function CustomerSolutions({
+  customerId,
+  siteId,
+}: {
+  customerId: string;
+  // PROTOTYPE (#90): on the site page, only this site's solutions, and New
+  // solution needs no site picker.
+  siteId?: Id<"sites">;
+}) {
   const id = customerId as Id<"customers">;
-  const solutions = useQuery(api.solutions.forCustomer, { customerId: id });
+  const all = useQuery(api.solutions.forCustomer, { customerId: id });
+  const solutions = all && siteId ? all.filter((s) => s.siteId === siteId) : all;
   const create = useMutation(api.solutions.create);
   const { openId, open, close } = useSidePanel("solution");
   const [adding, setAdding] = useState(false);
@@ -94,12 +103,18 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
           : "The priced pieces of work proposals are assembled from."
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New solution"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        siteId ? (
+          <Button variant="outline" size="lg" disabled={adding} onClick={() => void add(siteId)}>
+            <Plus data-icon="inline-start" aria-hidden /> New solution
+          </Button>
+        ) : (
+          <NewForSite
+            customerId={id}
+            label="New solution"
+            disabled={adding}
+            onPick={(siteId) => void add(siteId)}
+          />
+        )
       }
     >
       {error ? (
@@ -117,6 +132,7 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
             <SolutionRow
               key={solution._id}
               solution={solution}
+              hideSite={Boolean(siteId)}
               open={() => open(solution._id)}
             />
           ))}
@@ -129,7 +145,15 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
   );
 }
 
-function SolutionRow({ solution, open }: { solution: Solution; open: () => void }) {
+function SolutionRow({
+  solution,
+  hideSite,
+  open,
+}: {
+  solution: Solution;
+  hideSite?: boolean;
+  open: () => void;
+}) {
   return (
     <li className="border-b last:border-b-0">
       <button
@@ -140,8 +164,12 @@ function SolutionRow({ solution, open }: { solution: Solution; open: () => void 
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-slate-900">{solution.title}</span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={solution.siteName} />
-            <span aria-hidden>·</span>
+            {hideSite ? null : (
+              <>
+                <SiteTag name={solution.siteName} />
+                <span aria-hidden>·</span>
+              </>
+            )}
             <span className="truncate">
               {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
             </span>

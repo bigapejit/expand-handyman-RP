@@ -135,6 +135,9 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     phone: v.string(),
+    // PROTOTYPE (#90): the dev deployment holds Thumbtack-branch rows with
+    // this field; allowed here so the prototype's push passes validation.
+    phoneFrom: v.optional(v.literal("thumbtack")),
   }),
   // One verified street address of a customer, as Google's parts. The printed
   // address is built from the parts (lib/sites.ts), never stored.

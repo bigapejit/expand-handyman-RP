@@ -6,6 +6,7 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  MapPin,
   ReceiptText,
   Users,
 } from "lucide-react";
@@ -32,6 +33,8 @@ import {
 
 const navigation = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  // PROTOTYPE (#90): Sites is where the owner works from.
+  { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Customers", href: "/customers", icon: Users },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },

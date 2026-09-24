@@ -15,12 +15,20 @@ import { InvoicePanelParam, invoiceSentLabel } from "@/lib/invoices";
 // first, drafts and void included. For reading and sending only: an invoice
 // starts from its proposal, so there is no New invoice here. A row slides the
 // invoice panel in over the list.
-export function CustomerInvoices({ customerId }: { customerId: string }) {
+export function CustomerInvoices({
+  customerId,
+  siteId,
+}: {
+  customerId: string;
+  // PROTOTYPE (#90): on the site page, only this site's invoices.
+  siteId?: Id<"sites">;
+}) {
   const today = usePacificToday();
-  const invoices = useQuery(api.invoices.forCustomer, {
+  const all = useQuery(api.invoices.forCustomer, {
     customerId: customerId as Id<"customers">,
     today,
   });
+  const invoices = all && siteId ? all.filter((i) => i.siteId === siteId) : all;
   const { open } = useSidePanel(InvoicePanelParam);
   const count = invoices?.length ?? 0;
 

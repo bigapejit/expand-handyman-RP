@@ -9,6 +9,7 @@ import {
   Download,
   Eye,
   GripVertical,
+  Plus,
   Star,
   Trash2,
 } from "lucide-react";
@@ -71,9 +72,21 @@ type ProposalPatch = Omit<FunctionArgs<typeof api.proposals.update>, "proposalId
 // level up: every proposal across the customer's sites, each tagged with its
 // site. Opening a row slides the panel in over the list and puts the proposal
 // in the URL, exactly as the Solutions tab does.
-export function CustomerProposals({ customerId }: { customerId: string }) {
+export function CustomerProposals({
+  customerId,
+  siteId,
+}: {
+  customerId: string;
+  // PROTOTYPE (#90): on the site page, only this site's proposals, and New
+  // proposal needs no site picker.
+  siteId?: Id<"sites">;
+}) {
   const id = customerId as Id<"customers">;
-  const tab = useQuery(api.proposals.forCustomer, { customerId: id });
+  const whole = useQuery(api.proposals.forCustomer, { customerId: id });
+  const tab =
+    whole && siteId
+      ? { ...whole, proposals: whole.proposals.filter((p) => p.siteId === siteId) }
+      : whole;
   // An action rather than a mutation: a Washington site's tax rate comes from
   // the Department of Revenue, and the new draft carries it from the start.
   const create = useAction(api.proposals.create);
@@ -106,16 +119,22 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
       title="Proposals"
       description={
         count
-          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for this customer's sites.`
-          : "Offers for this customer's sites, each assembled from solutions."
+          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for this ${siteId ? "site" : "customer's sites"}.`
+          : `Offers for this ${siteId ? "site" : "customer's sites"}, each assembled from solutions.`
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New proposal"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        siteId ? (
+          <Button variant="outline" size="lg" disabled={adding} onClick={() => void add(siteId)}>
+            <Plus data-icon="inline-start" aria-hidden /> New proposal
+          </Button>
+        ) : (
+          <NewForSite
+            customerId={id}
+            label="New proposal"
+            disabled={adding}
+            onPick={(siteId) => void add(siteId)}
+          />
+        )
       }
     >
       {error ? (
@@ -136,6 +155,7 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
             <ProposalRow
               key={proposal.proposalId}
               proposal={proposal}
+              hideSite={Boolean(siteId)}
               open={() => open(proposal.proposalId)}
             />
           ))}
@@ -160,7 +180,15 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
   );
 }
 
-function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void }) {
+function ProposalRow({
+  proposal,
+  hideSite,
+  open,
+}: {
+  proposal: Proposal;
+  hideSite?: boolean;
+  open: () => void;
+}) {
   const solutions = proposal.solutions.length;
   return (
     <li className="border-b last:border-b-0">
@@ -179,8 +207,12 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
             {proposal.recommended ? <RecommendedMark /> : null}
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={proposal.siteName} />
-            <span aria-hidden>·</span>
+            {hideSite ? null : (
+              <>
+                <SiteTag name={proposal.siteName} />
+                <span aria-hidden>·</span>
+              </>
+            )}
             <span className="truncate">
               {solutions === 1 ? "1 solution" : `${solutions} solutions`}
             </span>

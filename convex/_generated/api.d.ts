@@ -30,6 +30,7 @@ import type * as salesTax from "../salesTax.js";
 import type * as settings from "../settings.js";
 import type * as signingLinks from "../signingLinks.js";
 import type * as sites from "../sites.js";
+import type * as sitesPrototype from "../sitesPrototype.js";
 import type * as solutions from "../solutions.js";
 
 import type {
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   settings: typeof settings;
   signingLinks: typeof signingLinks;
   sites: typeof sites;
+  sitesPrototype: typeof sitesPrototype;
   solutions: typeof solutions;
 }>;
 

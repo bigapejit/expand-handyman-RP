@@ -1,14 +1,13 @@
-import { CustomerHubShell } from "@/components/customer-hub-shell";
+import { ThinCustomerPage } from "@/components/prototype/thin-customer-page";
 
-// The header and the tab row live in the layout so switching tabs never
-// re-renders them, and a tab's own page is only ever the content area.
+// PROTOTYPE (#90): the customer page is thin and has no tabs, so the layout
+// renders it whole and the old tab routes under it show the same page.
 export default async function CustomerLayout({
-  children,
   params,
 }: {
   children: React.ReactNode;
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  return <CustomerHubShell customerId={customerId}>{children}</CustomerHubShell>;
+  return <ThinCustomerPage customerId={customerId} />;
 }
