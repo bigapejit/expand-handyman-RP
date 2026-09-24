@@ -16,7 +16,7 @@ import {
   type Stage,
 } from "../lib/pipeline";
 import { siteAddressLine } from "../lib/sites";
-import { isUnread, leadAddressLine } from "../lib/thumbtack";
+import { estimateLine, isUnread, leadAddressLine } from "../lib/thumbtack";
 
 // The **Pipeline**: every **Deal**, the owner's moves on one, and the moves
 // the app makes for them. Owner-only throughout.
@@ -65,6 +65,9 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
           unread: isUnread(lead),
           // Where Thumbtack said the job is, read until the deal has a site.
           addressLine: leadAddressLine(lead.location),
+          // Thumbtack's own estimate and what the lead cost, in its words.
+          estimateLine: estimateLine(lead.estimate),
+          leadPrice: lead.leadPrice ?? null,
           description: lead.description,
           details: lead.details,
           attachments: lead.attachments,

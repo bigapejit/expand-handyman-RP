@@ -269,6 +269,22 @@ export function leadAddressLine(location: LeadLocation): string {
     .join(", ");
 }
 
+// Thumbtack words prices "$225.00"; the cents say nothing on a round figure.
+const dollars = (price: string) => price.replace(/\.00$/, "");
+
+/** Thumbtack's own estimate in a line, or null when the lead carries none. */
+export function estimateLine(estimate: LeadEstimate | undefined): string | null {
+  if (!estimate) return null;
+  const { type, total, pricePerUnit, unitName } = estimate;
+  if (type === "Fixed" && total) return `Estimate: ${dollars(total)} fixed`;
+  if (type === "Hourly" && (pricePerUnit || total))
+    return `Estimate: ${dollars(pricePerUnit || total || "")}/hr`;
+  if (type === "PerUnit" && pricePerUnit)
+    return `Estimate: ${dollars(pricePerUnit)} per ${unitName || "unit"}${total ? `, ${dollars(total)} total` : ""}`;
+  if (type === "OnSite") return "Estimate: after a site visit";
+  return "Estimate: needs more info";
+}
+
 /** "5m ago", "3h ago", "2d ago": how long before `now` something happened. */
 export function timeAgo(at: number, now: number): string {
   const minutes = Math.floor((now - at) / 60_000);

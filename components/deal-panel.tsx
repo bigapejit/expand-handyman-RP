@@ -195,6 +195,13 @@ export function DealPanel({
           <div className="space-y-2">
             <FieldHeading>What they asked</FieldHeading>
             <LeadAsked lead={deal.lead} />
+            {deal.lead.estimateLine || deal.lead.leadPrice ? (
+              <p className="text-xs text-slate-500">
+                {[deal.lead.estimateLine, deal.lead.leadPrice && `Lead cost ${deal.lead.leadPrice}`]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

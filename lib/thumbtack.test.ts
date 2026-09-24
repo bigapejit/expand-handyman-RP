@@ -7,6 +7,7 @@ import {
   parseLeadEvent,
   parseMessageEvent,
   timeAgo,
+  estimateLine,
   leadAddressLine,
   webhookAuthorized,
 } from "./thumbtack";
@@ -172,6 +173,23 @@ describe("leadAddressLine", () => {
       "Vancouver, WA 98684",
     );
     expect(leadAddressLine({ city: "", state: "", zipCode: "" })).toBe("");
+  });
+});
+
+describe("estimateLine", () => {
+  it("words each of Thumbtack's estimate types", () => {
+    expect(estimateLine({ type: "Fixed", total: "$225.00" })).toBe("Estimate: $225 fixed");
+    expect(estimateLine({ type: "Hourly", pricePerUnit: "$85.50" })).toBe("Estimate: $85.50/hr");
+    expect(estimateLine({ type: "Hourly", total: "$85.00" })).toBe("Estimate: $85/hr");
+    expect(
+      estimateLine({ type: "PerUnit", pricePerUnit: "$4.00", unitName: "sq ft", total: "$800.00" }),
+    ).toBe("Estimate: $4 per sq ft, $800 total");
+    expect(estimateLine({ type: "OnSite" })).toBe("Estimate: after a site visit");
+    expect(estimateLine({ type: "MoreInfo" })).toBe("Estimate: needs more info");
+  });
+
+  it("is nothing when the lead has no estimate", () => {
+    expect(estimateLine(undefined)).toBeNull();
   });
 });
 
