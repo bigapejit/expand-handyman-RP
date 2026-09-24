@@ -15,7 +15,7 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
-import { sentPaper } from "./offers";
+import { offerOf, paperOf, type StaffPaper } from "./offers";
 import { lookUpSiteTax } from "./salesTax";
 import { advanceForCustomer } from "./leads";
 import { emailOutcome } from "./schema";
@@ -279,10 +279,11 @@ async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
 }
 
 // The staff paper: a proposal as its **Proposal paper**, for the owner to read
-// before sending or after. A draft is laid out from its live solutions as if
-// sent now, with the signed-in owner as the Estimator Send would name; past
-// Draft the paper is the offer Send froze, exactly as the customer's link
-// shows it. A query, so reading the paper here never lands in a view log.
+// before sending or after. The draft's paper and the sent one are laid out
+// from the same offer (convex/offers.ts): a draft's as if sent now, with the
+// signed-in owner as the Estimator Send would name, and past Draft the one
+// Send froze, exactly as the customer's link shows it. A query, so reading the
+// paper here never lands in a view log.
 //
 // A draft has no sent date, and "now" is the page's to say: a query's result
 // is cached until what it read changes, so a date taken here would go stale.
@@ -290,61 +291,15 @@ async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
 // the count is for the page to say so, never for the paper.
 export const paper = query({
   args: { proposalId: v.id("proposals") },
-  handler: async (
-    ctx,
-    a,
-  ): Promise<
-    | (Omit<PaperProposal, "sentAt"> & { sentAt: number | null; unpricedSolutions: number })
-    | null
-  > => {
+  handler: async (ctx, a): Promise<(StaffPaper & { unpricedSolutions: number }) | null> => {
     await requireOwner(ctx);
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal) return null;
-    if (proposal.state !== "draft") {
-      const sent = sentPaper(proposal);
-      return sent ? { ...sent, unpricedSolutions: 0 } : null;
-    }
-    const site = await ctx.db.get(proposal.siteId);
-    if (!site) return null;
-    const customer = await ctx.db.get(site.customerId);
-    const identity = await ctx.auth.getUserIdentity();
-
-    const solutions = await liveSolutions(ctx, proposal);
-    const prices = solutions.map(priceStoredSolution);
-    const money = proposalMoney(prices, proposal.tax);
-
-    return {
-      proposalId: proposal._id,
-      number: proposal.number,
-      code: proposalCode(site.name, proposal.number),
-      name: proposalDisplayName(
-        proposal.name,
-        solutions.map((solution) => solution.title),
-      ),
-      state: proposal.state,
-      recommended: proposal.recommended,
-      sentAt: null,
-      estimator: {
-        name: identity?.name?.trim() || Unknown,
-        email: identity?.email?.trim() || Unknown,
-      },
-      customerName: customer?.name ?? Unknown,
-      site: { street: siteStreetLine(site), city: siteCityLine(site) },
-      solutions: solutions.map((solution) => ({
-        solutionId: solution._id,
-        title: solution.title,
-        scopeOfWork: solution.description,
-        lineItems: offeredLineItems(solution.lineItems),
-        materialAllowanceCents: solution.materialAllowanceCents,
-      })),
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
-      terms: proposalTerms(),
-      tax: proposal.tax,
-      ...money,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      unpricedSolutions: prices.filter((price) => price === null).length,
-    };
+    const offer = await offerOf(ctx, proposal);
+    const paper = offer && paperOf(proposal, offer);
+    if (!offer || !paper) return null;
+    const unpriced = offer.solutions.filter((solution) => solution.priceCents === null);
+    return { ...paper, unpricedSolutions: unpriced.length };
   },
 });
 
