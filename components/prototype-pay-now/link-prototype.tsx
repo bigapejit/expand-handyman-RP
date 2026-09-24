@@ -53,7 +53,7 @@ type Variant = (typeof VariantKeys)[number];
 const ReadingKeys = ["unpaid", "small", "onway", "paid"] as const;
 // `?show=` opens a state a press would reach, for screenshots: the sheet, the
 // Zelle step, or the stand-in checkout for bank or card.
-const ShowKeys = ["", "sheet", "zelle", "bank", "card"] as const;
+const ShowKeys = ["", "sheet", "zelle", "check", "bank", "card"] as const;
 type Show = (typeof ShowKeys)[number];
 
 export function LinkPrototype() {
@@ -96,9 +96,13 @@ function LinkPage({
   const [checkout, setCheckout] = useState<PayChoice | null>(
     show === "bank" ? startChoices[0] : show === "card" ? startChoices[1] : null,
   );
-  const [sheet, setSheet] = useState(show === "sheet" || show === "zelle");
-  // D's sheet, turned to the Zelle step.
-  const [zelle, setZelle] = useState(show === "zelle");
+  const [sheet, setSheet] = useState(
+    show === "sheet" || show === "zelle" || show === "check",
+  );
+  // D's sheet, turned to the Zelle or the check step.
+  const [step, setStep] = useState<SheetStep>(
+    show === "zelle" ? "zelle" : show === "check" ? "check" : null,
+  );
 
   const state: LinkState =
     outcome === "bank" || reading === "onway"
@@ -163,13 +167,12 @@ function LinkPage({
           amount={amount}
           invoiceNumber={paper.number}
           choices={choices}
-          zelle={zelle}
-          onZelle={() => setZelle(true)}
-          onBack={() => setZelle(false)}
+          step={step}
+          onStep={setStep}
           onPay={pay}
           onClose={() => {
             setSheet(false);
-            setZelle(false);
+            setStep(null);
           }}
         />
       ) : (
@@ -358,27 +361,29 @@ function PayButtonBar({
   );
 }
 
-// The sheet Pay opens: the three ways as rows, or, once Zelle is picked, what
-// to do in the banking app.
+type SheetStep = null | "zelle" | "check";
+
+// The sheet Pay opens: the ways as rows, or, once Zelle or check is picked,
+// what to do.
 function ThreeWaysSheet({
   amount,
   invoiceNumber,
   choices,
-  zelle,
-  onZelle,
-  onBack,
+  step,
+  onStep,
   onPay,
   onClose,
 }: {
   amount: string;
   invoiceNumber: string;
   choices: PayChoice[];
-  zelle: boolean;
-  onZelle: () => void;
-  onBack: () => void;
+  step: SheetStep;
+  onStep: (step: SheetStep) => void;
   onPay: (choice: PayChoice) => void;
   onClose: () => void;
 }) {
+  const zelle = step === "zelle";
+  const check = step === "check";
   const [bank, card] = choices;
   const [copied, setCopied] = useState(false);
   const copyTag = () => {
@@ -394,14 +399,22 @@ function ThreeWaysSheet({
                 <>
                   Pay <strong>{amount}</strong> by Zelle
                 </>
+              ) : check ? (
+                <>
+                  Pay <strong>{amount}</strong> by check
+                </>
               ) : (
                 <>
                   <strong>{amount}</strong> · due on receipt
                 </>
               )}
             </div>
-            <button type="button" className="paper-link" onClick={zelle ? onBack : onClose}>
-              {zelle ? "Back" : "Close"}
+            <button
+              type="button"
+              className="paper-link"
+              onClick={step ? () => onStep(null) : onClose}
+            >
+              {step ? "Back" : "Close"}
             </button>
           </div>
           {zelle ? (
@@ -437,6 +450,20 @@ function ThreeWaysSheet({
                 </span>
               </p>
             </>
+          ) : check ? (
+            <>
+              <ol className="pn-steps">
+                <li>
+                  Make the check out to <strong>Expand Handyman LLC</strong> for{" "}
+                  <strong>{amount}</strong>, with <strong>{invoiceNumber}</strong> on the memo
+                  line.
+                </li>
+                <li>Hand it to us in person, or mail it to the address at the top of the invoice.</li>
+              </ol>
+              <p className="pn-card-text">
+                We mark the invoice paid when the check clears, usually within a few days.
+              </p>
+            </>
           ) : (
             <>
               <div className="pn-choices">
@@ -454,16 +481,19 @@ function ThreeWaysSheet({
                     <span className="pn-choice-amount">{formatCentsExact(card.chargeCents)}</span>
                   </button>
                 ) : null}
-                <button type="button" className="pn-choice" onClick={onZelle}>
+                <button type="button" className="pn-choice" onClick={() => onStep("zelle")}>
                   <span className="pn-choice-name">Pay by Zelle®</span>
                   <span className="pn-choice-note">From your banking app, to our Zelle® tag.</span>
                   <span className="pn-choice-amount">{amount}</span>
                 </button>
+                <button type="button" className="pn-choice" onClick={() => onStep("check")}>
+                  <span className="pn-choice-name">Pay by check</span>
+                  <span className="pn-choice-note">Payable to Expand Handyman LLC.</span>
+                  <span className="pn-choice-amount">{amount}</span>
+                </button>
               </div>
               <p className="pn-card-text">
-                {card
-                  ? "No fee on any of them. A check works too: see How to pay on the invoice."
-                  : "No fee on either. Card is for invoices up to $1,000. A check works too: see How to pay on the invoice."}
+                {card ? "No fee on any of them." : "No fee on any of them. Card is for invoices up to $1,000."}
               </p>
             </>
           )}
