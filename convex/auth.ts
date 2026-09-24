@@ -9,19 +9,22 @@ import type { QueryCtx, MutationCtx, ActionCtx } from "./_generated/server";
 export async function isOwner(ctx: QueryCtx | MutationCtx | ActionCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return false;
+  // Clerk ids are case-sensitive (`user_3J6…`); only emails are folded.
   const ids = list(process.env.OWNER_CLERK_ID).concat(list(process.env.QA_CLERK_ID));
   if (ids.includes(identity.subject)) return true;
   return (
     identity.emailVerified === true &&
     !!identity.email &&
-    list(process.env.OWNER_EMAIL).includes(identity.email.toLowerCase())
+    list(process.env.OWNER_EMAIL)
+      .map((e) => e.toLowerCase())
+      .includes(identity.email.toLowerCase())
   );
 }
 
 function list(value: string | undefined) {
   return (value ?? "")
     .split(",")
-    .map((v) => v.trim().toLowerCase())
+    .map((v) => v.trim())
     .filter(Boolean);
 }
 

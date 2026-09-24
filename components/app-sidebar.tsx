@@ -10,6 +10,7 @@ import {
   LogOut,
   MapPin,
   ReceiptText,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -44,6 +45,8 @@ const navigation = [
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
   { title: "Documents", href: "/documents", icon: FileText },
+  // PROTOTYPE ONLY
+  { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
 
 export function AppSidebar() {
