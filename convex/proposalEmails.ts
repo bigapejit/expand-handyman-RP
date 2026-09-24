@@ -3,7 +3,15 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, type ActionCtx } from "./_generated/server";
-import { appOrigin, emailReplyTo, sendEmail, sendsEmail, type EmailResult } from "./email";
+import {
+  appOrigin,
+  emailReplyTo,
+  MissingOriginFault,
+  sendEmail,
+  sendsEmail,
+  storedOutcome,
+  type EmailResult,
+} from "./email";
 import { formatCents } from "../lib/money";
 import { signingPath, signingUrl } from "../lib/signing-link";
 
@@ -18,11 +26,6 @@ import { signingPath, signingUrl } from "../lib/signing-link";
 // outage must be able to fail without unmaking it. Nothing here throws. What
 // became of the email is written back onto the signing link, and the panel
 // offers the link to copy when it did not go.
-
-// A deployment that sends mail but cannot say where the signing page lives
-// has nothing to put in the letter. That is a misconfiguration, reported the
-// way Resend rejecting the address is.
-const MissingOriginFault = "MISSING_APP_ORIGIN";
 
 export const signingLinkLetter = {
   linkId: v.id("signingLinks"),
@@ -107,14 +110,6 @@ async function recordDecision(
     index: letter.index,
     email: storedOutcome(result),
   });
-}
-
-// What became of a send, as the schema stores it: a send Resend gave no id
-// for keeps no id rather than a null.
-function storedOutcome(result: EmailResult | { outcome: "fault"; fault: string }) {
-  return result.outcome === "sent"
-    ? { outcome: "sent" as const, ...(result.id === null ? {} : { id: result.id }) }
-    : result;
 }
 
 export const approvalLetter = {

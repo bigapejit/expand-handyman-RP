@@ -1,0 +1,40 @@
+/* The **Invoice paper** (CONTEXT.md): what it needs beyond the proposal
+ * paper's own rules (proposal-paper.css), whose letterhead, cover block,
+ * table and Grand Total block it is drawn with. As approved on the prototype
+ * (#68, prototype/invoice-paper). */
+
+.ip-facts {
+  margin-top: 4pt;
+}
+
+.ip-lines td:first-child {
+  padding-right: 12pt;
+}
+
+/* The proposal's Grand Total block, closer to the lines it sums and pushed to
+   the right margin so its figures sit under the AMOUNT column. */
+.ip-due {
+  margin-top: 12pt;
+}
+
+.ip-due .pd-grand-table {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.ip-due .pd-grand-table th {
+  padding-right: 1in;
+}
+
+.ip-pay {
+  margin-top: 40pt;
+}
+
+.ip-pay .pd-scope {
+  border-bottom: 0;
+}
+
+.ip-pay .pd-scope p {
+  text-align: left;
+  margin-bottom: 2pt;
+}

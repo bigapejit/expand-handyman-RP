@@ -72,6 +72,19 @@ export type EmailResult =
   | { outcome: "notSent"; reason: "noApiKey" }
   | { outcome: "fault"; fault: EmailFault };
 
+// What became of a send, as the schema stores it: a send Resend gave no id
+// for keeps no id rather than a null.
+export function storedOutcome(result: EmailResult | { outcome: "fault"; fault: string }) {
+  return result.outcome === "sent"
+    ? { outcome: "sent" as const, ...(result.id === null ? {} : { id: result.id }) }
+    : result;
+}
+
+// A deployment that sends mail but cannot say where the signing page lives
+// has nothing to put in a letter carrying a link. That is a misconfiguration,
+// reported the way Resend rejecting the address is.
+export const MissingOriginFault = "MISSING_APP_ORIGIN";
+
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   // Asked first, because it is the only question whose answer is "this
   // deployment does not do email". Past it, everything missing is a fault.

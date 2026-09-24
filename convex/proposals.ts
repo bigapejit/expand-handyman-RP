@@ -13,6 +13,7 @@ import {
 } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
+import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import { lookUpSiteTax } from "./salesTax";
 import { emailOutcome } from "./schema";
@@ -906,6 +907,24 @@ export const decline = mutation({
   },
 });
 
+// What the customer's page sends with Approve.
+const approveArgs = {
+  token: v.string(),
+  signerName: v.string(),
+  consentTicked: v.boolean(),
+  noticeTicked: v.boolean(),
+  // The versions of the two sentences the page showed beside its ticks. The
+  // signature records the current constants, so a page rendered before a
+  // wording change, or a caller that doesn't say what it showed, is refused
+  // rather than recorded as having agreed to words its signer never read.
+  // The notice's is needed only where the notice applies.
+  consentWordingVersion: v.string(),
+  noticeWordingVersion: v.optional(v.string()),
+  // The signer's browser, as the page reports it. Recorded, never verified:
+  // it is evidence an electronic signature keeps, not a gate.
+  userAgent: v.optional(v.string()),
+};
+
 // **Approve** (CONTEXT.md): the customer's **Signature**, and the moment the
 // agreement forms. Public and token-authenticated, ported from FRSG's
 // `approve`: the signing link is the whole access model, and nobody at Expand
@@ -917,24 +936,24 @@ export const decline = mutation({
 // ticked with their versions, and the offer as signed, sealed with its
 // fingerprint. Washington's Notice to Customer is a second tick of its own,
 // required only where the statute requires it. The approval emails follow,
-// scheduled, so a mail outage can never unmake the signature.
-export const approve = mutation({
-  args: {
-    token: v.string(),
-    signerName: v.string(),
-    consentTicked: v.boolean(),
-    noticeTicked: v.boolean(),
-    // The versions of the two sentences the page showed beside its ticks. The
-    // signature records the current constants, so a page rendered before a
-    // wording change, or a caller that doesn't say what it showed, is refused
-    // rather than recorded as having agreed to words its signer never read.
-    // The notice's is needed only where the notice applies.
-    consentWordingVersion: v.string(),
-    noticeWordingVersion: v.optional(v.string()),
-    // The signer's browser, as the page reports it. Recorded, never verified:
-    // it is evidence an electronic signature keeps, not a gate.
-    userAgent: v.optional(v.string()),
+// scheduled, so a mail outage can never unmake the signature, and so does the
+// **Deposit invoice**, made and sent in the same mutation.
+//
+// An action only so the invoice link's token comes from real randomness, as
+// Send's does; the signature, the invoice and every email land together in
+// `approveWithLink`.
+export const approve = action({
+  args: approveArgs,
+  handler: async (ctx, a) => {
+    await ctx.runMutation(internal.proposals.approveWithLink, {
+      ...a,
+      invoiceToken: mintLinkToken(),
+    });
   },
+});
+
+export const approveWithLink = internalMutation({
+  args: { ...approveArgs, invoiceToken: v.string() },
   handler: async (ctx, a) => {
     const { link, proposal, site } = await requireLiveLink(ctx, a.token);
     const frozen = proposal.frozen;
@@ -1019,6 +1038,14 @@ export const approve = mutation({
         proposalTitle: title,
         totalCents: frozen.totalCents,
       });
+    await makeDepositInvoice(ctx, {
+      proposal,
+      frozen,
+      proposalName: title,
+      customerId: site.customerId,
+      token: a.invoiceToken,
+      now,
+    });
   },
 });
 
