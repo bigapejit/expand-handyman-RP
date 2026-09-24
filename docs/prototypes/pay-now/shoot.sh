@@ -29,7 +29,7 @@ for v in A B C; do
 done
 phone "link-C-sheet-phone"   "link?variant=C&reading=unpaid&show=sheet"
 phone "link-B-small-phone"   "link?variant=B&reading=small"
-phone "checkout-card-phone"  "link?variant=A&reading=unpaid&show=card"
+phone "checkout-card-phone"  "link?variant=A&reading=small&show=card"
 phone "approved-B-phone"     "approved?variant=B"
 phone "approved-C-phone"     "approved?variant=C"
 phone "panel-A-inv-1001-phone" "panel-only?variant=A&invoice=inv-1001"
@@ -39,6 +39,8 @@ for v in A B C; do
   shoot "link-$v-onway-laptop"  1280 900 "$BASE/link?variant=$v&reading=onway"
 done
 shoot "link-A-small-laptop"    1280 900 "$BASE/link?variant=A&reading=small"
+shoot "link-B-small-laptop"    1280 900 "$BASE/link?variant=B&reading=small"
+shoot "link-C-sheet-small-laptop" 1280 900 "$BASE/link?variant=C&reading=small&show=sheet"
 shoot "link-C-sheet-laptop"    1280 900 "$BASE/link?variant=C&reading=unpaid&show=sheet"
 shoot "link-paid-laptop"       1280 900 "$BASE/link?variant=A&reading=paid"
 shoot "checkout-bank-laptop"   1280 900 "$BASE/link?variant=A&reading=unpaid&show=bank"

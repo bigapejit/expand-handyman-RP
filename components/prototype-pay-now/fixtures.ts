@@ -1,8 +1,8 @@
 // PROTOTYPE (#112): throwaway. Dummy invoices for the invoice link and the
 // panel, and the signed proposal the deposit invoice came from. Nothing here
-// is read from Convex. The money is arranged so the deposit invoice comes to
-// the ticket's own example: Amount Due $2,854.37, so paying by card is
-// $2,940.00 including a $85.63 card fee.
+// is read from Convex. The deposit invoice comes to $2,854.37, over the
+// $1,000 line above which card is not offered; the gutter invoice sits under
+// it, so both ways show.
 
 import { proposalTerms, WashingtonNoticeToCustomer } from "@/lib/expand-business";
 import { invoiceMoney, type InvoiceLine, type InvoiceMoney } from "@/lib/invoice-money";
@@ -13,28 +13,18 @@ import { fingerprintOf, SigningConsent } from "@/lib/proposal-signing";
 export const TaxRate = 0.089;
 export const ZelleEmail = "pay@expandhandyman.com";
 
-// ── The card fee, as the map settled it ──────────────────────────────────
-// Three percent of Amount Due, only when Amount Due is over $500.
-export const CardFeeFrom = 50_000;
-export const CardFeeRate = 0.03;
+// ── The ways to pay online, as the map settled them on 2026-09-23 ────────
+// Bank is always offered; card only when Amount Due is $1,000 or less. No
+// fee on either: the card fee was dropped after the research (#111).
+export const CardUpToCents = 100_000;
 
-export function cardFeeCents(amountDueCents: number): number {
-  return amountDueCents > CardFeeFrom ? Math.round(amountDueCents * CardFeeRate) : 0;
-}
-
-// The two ways to pay online, and what each comes to for this invoice.
-export type PayChoice = {
-  method: "bank" | "card";
-  chargeCents: number;
-  feeCents: number;
-};
+export type PayChoice = { method: "bank" | "card"; chargeCents: number };
 
 export function payChoices(amountDueCents: number): PayChoice[] {
-  const fee = cardFeeCents(amountDueCents);
-  return [
-    { method: "bank", chargeCents: amountDueCents, feeCents: 0 },
-    { method: "card", chargeCents: amountDueCents + fee, feeCents: fee },
-  ];
+  const bank: PayChoice = { method: "bank", chargeCents: amountDueCents };
+  return amountDueCents <= CardUpToCents
+    ? [bank, { method: "card", chargeCents: amountDueCents }]
+    : [bank];
 }
 
 // ── The day on the panel ─────────────────────────────────────────────────
@@ -48,8 +38,8 @@ export function shortDay(day: string): string {
 // ── Readings of the invoice link ─────────────────────────────────────────
 export type Reading = "unpaid" | "small" | "onway" | "paid";
 export const Readings = [
-  { key: "unpaid", name: "Unpaid, over $500" },
-  { key: "small", name: "Unpaid, under $500" },
+  { key: "unpaid", name: "Unpaid, over $1,000: bank only" },
+  { key: "small", name: "Unpaid, up to $1,000: bank or card" },
   { key: "onway", name: "Payment on its way" },
   { key: "paid", name: "Paid" },
 ] as const satisfies readonly { key: Reading; name: string }[];
@@ -65,6 +55,7 @@ const depositLines: InvoiceLine[] = [
 ];
 const gutterLines: InvoiceLine[] = [
   { description: "Clean gutters and downspouts, front and back", cents: 32_500 },
+  { description: "Replace two downspout elbows and re-seat the brackets", cents: 41_000 },
 ];
 
 export function linkInvoice(reading: Reading): PaperInvoice {

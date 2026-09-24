@@ -178,17 +178,13 @@ function onItsWay(amount: string): string {
   return `Your bank payment of ${amount} is on its way. Banks take up to 4 business days to confirm it, and this invoice will read Paid once they do.`;
 }
 
-function feeSentence(choices: PayChoice[]): string {
-  const card = choices[1];
-  return card.feeCents > 0
-    ? `Card adds a 3% fee, ${formatCentsExact(card.feeCents)}, on invoices over $500. Bank, Zelle and check are free.`
-    : "No fee either way under $500. Zelle and check work too.";
-}
-
-const OtherWays = "Zelle and check work too: see How to pay on the invoice.";
-
-function cardLabel(card: PayChoice): string {
-  return card.feeCents > 0 ? `Pay by card, ${formatCentsExact(card.chargeCents)}` : "Pay by card";
+// The line beside the choices: no fee when both are offered, and why there
+// is no card button when there is not. Whether the link should explain the
+// missing button at all is for the owner to say.
+function waysSentence(choices: PayChoice[]): string {
+  return choices.length === 2
+    ? "No fee either way. Zelle and check work too: see How to pay on the invoice."
+    : "Invoices over $1,000 are paid by bank, or by Zelle or check as How to pay says on the invoice.";
 }
 
 // ── A: the pay bar ───────────────────────────────────────────────────────
@@ -218,15 +214,17 @@ function PayBar({
     );
   return (
     <div className="paper-bar">
-      <p className="paper-bar-note">{feeSentence(choices)}</p>
+      <p className="paper-bar-note">{waysSentence(choices)}</p>
       <div className="paper-bar-row">
         <span className="paper-bar-sum">
           <strong>{amount}</strong> · due on receipt
         </span>
         <span className="paper-grow" />
-        <button type="button" className="paper-btn paper-btn-quiet" onClick={() => onPay(card)}>
-          {cardLabel(card)}
-        </button>
+        {card ? (
+          <button type="button" className="paper-btn paper-btn-quiet" onClick={() => onPay(card)}>
+            Pay by card
+          </button>
+        ) : null}
         <button type="button" className="paper-btn paper-btn-primary" onClick={() => onPay(bank)}>
           Pay by bank
         </button>
@@ -258,7 +256,7 @@ function PayCard({
     <section className="pn-card">
       <h2 className="pn-card-title">Pay {amount} online</h2>
       <ChoiceRows choices={choices} onPay={onPay} />
-      <p className="pn-card-text">{OtherWays}</p>
+      <p className="pn-card-text">{waysSentence(choices)}</p>
     </section>
   );
 }
@@ -288,7 +286,7 @@ function PaySheet({
             </button>
           </div>
           <ChoiceRows choices={choices} onPay={onPay} />
-          <p className="pn-card-text">{OtherWays}</p>
+          <p className="pn-card-text">{waysSentence(choices)}</p>
         </div>
       </div>
     </div>
@@ -308,27 +306,24 @@ function ChoiceRows({
     <div className="pn-choices">
       <button type="button" className="pn-choice" onClick={() => onPay(bank)}>
         <span className="pn-choice-name">Pay by bank</span>
-        <span className="pn-choice-note">Free. From your checking account, through Stripe.</span>
+        <span className="pn-choice-note">From your checking account, through Stripe.</span>
         <span className="pn-choice-amount">{formatCentsExact(bank.chargeCents)}</span>
       </button>
-      <button type="button" className="pn-choice" onClick={() => onPay(card)}>
-        <span className="pn-choice-name">Pay by card</span>
-        <span className="pn-choice-note">
-          {card.feeCents > 0
-            ? `Includes a ${formatCentsExact(card.feeCents)} card fee: 3% on invoices over $500.`
-            : "Free under $500."}
-        </span>
-        <span className="pn-choice-amount">{formatCentsExact(card.chargeCents)}</span>
-      </button>
+      {card ? (
+        <button type="button" className="pn-choice" onClick={() => onPay(card)}>
+          <span className="pn-choice-name">Pay by card</span>
+          <span className="pn-choice-note">Credit or debit, on Stripe&rsquo;s page.</span>
+          <span className="pn-choice-amount">{formatCentsExact(card.chargeCents)}</span>
+        </button>
+      ) : null}
     </div>
   );
 }
 
 // ── A stand-in for Stripe's checkout page ────────────────────────────────
 // What the customer would see after pressing a way to pay: Stripe's own
-// page, with the invoice and, by card over $500, the card fee as a line of
-// its own. Nothing here is Stripe's; it is a sketch, so the loop can be
-// walked end to end.
+// page, with the invoice as its one line. Nothing here is Stripe's; it is a
+// sketch, so the loop can be walked end to end.
 function FakeCheckout({
   invoiceNumber,
   amountDueCents,
@@ -352,12 +347,6 @@ function FakeCheckout({
         <dl className="pn-checkout-lines">
           <dt>Invoice {invoiceNumber}</dt>
           <dd>{formatCentsExact(amountDueCents)}</dd>
-          {choice.feeCents > 0 ? (
-            <>
-              <dt>Card fee (3%)</dt>
-              <dd>{formatCentsExact(choice.feeCents)}</dd>
-            </>
-          ) : null}
           <dt className="pn-checkout-total">Total due</dt>
           <dd className="pn-checkout-total">{charge}</dd>
         </dl>
