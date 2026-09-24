@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   MapPin,
   ReceiptText,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { Component, type ReactNode } from "react";
@@ -23,7 +24,13 @@ export const navigation = [
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
+  { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
+
+// The phone's tab bar holds six; a seventh squeezes every label. Staff, the
+// page visited least, sits behind the account menu there instead.
+export const staffPage = navigation[navigation.length - 1];
+export const phoneTabs = navigation.filter((item) => item !== staffPage);
 
 /** Whether `href` is the page the owner is on, or a page under it. */
 export function isNavActive(pathname: string, href: string): boolean {

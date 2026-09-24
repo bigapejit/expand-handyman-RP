@@ -2,9 +2,11 @@
 
 import { useClerk, useUser } from "@clerk/nextjs";
 import { LogOut } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { Monogram } from "@/components/monogram";
+import { staffPage } from "@/components/nav-items";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -40,7 +42,7 @@ export function AccountMenu({ variant }: { variant: "card" | "monogram" }) {
           <Monogram name={name} size="md" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium leading-tight">{name}</span>
-            <span className="block truncate text-[11px] leading-tight text-slate-500">Owner</span>
+            <span className="block truncate text-[11px] leading-tight text-slate-500">Staff</span>
           </span>
         </PopoverTrigger>
       ) : (
@@ -74,6 +76,19 @@ export function AccountMenu({ variant }: { variant: "card" | "monogram" }) {
         <Button size="sm" variant="outline" className="w-full" onClick={openAccount}>
           Manage account
         </Button>
+        {/* The phone's tab bar has no room for the Staff page, so it is here. */}
+        {variant === "monogram" ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            nativeButton={false}
+            render={<Link href={staffPage.href} onClick={() => setOpen(false)} />}
+          >
+            <staffPage.icon data-icon="inline-start" aria-hidden />
+            {staffPage.title}
+          </Button>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { isNavActive, navigation, Quiet, useUnreadLeads } from "@/components/nav-items";
+import { isNavActive, phoneTabs, Quiet, useUnreadLeads } from "@/components/nav-items";
 import { cn } from "@/lib/utils";
 
 // The phone's way between pages: the sidebar's list as a tab bar along the
@@ -18,7 +18,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <ul className="grid grid-cols-6">
-        {navigation.map((item) => {
+        {phoneTabs.map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
             <li key={item.href}>
