@@ -224,10 +224,6 @@ export default defineSchema({
     // The proposal that last moved the deal, by being sent or approved: the
     // offer the card and panel read. Absent on a deal no proposal has moved.
     proposalId: v.optional(v.id("proposals")),
-    // Proposals the deal once held and let go of, on moving to another site
-    // or being repointed to another customer. Kept so an approval of one of
-    // them is never given to another job for want of a holder.
-    letGoProposalIds: v.optional(v.array(v.id("proposals"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -360,6 +356,11 @@ export default defineSchema({
     // offer and the date it was made are unchanged, only where it went moves.
     frozen: v.optional(frozenProposal),
     sentAt: v.optional(v.number()),
+    // The deal this offer is for, set as Send gives it to one. Kept whatever
+    // becomes of the deal (closed, moved to another site, given to another
+    // customer, or reading a newer offer since), so its approval is that
+    // deal's and no other job's. Absent on an offer from before deals.
+    dealId: v.optional(v.id("deals")),
     // The decision, final either way. Approve writes the signature; a decline
     // says who made it, because only the customer's own keeps their link
     // readable and emails the owner.

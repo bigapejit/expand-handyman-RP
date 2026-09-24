@@ -196,7 +196,7 @@ export const setSite = mutation({
     const moved = (siteId ?? undefined) !== deal.siteId;
     await ctx.db.patch(deal._id, {
       siteId: siteId ?? undefined,
-      ...(moved ? letGo(deal) : {}),
+      ...(moved ? { proposalId: undefined } : {}),
       updatedAt: Date.now(),
     });
   },
@@ -292,20 +292,10 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
     updatedAt: now,
   });
   await ctx.db.patch(lead._id, { dealId });
+  if (moved) await ctx.db.patch(moved._id, { dealId });
   const deal = await ctx.db.get(dealId);
   if (!deal) throw new Error("The deal did not save.");
   return deal;
-}
-
-// The patch that takes a deal's proposal off it while remembering it was
-// this deal's: an approval of a let-go proposal then belongs to no one else.
-export function letGo(deal: Doc<"deals">) {
-  return {
-    proposalId: undefined,
-    ...(deal.proposalId
-      ? { letGoProposalIds: [...(deal.letGoProposalIds ?? []), deal.proposalId] }
-      : {}),
-  };
 }
 
 // Whether one of the customer's deals already reads this proposal as its own.
@@ -401,53 +391,56 @@ export async function advanceForSite(
     heldState.set(deal._id, held ? held.state : null);
   }
   const holding = (deal: Doc<"deals">) => deal.proposalId === proposal._id;
-  const free = (deal: Doc<"deals">) => {
-    const state = heldState.get(deal._id);
-    return state !== "sent";
-  };
+  const free = (deal: Doc<"deals">) => heldState.get(deal._id) !== "sent";
   const outOnAnother = (deal: Doc<"deals">) => heldState.get(deal._id) === "sent";
-  // Sent: the offer is for the deals with no live offer of their own; two
-  // open jobs at one site each get theirs. With none free, it is a fresh
-  // offer on the deal whose earlier one is still out, and replaces it.
-  // Approved: the customer signed the deal that holds this offer. Nobody
-  // holding it means an older deal from before this was recorded, or two
-  // offers out at once on one deal, which then reads the signed one.
-  // An approval belongs to whichever deal holds the offer, open or not: a
-  // deal the owner had already closed keeps its stage, and no other job at
-  // the site is won on its behalf.
-  const holders = deals.filter(holding);
-  // An offer some deal held and let go of (moved to another site, repointed
-  // to another customer) was that job's: its approval is nobody else's.
-  const letGoOf = deals.some((deal) => deal.letGoProposalIds?.includes(proposal._id));
-  let targets =
-    event === "approved" && (holders.length > 0 || letGoOf)
-      ? holders
-      : event === "sent"
-        ? candidates.filter(free)
-        : candidates.filter(holding);
-  if (targets.length === 0 && event === "approved" && !letGoOf) targets = candidates.filter(free);
-  if (targets.length === 0 && !(event === "approved" && letGoOf)) targets = candidates.filter(outOnAnother);
-  // One offer is for one job. With more than one deal it could be for, the
-  // one the owner touched last is the one being quoted; the others wait for
-  // their own. A deal already holding this offer is always the one.
-  if (targets.length > 1 && !targets.some(holding)) {
-    targets = [
-      targets.reduce((best, deal) =>
-        deal.updatedAt > best.updatedAt ||
-        (deal.updatedAt === best.updatedAt && deal.createdAt > best.createdAt)
-          ? deal
-          : best,
-      ),
-    ];
+  // The deal the offer is for: the one Send gave it to, wherever that deal
+  // is now, plus any still reading it (an offer from before this was
+  // recorded). Its approval is that deal's alone. If the deal is still this
+  // customer's at this site, open or not, it takes it: a deal closed by hand
+  // keeps its stage, and one reading a newer offer since reads the signed
+  // one. If the deal has left, to another site or another customer, the
+  // offer was for a job that is no longer here, and nothing moves. A
+  // re-send is the same offer, so it moves its own deal too.
+  const its = proposal.dealId ? await ctx.db.get(proposal.dealId) : null;
+  const own = [...(its ? [its] : []), ...deals.filter((d) => holding(d) && d._id !== its?._id)];
+  const here = own.filter(
+    (d) => d.customerId === site.customerId && (!d.siteId || d.siteId === site._id),
+  );
+  let targets: Doc<"deals">[];
+  if (own.length > 0) {
+    targets = event === "approved" ? here : here.filter((d) => isOpen(d.stage));
+  } else {
+    // A first send is for the deal with no live offer of its own; two open
+    // jobs at one site each get theirs. With none free, it is a fresh offer
+    // on the deal whose earlier one is still out, and replaces it. An
+    // approval of an offer no deal is known to own is one from before this
+    // was recorded, and finds its deal the same way.
+    targets = candidates.filter(free);
+    if (targets.length === 0) targets = candidates.filter(outOnAnother);
+    // One offer is for one job. With more than one deal it could be for,
+    // the one the owner touched last is the one being quoted; the others
+    // wait for their own.
+    if (targets.length > 1) {
+      targets = [
+        targets.reduce((best, deal) =>
+          deal.updatedAt > best.updatedAt ||
+          (deal.updatedAt === best.updatedAt && deal.createdAt > best.createdAt)
+            ? deal
+            : best,
+        ),
+      ];
+    }
   }
   for (const deal of targets) {
-    // The deal takes the site if it had none, and remembers this proposal as
-    // its own, so the card reads this offer and no later one at the site.
+    // The deal takes the site if it had none, and reads this proposal as
+    // its own, so the card shows this offer and no later one at the site;
+    // the offer remembers the deal for good.
     await ctx.db.patch(deal._id, {
       ...(deal.siteId ? {} : { siteId: site._id }),
       proposalId: proposal._id,
       updatedAt: Date.now(),
     });
+    await ctx.db.patch(proposal._id, { dealId: deal._id });
     await moveDeal(ctx, deal, move(deal.stage));
   }
 }

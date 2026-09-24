@@ -568,6 +568,69 @@ describe("board", () => {
     expect(await row(a)).toMatchObject({ stage: "quoted", proposal: null });
   });
 
+  test("an approval of an offer whose deal went to another customer moves nothing here", async () => {
+    const { t, owner, customer, site, send, approve, row } = fixture();
+    const standIn = await customer("Unnamed");
+    const here = await site(standIn);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId: standIn },
+      title: "Deck boards",
+      source: "repeat",
+      siteId: here,
+    });
+    vi.advanceTimersByTime(60_000);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId: standIn },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    const p1 = await send(here);
+    expect((await row(a))?.proposal?.proposalId).toBe(p1);
+    // A late lead matched the deal's customer, and the deal followed it, as
+    // leads.receive does, leaving the stand-in's site and proposal behind.
+    const real = await customer("Olivia Young");
+    await t.run((ctx) =>
+      ctx.db.patch(a, { customerId: real, siteId: undefined, proposalId: undefined, stage: "new" }),
+    );
+    await approve(here, p1);
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+    expect(await row(a)).toMatchObject({ stage: "new", proposal: null });
+  });
+
+  test("an approval of an offer a fresh one replaced stays with the deal it was for", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    const p0 = await send(siteId);
+    expect((await row(b))?.proposal?.proposalId).toBe(p0);
+    vi.advanceTimersByTime(60_000);
+    await owner.mutation(api.deals.setNotes, { dealId: a, notes: "Quoting this one" });
+    const p1 = await send(siteId);
+    expect((await row(a))?.proposal?.proposalId).toBe(p1);
+    vi.advanceTimersByTime(60_000);
+    const p2 = await send(siteId);
+    expect((await row(a))?.proposal?.proposalId).toBe(p2);
+    // The owner closes the job; the customer signs the older offer anyway.
+    await owner.mutation(api.deals.setStage, { dealId: a, stage: "lost" });
+    await approve(siteId, p1);
+    expect(await row(a)).toMatchObject({ stage: "lost", proposal: { proposalId: p1, state: "approved" } });
+    expect(await row(b)).toMatchObject({ stage: "quoted", proposal: { proposalId: p0, state: "sent" } });
+  });
+
   test("an approval for a deal closed by hand does not win another job at the site", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
