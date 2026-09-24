@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Expand Handyman · Staff",
-  description: "Documents and customer signatures for Expand Handyman.",
+  description: "Proposals, invoices and customer signatures for Expand Handyman.",
   icons: { icon: "/logo.svg" },
   robots: { index: false, follow: false },
 };

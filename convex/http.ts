@@ -17,8 +17,8 @@ const cors = (request: Request) => {
       : "https://staff.expandhandyman.com",
     Vary: "Origin",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 };
 http.route({

@@ -7,6 +7,9 @@ node_modules/
 .scratch/
 .convex/
 test-results/
+# Left in old checkouts by the PDF.js postinstall the app no longer has.
+public/pdfjs/
+public/pdf.worker.min.mjs
 
 .vercel
 .claude/worktrees/

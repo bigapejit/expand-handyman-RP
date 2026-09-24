@@ -17,7 +17,7 @@ Run `npm install`, configure `.env.local` using `.env.example`, then `npx convex
 
 Configure `CLERK_JWT_ISSUER_DOMAIN`, `OWNER_CLERK_ID`, `OWNER_EMAIL` and `GOOGLE_MAPS_API_KEY` in each Convex deployment. The owner is the pinned Clerk id or any verified email in `OWNER_EMAIL`; both may list several values separated by commas. On dev, `scripts/prepare-browser-test.mjs` pins its QA account in `QA_CLERK_ID` and never touches the owner's. Clerk's `convex` JWT template must include `aud: convex`, `email`, and `email_verified`. The deployment setup also restricts Clerk signups to the owner.
 
-Run `npm test`, `npm run typecheck`, and `npm run build` before deploying. Deploy backend changes with `npx convex deploy --yes`; Vercel deploys the Next.js app from GitHub main. Convex backend deployment is currently a separate command.
+Run `npm test`, `npm run typecheck`, and `npm run build` before deploying. Production Vercel builds run `npx convex deploy` themselves, so a push to `main` deploys the app and the backend together.
 
 ## Signing integrity
 

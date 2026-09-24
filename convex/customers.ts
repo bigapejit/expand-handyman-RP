@@ -112,8 +112,8 @@ export const insert = internalMutation({
   },
 });
 
-// Same fields and rules as add. Issued documents keep the name they were
-// issued with, so only drafts follow an edit. A different phone is the owner's
+// Same fields and rules as add. Sent proposals and invoices keep the name
+// Send fixed, so only drafts follow an edit. A different phone is the owner's
 // own number, so the **Thumbtack number** mark goes with the old one.
 export const update = mutation({
   args: { customerId: v.id("customers"), ...contact },

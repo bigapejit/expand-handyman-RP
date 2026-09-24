@@ -21,7 +21,7 @@ A private link that gives a customer access to a proposal without creating an ac
 The Expand Handyman staff member who prices the work, sends proposals and invoices, and signs in to the staff app.
 
 **View**:
-A customer opening a proposal through its signing link and seeing it, including reopening it after approving. Only customers view; an owner opening the same link is a preview, not a view.
+A customer opening a proposal through its signing link and seeing it, including reopening it after answering. Only customers view; an owner opening the same link is a preview, not a view.
 
 **Owner preview**:
 The owner opening a signing link to check what the customer will see. Recorded separately and never counts as a view.
@@ -53,7 +53,7 @@ The memory of line items the owner has typed before, offered as suggestions whil
 _Avoid_: Price book, price list, rate card
 
 **Proposal**:
-An offer assembled from solutions and terms for one site, planned for a later phase. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
+An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
 _Avoid_: Document, quote, estimate
 
 **Deposit**:

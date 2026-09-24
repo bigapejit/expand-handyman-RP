@@ -15,7 +15,7 @@ export function sendSeenBeacon(viewId: string, token: string) {
     void fetch(url, { method: "POST", body, keepalive: true }).catch(() => {});
 }
 // Storage keeps the content type the upload names, which is how a saved file
-// is known for a PDF or a photo's JPEG afterwards.
+// is known for a photo's JPEG afterwards.
 export async function uploadFile(url: string, data: Blob, contentType: string) {
   const res = await fetch(url, {
     method: "POST",

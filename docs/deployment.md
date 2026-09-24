@@ -12,13 +12,13 @@
 
 The owner must create their first production account and verify their own email. No production user password was created during setup.
 
-Production Vercel builds run `npx convex deploy` themselves (`vercel.json`); a push to `main` deploys both. Deploy Convex by hand with `npx convex deploy --yes` only when the backend must move ahead of the app. Keep `.env.local` and `.env.production.local` out of Git.
+Production Vercel builds run `npx convex deploy` themselves (`vercel.json`), so a push to `main` deploys both; the notes below that say to run it by hand after merging predate that. Deploy Convex by hand with `npx convex deploy --yes` only when the backend must move ahead of the app. Keep `.env.local` and `.env.production.local` out of Git.
 
 ## Legacy uploaded documents
 
 The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23: proposals, which the app makes itself, are what customers sign now. Nothing was migrated. The `documents` and `documentViews` tables, the `/file` endpoint that served the PDFs, the `/documents` pages, the Dashboard's Documents card, the Customer page's Documents section, the `backfillCustomerDetails` migration and the PDF.js and pdf-lib dependencies are gone. The `access` query the owner gate reads moved to `auth.ts`, and the upload URL the Photos tab uses to `photos.ts`.
 
-Convex accepts the schema without the two tables even where they still hold rows: the tables just stop being listed. Once the removal is deployed, tidy each deployment by hand if wanted, from the dashboard's Data page: delete the `documents` and `documentViews` tables, and the uploaded and signed PDFs under Files. Nothing in the app reads them.
+A customer opening an old document link now sees "This link is no longer live", and the signed PDF can no longer be downloaded through it. Convex accepts the schema without the two tables even where they still hold rows: they just stop being declared, and nothing in the app reads them. To tidy a deployment by hand, download any signed PDF worth keeping first, from the dashboard's Files page by the storage id in the row's `signedId` (`originalId` is the upload); then delete those files, and the `documents` and `documentViews` tables from the Data page. Files hold the proposal and invoice PDF copies and the site photos too, so delete only by those ids.
 
 ## Sites and address lookup
 

@@ -274,11 +274,11 @@ const seenArgs = { viewId: v.id("proposalViews"), token: v.string() };
 // Heartbeats arrive every 20 seconds while the tab is visible. A longer gap
 // since the last one means the tab was hidden, and that time is not counted
 // as reading.
-export const MAX_SEEN_STEP = 30_000;
+const MAX_SEEN_STEP = 30_000;
 
 // What one heartbeat or beacon changes on a view, or nothing when the clock
 // has not moved forward.
-export function seenUpdate(
+function seenUpdate(
   view: { lastSeenAt: number; viewedMs: number },
   now: number,
 ): { lastSeenAt: number; viewedMs: number } | null {

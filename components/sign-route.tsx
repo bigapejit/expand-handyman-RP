@@ -21,14 +21,14 @@ const InvoiceLinkPage = dynamic(
 
 // `/sign/<token>`: one address for every link Expand sends, whether it opens a
 // proposal (CONTEXT.md, **Signing link**) or an invoice (**Invoice link**). A
-// token naming nothing is answered like an ended link: "This link is no
-// longer live".
+// token naming nothing gets "This link is no longer live", like an ended
+// link but without a proposal to speak of.
 export function SignRoute({ token }: { token: string }) {
   const kind = useQuery(api.signingLinks.resolve, { token });
   if (kind === undefined) return <SignLoading />;
   if (kind === "proposal") return <ProposalSigningPage token={token} />;
   if (kind === "invoice") return <InvoiceLinkPage token={token} />;
-  return <LinkNotLive what="proposal" />;
+  return <LinkNotLive what={kind === "ended" ? "proposal" : "unknown"} />;
 }
 
 // The signing screen's top bar over an empty backdrop while the page finds
