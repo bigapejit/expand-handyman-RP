@@ -128,12 +128,8 @@ What an invoice reads about its money: Unpaid, Paid, Overdue when still unpaid m
 _Avoid_: Status (which is draft, sent or void), state, paid flag
 
 **Pay now**:
-The customer paying a sent invoice online from its link, for the full Amount Due, through Stripe's own checkout page: by bank, which is free, or by card, which carries the card fee when Amount Due is over $500. The payment then records itself on the invoice. Zelle and check stay on the paper as the other ways to pay.
-_Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Stripe's page, not an app concept), online payment (as the name of the action)
-
-**Card fee**:
-Three percent of Amount Due, added on Stripe's checkout page when the customer pays by card and Amount Due is over $500, shown to the customer as an exact dollar amount before they choose. Never a line on the invoice paper: Amount Due does not change. Paying by bank, Zelle or check has no fee.
-_Avoid_: Surcharge, convenience fee, processing fee
+The customer paying a sent invoice online from its link, for the full Amount Due and with no fee, through Stripe's own checkout page: by bank, always offered, or by card, offered only when Amount Due is $1,000 or less. The payment then records itself on the invoice. Zelle and check stay on the paper as the other ways to pay.
+_Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Stripe's page, not an app concept), online payment (as the name of the action), card fee or surcharge (there is none)
 
 **Payment on its way**:
 The standing of a sent invoice whose bank payment Stripe has accepted but not yet confirmed, which can take a few business days. Pay now is gone from the link meanwhile, and the invoice does not read Overdue. It reads Paid, stamp and all, once the money is confirmed.
