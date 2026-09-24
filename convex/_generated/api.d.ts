@@ -19,6 +19,7 @@ import type * as invoiceLinks from "../invoiceLinks.js";
 import type * as invoices from "../invoices.js";
 import type * as leads from "../leads.js";
 import type * as migrations from "../migrations.js";
+import type * as offers from "../offers.js";
 import type * as payments from "../payments.js";
 import type * as pdfCopies from "../pdfCopies.js";
 import type * as pdfCopyFiles from "../pdfCopyFiles.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   invoices: typeof invoices;
   leads: typeof leads;
   migrations: typeof migrations;
+  offers: typeof offers;
   payments: typeof payments;
   pdfCopies: typeof pdfCopies;
   pdfCopyFiles: typeof pdfCopyFiles;

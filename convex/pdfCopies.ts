@@ -14,12 +14,12 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { fixedInvoicePaperOf, invoiceStillOpenedBy } from "./invoiceLinks";
 import { currentInvoicePdfCopyOf, currentPdfCopyOf } from "./pdfCopyFiles";
+import { sentPaper } from "./offers";
 import { hasRenderer, renderPageToPdf, type RenderFault } from "./pdfRenderer";
 import { invoicePaperState as invoicePaperStateValidator } from "./schema";
 import {
   mintLinkToken,
   paperStillOpenedBy,
-  sentPaper,
   signingLinksForProposal,
 } from "./signingLinks";
 import { invoiceNumberLabel } from "../lib/invoice-money";
