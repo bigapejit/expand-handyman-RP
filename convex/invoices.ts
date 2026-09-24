@@ -18,6 +18,7 @@ import {
   mintInvoiceLink,
   fixedInvoicePaperOf,
 } from "./invoiceLinks";
+import { offerTitle, type FrozenProposal } from "./offers";
 import { invoiceStamp, paymentFor } from "./payments";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import { invoiceLine } from "./schema";
@@ -45,7 +46,6 @@ import {
   oldestSentFirst,
   type InvoiceSendBlocker,
 } from "../lib/invoices";
-import { proposalDisplayName } from "../lib/proposal-pricing";
 import { signingUrl } from "../lib/signing-link";
 import { siteCityLine, siteStreetLine } from "../lib/sites";
 
@@ -57,8 +57,6 @@ import { siteCityLine, siteStreetLine } from "../lib/sites";
 // the owner's lists, panel and Dashboard card, each row with its
 // **Standing**; the staff paper; **Re-send**; and the two things the owner
 // does to a sent invoice afterwards: **Mark paid** (and back) and **Void**.
-
-type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
 // The deposit invoice, made in the mutation that records the customer's
 // signature: one line for the Deposit they signed for, the rate and the
@@ -704,10 +702,7 @@ async function proposalOf(ctx: QueryCtx, invoice: Doc<"invoices">) {
   if (!proposal || !frozen) return { code: Unknown, name: Unknown };
   return {
     code: frozen.code,
-    name: proposalDisplayName(
-      proposal.name,
-      frozen.solutions.map((solution) => solution.title),
-    ),
+    name: offerTitle(proposal, frozen),
   };
 }
 
@@ -752,10 +747,7 @@ function prefilledFinalLines(
 ): InvoiceLine[] {
   return finalInvoiceLines(
     {
-      name: proposalDisplayName(
-        proposal.name,
-        frozen.solutions.map((solution) => solution.title),
-      ),
+      name: offerTitle(proposal, frozen),
       subtotalCents: frozen.subtotalCents,
     },
     invoices,

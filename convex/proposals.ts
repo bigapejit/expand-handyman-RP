@@ -15,6 +15,17 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
+import {
+  draftFieldsOf,
+  freezeOffer,
+  offerOf,
+  offerTitle,
+  paperOf,
+  sendBlockersFor,
+  type FrozenProposal,
+  type Offer,
+  type StaffPaper,
+} from "./offers";
 import { lookUpSiteTax } from "./salesTax";
 import { advanceForCustomer } from "./leads";
 import { emailOutcome } from "./schema";
@@ -27,32 +38,19 @@ import {
   liveLinkForToken,
   mintLinkToken,
   mintSigningLink,
-  sentPaper,
   signingLinksForProposal,
   type LiveSigningLink,
 } from "./signingLinks";
 import { sendableEmail } from "../lib/customer";
-import {
-  ExpandBusiness,
-  proposalTerms,
-  Unknown,
-  WashingtonNoticeToCustomer,
-} from "../lib/expand-business";
-import type { PaperProposal } from "../lib/proposal-paper";
-import { proposalCode } from "../lib/proposals";
+import { ExpandBusiness, WashingtonNoticeToCustomer } from "../lib/expand-business";
 import { signingUrl } from "../lib/signing-link";
-import { siteCityLine, siteStreetLine } from "../lib/sites";
 import {
   DefaultDepositPercent,
-  depositBlockers,
   depositCentsFault,
   depositPercentFault,
-  proposalDisplayName,
   proposalFaultMessage,
-  proposalMoney,
   recipientBlockers,
   sendBlockerMessage,
-  sendBlockers,
   splitPayment,
   storedDeposit,
   taxRateFault,
@@ -67,7 +65,7 @@ import {
   signingFaults,
   type SigningFault,
 } from "../lib/proposal-signing";
-import { offeredLineItems, priceStoredSolution } from "../lib/solution-pricing";
+import { priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
 
 // Proposals, ported from FRSG's convex/proposals.ts: the offers the owner
@@ -80,7 +78,9 @@ import { isWashingtonRegion } from "../lib/wa-sales-tax";
 // them, so a solution repriced once is repriced in every draft holding it, and
 // a solution deleted drops out of every draft holding it (solutions.remove).
 // Send freezes the offer, and from then on every reader uses the frozen copy
-// and never the live solutions, customer or site.
+// and never the live solutions, customer or site. What the offer is, live or
+// frozen, is read in one place, convex/offers.ts: nothing here prices a draft
+// or lays out a paper of its own.
 
 // The site page's Proposals tab, and everything the panel over it edits: the
 // site's proposals, each as the panel reads it, and its solutions to pick
@@ -101,7 +101,6 @@ export const forSite = query({
         .collect(),
       proposalsAtSite(ctx, site._id),
     ]);
-    const bySolutionId = new Map(solutions.map((s) => [s._id, s] as const));
     return {
       customerEmail,
       solutions: solutions.map((solution) => ({
@@ -114,39 +113,36 @@ export const forSite = query({
       })),
       // In number order, so an edit never reshuffles the list under the
       // cursor.
-      proposals: await Promise.all(
-        proposals
-          .sort((x, y) => x.number - y.number)
-          .map(async (proposal) => {
-            const read = proposalForOwner(proposal, site, (id) => bySolutionId.get(id));
-            return {
-              ...read,
-              // What Send would refuse, asked the way `sendWithLink` asks
-              // it, so the button names the same reasons.
-              sendBlockers:
-                proposal.state === "draft"
-                  ? [
-                      ...sendBlockers(
-                        read.solutions.map((solution) => solution.priceCents),
-                        proposal.tax,
-                      ),
-                      ...depositBlockers(read.payment),
-                      ...recipientBlockers(customerEmail),
-                    ]
-                  : [],
-              sentAt: proposal.sentAt ?? null,
-              sentTo: proposal.frozen?.sentTo ?? null,
-              ...(await linkHistory(ctx, proposal._id)),
-              ...decisionForOwner(proposal),
-              // Approving one proposal leaves the site's others alone, so
-              // the panel says how many are still out for the owner to
-              // retire by hand.
-              otherSentAtSite: proposals.filter(
-                (other) => other._id !== proposal._id && other.state === "sent",
-              ).length,
-            };
-          }),
-      ),
+      proposals: (
+        await Promise.all(
+          proposals
+            .sort((x, y) => x.number - y.number)
+            .map(async (proposal) => {
+              const offer = await offerOf(ctx, proposal);
+              if (!offer) return [];
+              return [
+                {
+                  ...proposalForOwner(proposal, site, offer),
+                  // What Send would refuse, asked of the same offer the way
+                  // `sendWithLink` asks it, so the button names the same
+                  // reasons.
+                  sendBlockers:
+                    proposal.state === "draft" ? sendBlockersFor(offer, customerEmail) : [],
+                  sentAt: proposal.sentAt ?? null,
+                  sentTo: proposal.frozen?.sentTo ?? null,
+                  ...(await linkHistory(ctx, proposal._id)),
+                  ...decisionForOwner(proposal),
+                  // Approving one proposal leaves the site's others alone, so
+                  // the panel says how many are still out for the owner to
+                  // retire by hand.
+                  otherSentAtSite: proposals.filter(
+                    (other) => other._id !== proposal._id && other.state === "sent",
+                  ).length,
+                },
+              ];
+            }),
+        )
+      ).flat(),
     };
   },
 });
@@ -171,21 +167,17 @@ export const list = query({
       const customer = customers.get(site.customerId);
       if (!customer) continue;
 
-      const solutions = new Map<Id<"solutions">, Doc<"solutions">>();
-      for (const id of proposal.solutionIds) {
-        const solution = await ctx.db.get(id);
-        if (solution) solutions.set(id, solution);
-      }
-      const read = proposalForOwner(proposal, site, (id) => solutions.get(id));
+      const offer = await offerOf(ctx, proposal);
+      if (!offer) continue;
       rows.push({
-        proposalId: read.proposalId,
+        proposalId: proposal._id,
         siteId: site._id,
         customerId: customer._id,
         customerName: customer.name,
-        code: read.code,
-        title: read.title,
-        state: read.state,
-        totalCents: read.money.totalCents,
+        code: offer.code,
+        title: offerTitle(proposal, offer),
+        state: proposal.state,
+        totalCents: offer.totalCents,
       });
     }
     return rows;
@@ -262,27 +254,25 @@ export const dashboard = query({
 // wrong, and the row is left out rather than pointing nowhere.
 async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
   const site = await ctx.db.get(proposal.siteId);
-  if (!site || !proposal.frozen) return null;
-  const offer = frozenOffer(proposal.frozen);
+  const frozen = proposal.frozen;
+  if (!site || !frozen) return null;
   return {
     proposalId: proposal._id,
     siteId: site._id,
     customerId: site.customerId,
-    customerName: proposal.frozen.customerName,
-    code: offer.code,
-    title: proposalDisplayName(
-      proposal.name,
-      offer.solutions.map((solution) => solution.title),
-    ),
-    totalCents: offer.money.totalCents,
+    customerName: frozen.customerName,
+    code: frozen.code,
+    title: offerTitle(proposal, frozen),
+    totalCents: frozen.totalCents,
   };
 }
 
 // The staff paper: a proposal as its **Proposal paper**, for the owner to read
-// before sending or after. A draft is laid out from its live solutions as if
-// sent now, with the signed-in owner as the Estimator Send would name; past
-// Draft the paper is the offer Send froze, exactly as the customer's link
-// shows it. A query, so reading the paper here never lands in a view log.
+// before sending or after. The draft's paper and the sent one are laid out
+// from the same offer (convex/offers.ts): a draft's as if sent now, with the
+// signed-in owner as the Estimator Send would name, and past Draft the one
+// Send froze, exactly as the customer's link shows it. A query, so reading the
+// paper here never lands in a view log.
 //
 // A draft has no sent date, and "now" is the page's to say: a query's result
 // is cached until what it read changes, so a date taken here would go stale.
@@ -290,61 +280,15 @@ async function dashboardRow(ctx: QueryCtx, proposal: Doc<"proposals">) {
 // the count is for the page to say so, never for the paper.
 export const paper = query({
   args: { proposalId: v.id("proposals") },
-  handler: async (
-    ctx,
-    a,
-  ): Promise<
-    | (Omit<PaperProposal, "sentAt"> & { sentAt: number | null; unpricedSolutions: number })
-    | null
-  > => {
+  handler: async (ctx, a): Promise<(StaffPaper & { unpricedSolutions: number }) | null> => {
     await requireOwner(ctx);
     const proposal = await ctx.db.get(a.proposalId);
     if (!proposal) return null;
-    if (proposal.state !== "draft") {
-      const sent = sentPaper(proposal);
-      return sent ? { ...sent, unpricedSolutions: 0 } : null;
-    }
-    const site = await ctx.db.get(proposal.siteId);
-    if (!site) return null;
-    const customer = await ctx.db.get(site.customerId);
-    const identity = await ctx.auth.getUserIdentity();
-
-    const solutions = await liveSolutions(ctx, proposal);
-    const prices = solutions.map(priceStoredSolution);
-    const money = proposalMoney(prices, proposal.tax);
-
-    return {
-      proposalId: proposal._id,
-      number: proposal.number,
-      code: proposalCode(site.name, proposal.number),
-      name: proposalDisplayName(
-        proposal.name,
-        solutions.map((solution) => solution.title),
-      ),
-      state: proposal.state,
-      recommended: proposal.recommended,
-      sentAt: null,
-      estimator: {
-        name: identity?.name?.trim() || Unknown,
-        email: identity?.email?.trim() || Unknown,
-      },
-      customerName: customer?.name ?? Unknown,
-      site: { street: siteStreetLine(site), city: siteCityLine(site) },
-      solutions: solutions.map((solution) => ({
-        solutionId: solution._id,
-        title: solution.title,
-        scopeOfWork: solution.description,
-        lineItems: offeredLineItems(solution.lineItems),
-        materialAllowanceCents: solution.materialAllowanceCents,
-      })),
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
-      terms: proposalTerms(),
-      tax: proposal.tax,
-      ...money,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      unpricedSolutions: prices.filter((price) => price === null).length,
-    };
+    const offer = await offerOf(ctx, proposal);
+    const paper = offer && paperOf(proposal, offer);
+    if (!offer || !paper) return null;
+    const unpriced = offer.solutions.filter((solution) => solution.priceCents === null);
+    return { ...paper, unpricedSolutions: unpriced.length };
   },
 });
 
@@ -511,12 +455,9 @@ export const update = mutation({
     // Measured against the total this same edit leaves, so a set amount typed
     // alongside a change of solutions or rate is judged on what they come to.
     if (a.depositCents !== undefined) {
-      const edited = { ...proposal, ...patch };
-      const money = proposalMoney(
-        (await liveSolutions(ctx, edited)).map(priceStoredSolution),
-        edited.tax,
-      );
-      refuse(depositCentsFault(a.depositCents, money.totalCents));
+      const offer = await offerOf(ctx, { ...proposal, ...patch });
+      if (!offer) throw new Error("Site not found.");
+      refuse(depositCentsFault(a.depositCents, offer.totalCents));
       patch.depositCents = a.depositCents;
     }
 
@@ -544,11 +485,11 @@ export const setRecommended = mutation({
 });
 
 // A new draft offering the same work on the same terms: the same solutions in
-// the same order, deposit, tax and notes. It carries neither the name nor the
-// Recommended mark, which are what tell two proposals apart. Unlike FRSG this
-// works from any state, so trying again after a decline or repricing approved
-// work starts from what was offered; the copy reads the solutions live like
-// any draft.
+// the same order, deposit, tax and notes, read off the proposal's offer. It
+// carries neither the name nor the Recommended mark, which are what tell two
+// proposals apart. Unlike FRSG this works from any state, so trying again
+// after a decline or repricing approved work starts from what was offered;
+// the copy reads the solutions live like any draft.
 export const duplicate = mutation({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a) => {
@@ -556,19 +497,16 @@ export const duplicate = mutation({
     const proposal = await requireProposal(ctx, a.proposalId);
     const site = await ctx.db.get(proposal.siteId);
     if (!site) throw new Error("Site not found.");
-    const solutions = await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)));
+    const offer = await offerOf(ctx, proposal);
+    if (!offer) throw new Error("Site not found.");
     const now = Date.now();
     return ctx.db.insert("proposals", {
       siteId: site._id,
       // A copy is a new proposal to the customer, so it takes the next number.
       number: await issueProposalNumber(ctx, site),
       state: "draft",
-      solutionIds: solutions.flatMap((solution) => (solution ? [solution._id] : [])),
       recommended: false,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      tax: proposal.tax,
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
+      ...draftFieldsOf(offer),
       createdAt: now,
       updatedAt: now,
     });
@@ -587,17 +525,10 @@ export const remove = mutation({
 });
 
 // A proposal as the tab lists it and the panel edits it: its solutions in the
-// order it offers them, and every figure derived from them in one place, so no
-// reader works out money of its own. Past Draft every figure is the one Send
-// froze, and the Proposal ID with them.
-function proposalForOwner(
-  proposal: Doc<"proposals">,
-  site: Doc<"sites">,
-  solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
-) {
-  const offer = proposal.frozen
-    ? frozenOffer(proposal.frozen)
-    : liveOffer(proposal, site, solutionById);
+// order it offers them, and every figure read off its offer (convex/offers.ts),
+// so no reader works out money of its own. Past Draft every figure is the one
+// Send froze, and the Proposal ID with them.
+function proposalForOwner(proposal: Doc<"proposals">, site: Doc<"sites">, offer: Offer) {
   return {
     proposalId: proposal._id,
     siteId: site._id,
@@ -606,68 +537,25 @@ function proposalForOwner(
     // The name as stored, for the field to show, and the name as read, for
     // everything that has to call the proposal something.
     name: proposal.name ?? null,
-    title: proposalDisplayName(
-      proposal.name,
-      offer.solutions.map((solution) => solution.title),
-    ),
+    title: offerTitle(proposal, offer),
     state: proposal.state,
     recommended: proposal.recommended,
-    solutions: offer.solutions,
+    solutions: offer.solutions.map((solution) => ({
+      solutionId: solution.solutionId,
+      title: solution.title,
+      priceCents: solution.priceCents,
+    })),
     notes: offer.notes ?? null,
     tax: offer.tax,
-    money: offer.money,
+    money: {
+      subtotalCents: offer.subtotalCents,
+      taxCents: offer.taxCents,
+      totalCents: offer.totalCents,
+    },
     // The percent the proposal keeps even under a set amount, for switching
     // back to it.
     depositPercent: offer.depositPercent,
-    payment: splitPayment(offer.money.totalCents, storedDeposit(offer)),
-  };
-}
-
-function liveOffer(
-  proposal: Doc<"proposals">,
-  site: Doc<"sites">,
-  solutionById: (id: Id<"solutions">) => Doc<"solutions"> | undefined,
-) {
-  // An id naming a solution since deleted is simply not there.
-  const priced = proposal.solutionIds.flatMap((id) => {
-    const solution = solutionById(id);
-    return solution ? [{ solution, price: priceStoredSolution(solution) }] : [];
-  });
-  return {
-    code: proposalCode(site.name, proposal.number),
-    solutions: priced.map(({ solution, price }) => ({
-      solutionId: solution._id,
-      title: solution.title,
-      priceCents: price?.priceCents ?? null,
-    })),
-    notes: proposal.notes,
-    tax: proposal.tax,
-    money: proposalMoney(
-      priced.map(({ price }) => price),
-      proposal.tax,
-    ),
-    depositPercent: proposal.depositPercent,
-    depositCents: proposal.depositCents,
-  };
-}
-
-function frozenOffer(frozen: FrozenProposal) {
-  return {
-    code: frozen.code,
-    solutions: frozen.solutions.map((solution) => ({
-      solutionId: solution.solutionId,
-      title: solution.title,
-      priceCents: solution.priceCents as number | null,
-    })),
-    notes: frozen.notes,
-    tax: frozen.tax,
-    money: {
-      subtotalCents: frozen.subtotalCents,
-      taxCents: frozen.taxCents,
-      totalCents: frozen.totalCents,
-    },
-    depositPercent: frozen.depositPercent,
-    depositCents: frozen.depositCents,
+    payment: splitPayment(offer.totalCents, storedDeposit(offer)),
   };
 }
 
@@ -730,11 +618,11 @@ export const send = action({
   },
 });
 
-// Freezes the offer as it stands (FRSG's frozen block, plus the Proposal ID,
-// the customer's name, the site's address, the email it goes to and the
-// Estimator), mints the link and schedules its email. The email is scheduled,
-// never awaited: Send is the offer, and a Resend outage must be able to fail
-// without unmaking it.
+// Freezes the offer the draft's paper already shows (convex/offers.ts: FRSG's
+// frozen block, plus the Proposal ID, the customer's name, the site's address
+// and the Estimator) with the email it goes to, mints the link and schedules
+// its email. The email is scheduled, never awaited: Send is the offer, and a
+// Resend outage must be able to fail without unmaking it.
 export const sendWithLink = internalMutation({
   args: { proposalId: v.id("proposals"), token: v.string() },
   handler: async (ctx, a) => {
@@ -746,61 +634,19 @@ export const sendWithLink = internalMutation({
     if (!customer) throw new Error("Customer not found.");
     const identity = await ctx.auth.getUserIdentity();
 
-    const priced = (await liveSolutions(ctx, proposal)).map((solution) => ({
-      solution,
-      price: priceStoredSolution(solution),
-    }));
-    const money = proposalMoney(
-      priced.map(({ price }) => price),
-      proposal.tax,
-    );
+    const offer = await offerOf(ctx, proposal);
+    if (!offer) throw new Error("Site not found.");
     const sentTo = sendableEmail(customer.email);
     // The same questions the button asks, asked again here, because a stale
     // panel is exactly how an unpriced solution would otherwise reach a
     // customer.
-    refuseSend([
-      ...sendBlockers(
-        priced.map(({ price }) => price?.priceCents ?? null),
-        proposal.tax,
-      ),
-      ...depositBlockers(splitPayment(money.totalCents, storedDeposit(proposal))),
-      ...recipientBlockers(sentTo),
-    ]);
+    refuseSend(sendBlockersFor(offer, sentTo));
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
 
-    const frozen: FrozenProposal = {
-      code: proposalCode(site.name, proposal.number),
-      customerName: customer.name,
-      site: { street: siteStreetLine(site), city: siteCityLine(site), region: site.region },
-      sentTo,
-      estimator: {
-        name: identity?.name?.trim() || Unknown,
-        email: identity?.email?.trim() || Unknown,
-      },
-      solutions: priced.map(({ solution, price }) => {
-        // Unreachable past the refusal above, which names every unpriced
-        // solution. Stated rather than defaulted, because a solution frozen at
-        // $0 would be a price Expand never offered.
-        if (!price) throw new Error("A solution with no price reached Send.");
-        return {
-          solutionId: solution._id,
-          title: solution.title,
-          scopeOfWork: solution.description,
-          priceCents: price.priceCents,
-          lineItems: offeredLineItems(solution.lineItems),
-          materialAllowanceCents: solution.materialAllowanceCents,
-        };
-      }),
-      ...money,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      tax: proposal.tax,
-      terms: proposalTerms(),
-      // The draft's own text, copied like everything else here. It stays on
-      // the draft too, so Withdraw hands the live field back unchanged.
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
-    };
+    // The draft's own fields stay on the row beside the frozen copy, so
+    // Withdraw hands them back unchanged.
+    const frozen = freezeOffer(offer, sentTo);
     const now = Date.now();
     await ctx.db.patch(proposal._id, {
       state: "sent",
@@ -970,7 +816,7 @@ export const approveWithLink = internalMutation({
     const signerName = a.signerName.trim().replace(/\s+/g, " ").slice(0, NameMaxLength);
     const userAgent = optionalText(a.userAgent ?? "", UserAgentMaxLength);
     const firstOpenedAt = await firstCustomerView(ctx, link.token);
-    const title = frozenTitle(proposal.name, frozen);
+    const title = offerTitle(proposal, frozen);
     const sealed = sealProposal({
       proposalId: proposal._id,
       number: proposal.number,
@@ -1070,7 +916,7 @@ export const declineFromLink = mutation({
       code: frozen.code,
       siteStreet: frozen.site.street,
       siteAddress: siteAddress(frozen),
-      proposalTitle: frozenTitle(proposal.name, frozen),
+      proposalTitle: offerTitle(proposal, frozen),
       ...(reason === undefined ? {} : { reason }),
     });
   },
@@ -1126,14 +972,6 @@ function refuseSigning(faults: readonly SigningFault[]) {
   });
 }
 
-// A sent proposal's display name, read from the solution titles Send froze.
-function frozenTitle(name: string | undefined, frozen: FrozenProposal): string {
-  return proposalDisplayName(
-    name,
-    frozen.solutions.map((solution) => solution.title),
-  );
-}
-
 // The site as one line, the way every email names it.
 function siteAddress(frozen: FrozenProposal): string {
   return [frozen.site.street, frozen.site.city].filter(Boolean).join(", ");
@@ -1169,7 +1007,7 @@ async function emailNewLink(
     ownerName: send.ownerName?.trim() || "Your estimator",
     siteStreet: frozen.site.street,
     siteAddress: siteAddress(frozen),
-    proposalTitle: frozenTitle(proposal.name, frozen),
+    proposalTitle: offerTitle(proposal, frozen),
     totalCents: frozen.totalCents,
   });
 }
@@ -1185,8 +1023,6 @@ function refuseSend(blockers: readonly SendBlocker[]) {
     message: blockers.map(sendBlockerMessage).join(" "),
   });
 }
-
-type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
 // The next Proposal number at a site. The site's `lastProposalNumber` only
 // ever climbs, so a deleted draft leaves a gap and a number a customer has
@@ -1211,14 +1047,6 @@ async function verifiedSolutions(
       throw new Error("A proposal can only offer solutions written for its own site.");
   }
   return unique;
-}
-
-// A draft's solutions as it offers them, read live. An id naming a solution
-// since deleted is simply not there.
-async function liveSolutions(ctx: QueryCtx, proposal: Doc<"proposals">) {
-  return (await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))).flatMap(
-    (solution) => (solution ? [solution] : []),
-  );
 }
 
 function proposalsAtSite(ctx: QueryCtx, siteId: Id<"sites">) {

@@ -4,7 +4,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { fixedInvoicePaperOf, invoiceStillOpenedBy } from "./invoiceLinks";
 import type { pdfSheet } from "./schema";
-import { paperStillOpenedBy, sentPaper, signingLinksForProposal } from "./signingLinks";
+import { sentPaper } from "./offers";
+import { paperStillOpenedBy, signingLinksForProposal } from "./signingLinks";
 import {
   invoicePaperState,
   type InvoicePaperState,
