@@ -1049,6 +1049,38 @@ describe("A Returned payment", () => {
     });
   });
 
+  test("while another bank payment was on its way, which confirmed before the letters went, tells the owner the invoice was paid since", async () => {
+    const f = fixture();
+    const { invoiceId } = await f.approved();
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId)));
+    vi.setSystemTime(pdt(9, 2));
+    const other = { id: "cs_test_2", payment_intent: "pi_test_2" };
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId, other)));
+    vi.setSystemTime(pdt(9, 5));
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId)),
+      "insufficient funds",
+    );
+    await f.apply(
+      f.event(
+        "checkout.session.async_payment_succeeded",
+        f.bankSession(invoiceId, { ...other, payment_status: "paid" }),
+      ),
+    );
+    await f.deliver();
+
+    expect(f.letters("returned_payment_customer")).toEqual([]);
+    expect(f.letters("returned_payment_owner")[0].body.text).toBe(
+      [
+        "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
+        "",
+        "The invoice was paid since, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+        "",
+        "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
+      ].join("\n"),
+    );
+  });
+
   // The letters go in an action scheduled once the return has committed, so
   // anything may land on the invoice in between. The action asks again, and
   // an invoice no longer payable keeps the customer out of it.

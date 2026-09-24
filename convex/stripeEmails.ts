@@ -40,9 +40,10 @@ export const sendReturnedPayment = internalAction({
     amountCents: v.number(),
     // The bank's words, for the owner only.
     reason: v.optional(v.string()),
-    // Another bank payment for the invoice still on its way, from a second
-    // session minted before either completed: the customer's money may yet
-    // arrive that way, so only the owner is written to.
+    // Another bank payment for the invoice still on its way when the return
+    // committed, from a second session minted before either completed: the
+    // customer's money may yet arrive that way, so only the owner is written
+    // to.
     stillOnItsWay: v.optional(v.object({ amountCents: v.number(), acceptedOn: v.string() })),
   },
   handler: async (ctx, a) => {
@@ -64,8 +65,13 @@ export const sendReturnedPayment = internalAction({
     let customer: OwnerLetter["customer"];
     // One the mutation already left unasked is not asked here even if the
     // other payment has come back too since: that return writes letters of
-    // its own.
-    if (a.stillOnItsWay) customer = { kind: "still_on_its_way", ...a.stillOnItsWay };
+    // its own. The owner is told the invoice as it now stands, so a Void, a
+    // Mark paid or the other payment confirming since is what the letter
+    // says, not the payment that was on its way when this came back. Only
+    // when nothing now stands in the way, because the other payment came
+    // back as well, is the reason the customer was left alone the one the
+    // mutation saw.
+    if (a.stillOnItsWay) customer = notAsked ?? { kind: "still_on_its_way", ...a.stillOnItsWay };
     else {
       const emailed = notAsked ? false : await sendCustomerLetter(letter, amount, token);
       // Kept for the owner's grey note, which otherwise could only guess.
