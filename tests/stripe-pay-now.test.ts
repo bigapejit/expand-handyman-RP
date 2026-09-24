@@ -476,7 +476,7 @@ describe("Pay by card", () => {
 
 describe("Pay now refused", () => {
   test("on an ended link, a draft, a void, a $0 or a paid invoice, and one with a payment on its way, without asking Stripe", async () => {
-    const { t, owner, pay, approved, sentInvoice, apply, event, bankSession } = fixture();
+    const { t, owner, pay, page, approved, sentInvoice, apply, event, bankSession } = fixture();
     const { proposalId, invoiceId, token } = await approved();
 
     const nothingDue = await sentInvoice(proposalId, { lines: [] });
