@@ -125,28 +125,32 @@ export function paidSentence(
 // customer sent twice, which only Stripe can send back.
 export const PaidTwice = "Paid twice. Refund one in Stripe.";
 
-// A bank payment Stripe accepted and the bank has not yet confirmed, as the
-// owner's amber box reads it: the bold head, then the rest.
-export function ownerOnItsWay(onItsWay: { amountCents: number; acceptedOn: string }): {
-  head: string;
-  body: string;
-} {
+// A **Payment on its way**, as the owner's amber box reads it: the bold head,
+// the rest, and a line of its own when the invoice no longer owes the money.
+// While it owes, the spec's sentence ends on the invoice reading Paid once the
+// bank confirms. Once a payment already stands, which two sessions minted
+// before either completed can leave beside it, or the invoice is **Void**, it
+// will never read Paid for this money: the sentence stops at the bank
+// confirming, and the line says the money is more than was owed and only
+// Stripe can send it back.
+export function ownerOnItsWay(
+  onItsWay: { amountCents: number; acceptedOn: string },
+  invoice: { paid: boolean; void: boolean } = { paid: false, void: false },
+): { head: string; body: string; unowed: string | null } {
   const amount = formatCentsExact(onItsWay.amountCents);
+  const accepted = `A bank payment of ${amount} was accepted ${shortDay(onItsWay.acceptedOn)} through Stripe.`;
+  const unowed = invoice.void
+    ? "The invoice is void. Refund this in Stripe once it confirms."
+    : invoice.paid
+      ? "Already paid. Refund one in Stripe once this confirms."
+      : null;
   return {
     head: "Payment on its way.",
-    body: `A bank payment of ${amount} was accepted ${shortDay(onItsWay.acceptedOn)} through Stripe. Banks take up to 4 business days to confirm it, and the invoice reads Paid once they do.`,
+    body: unowed
+      ? `${accepted} Banks take up to 4 business days to confirm it.`
+      : `${accepted} Banks take up to 4 business days to confirm it, and the invoice reads Paid once they do.`,
+    unowed,
   };
-}
-
-// Under the amber box's words when the invoice no longer owes the money on
-// its way: a payment already stands, which two sessions minted before either
-// completed can leave beside it, or the invoice is void. Once the bank
-// confirms, that money is more than was owed, and only Stripe can send it
-// back; null while the invoice still owes it.
-export function onItsWayUnowed(invoice: { paid: boolean; void: boolean }): string | null {
-  if (invoice.void) return "The invoice is void. Refund this in Stripe once it confirms.";
-  if (invoice.paid) return "Already paid. Refund one in Stripe once this confirms.";
-  return null;
 }
 
 // Why an invoice is unpaid again after Stripe had its money, as the panel's

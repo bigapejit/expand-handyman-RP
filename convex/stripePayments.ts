@@ -490,12 +490,13 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
 }
 
 // A completion delivered after another event already wrote its session's
-// row: Stripe does not promise the order, and a confirmation or a return
-// that came first dated the row by its own day, days after the customer
-// paid, as a refund's charge dates it by the charge. The payment was
-// accepted when its session completed, so the completion's time replaces a
-// later one, and every sentence that says when reads the day the customer
-// paid. Only ever a later one: the success return dates its completion by
+// row: Stripe does not promise the order. A confirmation or a return that
+// came first dated the row by its own day, days after the customer paid; the
+// payment was accepted when its session completed, so the completion's time
+// replaces any later one, and every sentence that says when reads the day
+// the customer paid. A refund or a lost dispute that came first dated it by
+// the charge, made a moment before the completion, so that time normally
+// stands. Only ever a later one: the success return dates its completion by
 // the payment intent's making, a moment before the webhook's own, and the
 // webhook's arriving second must not move it on.
 async function acceptedAtCompletion(ctx: MutationCtx, payment: StripePaymentFacts) {
@@ -546,8 +547,6 @@ async function recordReturned(
     invoiceId: invoice._id,
     number: invoiceNumberLabel(invoice.number),
     amountCents: payment.amountCents,
-    customerName: invoice.frozen.customerName,
-    to: invoice.frozen.sentTo,
     ...(reason ? { reason } : {}),
     ...(other
       ? {

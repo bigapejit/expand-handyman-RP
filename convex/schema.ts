@@ -473,9 +473,11 @@ export default defineSchema({
     // figure owed.
     amountCents: v.number(),
     // When Stripe accepted the payment: the session's completion, whenever
-    // it arrives. A row a confirmation or a return wrote first holds that
-    // event's later time, and one a refund or a lost dispute wrote first the
-    // charge's making, only until the completion comes and sets it back.
+    // it arrives. A row another event wrote first holds that event's time,
+    // and the completion's replaces it only when it is later: a
+    // confirmation's or a return's day is corrected back to the day the
+    // customer paid, while a refund's or a lost dispute's charge time, made
+    // a moment before the completion, normally stands.
     acceptedAt: v.number(),
     status: v.union(
       v.literal("on_its_way"),

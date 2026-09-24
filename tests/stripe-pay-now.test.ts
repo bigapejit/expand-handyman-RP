@@ -1134,9 +1134,16 @@ describe("A Returned payment", () => {
     });
   });
 
-  test("re-sent after it came back but before the letters went, sends the customer to the new link and not the ended one", async () => {
+  test("re-sent to a changed email after it came back but before the letters went, sends the customer to the new link at the new address", async () => {
     const f = fixture();
     const { invoiceId, token } = await returnedFor(f);
+    const { customerId } = (await f.t.run((ctx) => ctx.db.get(invoiceId)))!;
+    await f.owner.mutation(api.customers.update, {
+      customerId,
+      name: "Maria Delgado",
+      email: "maria.delgado@example.com",
+      phone: "",
+    });
     await f.owner.action(api.invoices.resend, { invoiceId });
     const live = (await f.t.run((ctx) => ctx.db.query("invoiceLinks").collect())).find(
       (link) => link.invoiceId === invoiceId && link.endedAt === undefined,
@@ -1145,8 +1152,13 @@ describe("A Returned payment", () => {
 
     await f.deliver();
     const [customer] = f.letters("returned_payment_customer");
+    expect(customer.body.to).toEqual(["maria.delgado@example.com"]);
     expect(customer.body.text).toContain(`https://staff.expandhandyman.com/sign/${live.token}`);
     expect(customer.body.text).not.toContain(token);
+    // The owner is told the address the letter really went to.
+    expect(f.letters("returned_payment_owner")[0].body.text).toContain(
+      "The customer (Maria Delgado, maria.delgado@example.com) has been emailed to pay again.",
+    );
   });
 
   test("sends the customer to the invoice's live link after a re-send", async () => {

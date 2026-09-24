@@ -13,7 +13,6 @@ import { usePacificToday } from "@/hooks/use-pacific-today";
 import { stampDate } from "@/lib/invoice-paper";
 import { pacificDay } from "@/lib/invoice-standing";
 import {
-  onItsWayUnowed,
   ownerOnItsWay,
   PaidTwice,
   paidSentence,
@@ -44,10 +43,7 @@ export function InvoicePayment({ invoice }: { invoice: PanelInvoice }) {
       <FieldHeading>Payment</FieldHeading>
       {paid ? <Paid invoice={invoice} /> : null}
       {invoice.onItsWay ? (
-        <OnItsWay
-          onItsWay={invoice.onItsWay}
-          unowed={onItsWayUnowed({ paid, void: false })}
-        />
+        <OnItsWay onItsWay={invoice.onItsWay} invoice={{ paid, void: false }} />
       ) : null}
       {!paid && !invoice.onItsWay ? (
         <>
@@ -187,16 +183,16 @@ function PaidBox({
 
 // No Mark paid and no Void while the bank confirms: the money is coming, and
 // the invoice reads Paid by itself once it lands. On an invoice already paid
-// or void, a line under the words says the money is more than was owed
-// (`onItsWayUnowed`).
+// or void it never will for this money, so the words stop at the bank
+// confirming and a line under them says the money is more than was owed.
 function OnItsWay({
   onItsWay,
-  unowed,
+  invoice,
 }: {
   onItsWay: NonNullable<PanelInvoice["onItsWay"]>;
-  unowed: string | null;
+  invoice: { paid: boolean; void: boolean };
 }) {
-  const { head, body } = ownerOnItsWay(onItsWay);
+  const { head, body, unowed } = ownerOnItsWay(onItsWay, invoice);
   return (
     <>
       <div className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -268,7 +264,7 @@ function Voided({ invoice }: { invoice: PanelInvoice }) {
       {invoice.onItsWay ? (
         <OnItsWay
           onItsWay={invoice.onItsWay}
-          unowed={onItsWayUnowed({ paid: invoice.payments.length > 0, void: true })}
+          invoice={{ paid: invoice.payments.length > 0, void: true }}
         />
       ) : null}
     </div>

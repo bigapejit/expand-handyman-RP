@@ -38,9 +38,6 @@ export const sendReturnedPayment = internalAction({
     number: v.string(),
     // What Stripe took, which is what came back.
     amountCents: v.number(),
-    // The name and address the invoice went to, as sent.
-    customerName: v.string(),
-    to: v.string(),
     // The bank's words, for the owner only.
     reason: v.optional(v.string()),
     // Another bank payment for the invoice still on its way, from a second
@@ -50,23 +47,27 @@ export const sendReturnedPayment = internalAction({
   },
   handler: async (ctx, a) => {
     const amount = formatCentsExact(a.amountCents, "en-US");
+    // The return's mutation found the invoice still owed, but this runs in a
+    // transaction of its own, after it: a Void, Mark paid or another
+    // session's completion may have landed between, and a letter asking the
+    // customer to pay an invoice that is no longer payable must not go. This
+    // check is the last word. The link and the address are looked up in the
+    // same moment, since a **Re-send** in between ends the link the invoice
+    // had when the return committed and may send it to the customer's new
+    // email, and a letter must not send the customer to a link that opens
+    // nothing, or the live link to an address the invoice no longer goes to.
+    const { notAsked, token, customerName, to } = await ctx.runQuery(
+      internal.stripeEmails.askAgain,
+      { invoiceId: a.invoiceId },
+    );
+    const letter = { ...a, customerName, to };
     let customer: OwnerLetter["customer"];
+    // One the mutation already left unasked is not asked here even if the
+    // other payment has come back too since: that return writes letters of
+    // its own.
     if (a.stillOnItsWay) customer = { kind: "still_on_its_way", ...a.stillOnItsWay };
     else {
-      // The return's mutation found the invoice still owed, but this runs in
-      // a transaction of its own, after it: a Void, Mark paid or another
-      // session's completion may have landed between, and a letter asking
-      // the customer to pay an invoice that is no longer payable must not go.
-      // This check is the last word. One the mutation already left unasked is
-      // not asked here even if the other payment has come back too since:
-      // that return writes letters of its own. The link is looked up in the
-      // same moment, since a Re-send in between ends the one the invoice had
-      // when the return committed, and a letter must not send the customer to
-      // a link that opens nothing.
-      const { notAsked, token } = await ctx.runQuery(internal.stripeEmails.askAgain, {
-        invoiceId: a.invoiceId,
-      });
-      const emailed = notAsked ? false : await sendCustomerLetter(a, amount, token);
+      const emailed = notAsked ? false : await sendCustomerLetter(letter, amount, token);
       // Kept for the owner's grey note, which otherwise could only guess.
       await ctx.runMutation(internal.stripeEmails.recordCustomerLetter, {
         paymentIntentId: a.paymentIntentId,
@@ -79,7 +80,7 @@ export const sendReturnedPayment = internalAction({
       to: ExpandBusiness.email,
       subject: `Bank payment on ${a.number} was returned`,
       text: ownerLetter({
-        ...a,
+        ...letter,
         amount,
         customer,
         stripeUrl: stripePaymentUrl(a.paymentIntentId, process.env.STRIPE_SECRET_KEY),
@@ -92,16 +93,35 @@ export const sendReturnedPayment = internalAction({
   },
 });
 
-// Whether the customer is to be asked to pay the invoice again, and through
-// which link, both as they stand now. `notAsked` says why not, or is null
-// while the invoice still owes: sent, with no payment and none on its way,
-// which is when the link has its Pay button back. A void invoice says so
-// before a payment on it, since its paper reads VOID whatever Stripe wrote.
+// Whether the customer is to be asked to pay the invoice again, through
+// which link and at which address, all as they stand now. `notAsked` says why
+// not, or is null while the invoice still owes: sent, with no payment and
+// none on its way, which is when the link has its Pay button back. A void
+// invoice says so before a payment on it, since its paper reads VOID whatever
+// Stripe wrote. The name and address are the ones the invoice last went to,
+// which a Re-send moves to the customer's email as it is then; a sent
+// invoice always has them, and only a draft, which Stripe never sees, can be
+// deleted.
 export const askAgain = internalQuery({
   args: { invoiceId: v.id("invoices") },
-  handler: async (ctx, a): Promise<{ notAsked: NotAsked | null; token: string | null }> => {
+  handler: async (
+    ctx,
+    a,
+  ): Promise<{
+    notAsked: NotAsked | null;
+    token: string | null;
+    customerName: string;
+    to: string;
+  }> => {
+    const frozen = (await ctx.db.get(a.invoiceId))?.frozen;
+    if (!frozen) throw new Error("A returned payment's invoice was never sent.");
     const token = (await linkToPayAgain(ctx, a.invoiceId))?.token ?? null;
-    return { notAsked: await whyNotAskAgain(ctx, a.invoiceId), token };
+    return {
+      notAsked: await whyNotAskAgain(ctx, a.invoiceId),
+      token,
+      customerName: frozen.customerName,
+      to: frozen.sentTo,
+    };
   },
 });
 

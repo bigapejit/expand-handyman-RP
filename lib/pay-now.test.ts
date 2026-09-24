@@ -5,7 +5,6 @@ import {
   CardUpToCents,
   customerOnItsWay,
   customerReturned,
-  onItsWayUnowed,
   ownerOnItsWay,
   PaidTwice,
   paidSentence,
@@ -136,24 +135,32 @@ describe("The panel's words", () => {
     expect(PaidTwice).toBe("Paid twice. Refund one in Stripe.");
   });
 
-  it("tells the owner a bank payment is on its way", () => {
+  it("tells the owner a bank payment is on its way, and that the invoice reads Paid once it confirms", () => {
     expect(ownerOnItsWay({ amountCents: 285_437, acceptedOn: "2026-09-23" })).toEqual({
       head: "Payment on its way.",
       body: "A bank payment of $2,854.37 was accepted Sept 23 through Stripe. Banks take up to 4 business days to confirm it, and the invoice reads Paid once they do.",
+      unowed: null,
     });
   });
 
-  it("says under a payment on its way that it would be paid twice, or on a void invoice, and nothing while the invoice owes it", () => {
-    expect(onItsWayUnowed({ paid: true, void: false })).toBe(
-      "Already paid. Refund one in Stripe once this confirms.",
-    );
-    expect(onItsWayUnowed({ paid: false, void: true })).toBe(
-      "The invoice is void. Refund this in Stripe once it confirms.",
-    );
-    expect(onItsWayUnowed({ paid: true, void: true })).toBe(
-      "The invoice is void. Refund this in Stripe once it confirms.",
-    );
-    expect(onItsWayUnowed({ paid: false, void: false })).toBeNull();
+  it("tells the owner a bank payment on its way to a paid invoice would be paid twice", () => {
+    const onItsWay = { amountCents: 285_437, acceptedOn: "2026-09-23" };
+    expect(ownerOnItsWay(onItsWay, { paid: true, void: false })).toEqual({
+      head: "Payment on its way.",
+      body: "A bank payment of $2,854.37 was accepted Sept 23 through Stripe. Banks take up to 4 business days to confirm it.",
+      unowed: "Already paid. Refund one in Stripe once this confirms.",
+    });
+  });
+
+  it("tells the owner a bank payment on its way to a void invoice needs refunding, and never that it will read Paid", () => {
+    const onItsWay = { amountCents: 285_437, acceptedOn: "2026-09-23" };
+    const said = {
+      head: "Payment on its way.",
+      body: "A bank payment of $2,854.37 was accepted Sept 23 through Stripe. Banks take up to 4 business days to confirm it.",
+      unowed: "The invoice is void. Refund this in Stripe once it confirms.",
+    };
+    expect(ownerOnItsWay(onItsWay, { paid: false, void: true })).toEqual(said);
+    expect(ownerOnItsWay(onItsWay, { paid: true, void: true })).toEqual(said);
   });
 
   it("keeps a grey note of a returned payment, with the bank's reason", () => {
