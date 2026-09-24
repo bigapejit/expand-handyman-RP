@@ -1,4 +1,4 @@
-import { invoiceNumberLabel } from "./invoice-money";
+import { invoiceNumberLabel, type InvoiceLine } from "./invoice-money";
 import { PacificTimeZone, type Standing } from "./invoice-standing";
 import { panelHref } from "./side-panel";
 
@@ -151,4 +151,93 @@ export function invoiceSentLabel(sentAt: number | null, locale?: string): string
     timeZone: PacificTimeZone,
   }).format(sentAt);
   return `Sent ${day}`;
+}
+
+// Why **Send** is refused. Named here rather than on the button because the
+// same questions decide it on the server inside `invoices.send`, and the panel
+// lists exactly what the mutation would refuse, as a proposal's does.
+export type InvoiceSendBlocker = "no_lines" | "blank_line" | "no_email";
+
+// Every reason at once, in the order they read: what the invoice is missing,
+// what is wrong with what it holds, then where it would go.
+export function invoiceSendBlockers(
+  lines: readonly Pick<InvoiceLine, "description">[],
+  email: string | null,
+): InvoiceSendBlocker[] {
+  const blockers: InvoiceSendBlocker[] = [];
+  if (lines.length === 0) blockers.push("no_lines");
+  if (lines.some((line) => !line.description.trim())) blockers.push("blank_line");
+  if (email === null) blockers.push("no_email");
+  return blockers;
+}
+
+export function invoiceSendBlockerMessage(blocker: InvoiceSendBlocker): string {
+  switch (blocker) {
+    case "no_lines":
+      return "This invoice has no lines.";
+    case "blank_line":
+      return "A line on this invoice has no description.";
+    case "no_email":
+      return "The customer has no email address to send it to.";
+  }
+}
+
+// One **Invoice line** as a draft's table holds it while it is typed in: the
+// amount as the field shows it, because "-" on the way to "-80" is a real
+// state of the field. `key` is the row's identity on screen; nothing stores it.
+export type InvoiceLineDraft = { key: string; description: string; amount: string };
+
+export function lineDraftsFrom(lines: readonly InvoiceLine[]): InvoiceLineDraft[] {
+  return lines.map((line, index) => ({
+    key: `stored-${index}`,
+    description: line.description,
+    amount: amountField(line.cents),
+  }));
+}
+
+// Cents as the field shows them for editing: plain dollars and cents, signed,
+// with no currency symbol or grouping to type around. Nothing at all for $0,
+// so a fresh line's field is empty.
+export function amountField(cents: number): string {
+  return cents === 0 ? "" : (cents / 100).toFixed(2);
+}
+
+// An amount typed by hand, as whole cents: "$1,250.50", "1250.5" and "-$80"
+// all read, and a typographic minus counts as one. Empty is $0. Anything that
+// is not an amount yet, "-" mid-keystroke included, is null, and the table
+// waits rather than storing a figure nobody typed.
+export function readAmountField(raw: string): number | null {
+  const typed = raw.trim().replace(/\u2212/g, "-").replace(/[$,\s]/g, "");
+  if (typed === "") return 0;
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(typed)) return null;
+  // Adding 0 turns -0 into 0.
+  return Math.round(Number(typed) * 100) + 0;
+}
+
+// What the table should be saved as, whole, or `null` for "not yet" while an
+// amount cannot be read. A line with no description is kept: it is the
+// owner's to write or remove, and Send names it until they do.
+export function linesToStore(drafts: readonly InvoiceLineDraft[]): InvoiceLine[] | null {
+  const lines: InvoiceLine[] = [];
+  for (const draft of drafts) {
+    const cents = readAmountField(draft.amount);
+    if (cents === null) return null;
+    lines.push({ description: draft.description.trim(), cents });
+  }
+  return lines;
+}
+
+// Whether the table still says what the invoice holds. A field left alone is
+// not an edit.
+export function sameInvoiceLines(
+  left: readonly InvoiceLine[],
+  right: readonly InvoiceLine[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (line, index) =>
+        line.description === right[index].description && line.cents === right[index].cents,
+    )
+  );
 }
