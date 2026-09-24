@@ -1,0 +1,518 @@
+import Stripe from "stripe";
+import { ConvexError, v } from "convex/values";
+
+import { internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
+import { appOrigin } from "./email";
+import { invoiceLinkForToken, invoiceLinksFor, invoiceStillOpenedBy } from "./invoiceLinks";
+import { paymentFor, paymentOnItsWayFor } from "./payments";
+import { discardInvoicePdfCopy } from "./pdfCopyFiles";
+import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
+import { pacificDay } from "../lib/invoice-standing";
+import { waysToPay, type PayMethod } from "../lib/pay-now";
+import { signingUrl } from "../lib/signing-link";
+import {
+  prunedStripeEvent,
+  readStripeEvent,
+  type StripeEventReading,
+} from "../lib/stripe-events";
+
+// **Pay now** (CONTEXT.md) where it meets Stripe: minting the Checkout
+// Session Pay by bank and Pay by card go to, the success return that reads
+// the session back when the customer lands on the link again, and
+// `applyStripeEvent`, the one mutation every word from Stripe goes through,
+// the webhook's (convex/http.ts) and the success return's alike. The app only
+// listens: refunds and disputes are the owner's to handle in Stripe's
+// dashboard, and what comes of them is applied here.
+//
+// The client is made inside each handler, never at import, because neither
+// deployment has STRIPE_SECRET_KEY yet and every other function in the app
+// must still load without it. It talks through `fetch`, which the Convex
+// runtime has and the tests stub.
+
+// This deployment's Stripe secret key, or null where none is set, when Pay by
+// bank and Pay by card are refused and the rest of the link still works.
+export function stripeSecretKey(): string | null {
+  return process.env.STRIPE_SECRET_KEY?.trim() || null;
+}
+
+function stripeClient(secretKey: string): Stripe {
+  return new Stripe(secretKey, { httpClient: Stripe.createFetchHttpClient() });
+}
+
+// A webhook delivery checked against the destination's signing secret, with
+// Web Crypto, since the Convex runtime has no Node crypto. Throws on a bad
+// signature or a body that is not an event. Needs no secret key: the
+// signature is all that proves the body came from Stripe.
+export function verifiedStripeEvent(
+  body: string,
+  signature: string,
+  webhookSecret: string,
+): Promise<Stripe.Event> {
+  return Stripe.webhooks.constructEventAsync(
+    body,
+    signature,
+    webhookSecret,
+    undefined,
+    Stripe.createSubtleCryptoProvider(),
+  );
+}
+
+const payMethod = v.union(v.literal("bank"), v.literal("card"));
+
+// How long a customer has on Stripe's page before the session expires, the
+// shortest Stripe allows: long enough to log in to a bank, short enough that
+// a session minted before a re-send or a Void is soon gone.
+const SessionMinutes = 30;
+
+// What the Pay sheet shows when this deployment cannot send anyone to Stripe:
+// no secret key yet, or no origin to bring the customer back to.
+const NotSetUp =
+  "Paying by bank or card is not switched on yet. Please pay by Zelle or check as How to pay says.";
+
+// Pay by bank or Pay by card, pressed on the Pay sheet: a Checkout Session
+// for the full Amount Due, no fee, and the address of Stripe's page for the
+// sheet to go to. Runs under the invoice link, as Approve runs under a
+// signing link, and only while that link is live and the invoice still owes
+// (`checkoutFor`). No Stripe Customer, no Tax, no Invoicing: one line,
+// named for the invoice, and Stripe's mandate email and receipt go to the
+// address the invoice went to.
+export const mintCheckoutSession = action({
+  args: { token: v.string(), method: payMethod },
+  handler: async (ctx, a): Promise<{ url: string }> => {
+    const checkout = await ctx.runQuery(internal.stripePayments.checkoutFor, a);
+    if ("refusal" in checkout) throw new ConvexError(checkout.refusal);
+    const secretKey = stripeSecretKey();
+    const linkUrl = signingUrl(appOrigin(), a.token.trim());
+    if (!secretKey || !linkUrl) {
+      console.error(
+        `Pay by ${a.method} on ${checkout.number} refused: this deployment has no ${secretKey ? "APP_ORIGIN" : "STRIPE_SECRET_KEY"}.`,
+      );
+      throw new ConvexError({ code: "stripe_not_set_up", message: NotSetUp });
+    }
+    const metadata = { invoiceId: checkout.invoiceId, invoiceNumber: checkout.number };
+    const params: Stripe.Checkout.SessionCreateParams = {
+      mode: "payment",
+      submit_type: "pay",
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: checkout.amountDueCents,
+            product_data: { name: `Invoice ${checkout.number}` },
+          },
+        },
+      ],
+      ...(a.method === "bank"
+        ? {
+            payment_method_types: ["us_bank_account"],
+            // Instant verification only: a customer is never asked to
+            // confirm micro-deposits days later, and a payment is on its way
+            // for the bank's four days and no longer.
+            payment_method_options: {
+              us_bank_account: {
+                verification_method: "instant",
+                financial_connections: { permissions: ["payment_method"] },
+              },
+            },
+          }
+        : { payment_method_types: ["card"] }),
+      customer_email: checkout.sentTo,
+      client_reference_id: checkout.invoiceId,
+      metadata,
+      payment_intent_data: {
+        description: `Invoice ${checkout.number}, Expand Handyman`,
+        metadata,
+      },
+      expires_at: Math.floor(Date.now() / 1000) + SessionMinutes * 60,
+      success_url: `${linkUrl}?session={CHECKOUT_SESSION_ID}`,
+      cancel_url: linkUrl,
+    };
+    let url: string | null = null;
+    try {
+      url = (await stripeClient(secretKey).checkout.sessions.create(params)).url;
+    } catch (error) {
+      console.error(`Stripe refused a session for ${checkout.number}: ${messageOf(error)}`);
+    }
+    if (!url)
+      throw new ConvexError({
+        code: "stripe_unavailable",
+        message:
+          "Stripe could not open its page just now. Please try again in a minute, or pay by Zelle or check.",
+      });
+    return { url };
+  },
+});
+
+// Whether the link's invoice may be paid through Stripe this way now, and if
+// so what the session is made of. Every refusal is a sentence the Pay sheet
+// shows as it stands.
+export const checkoutFor = internalQuery({
+  args: { token: v.string(), method: payMethod },
+  handler: async (
+    ctx,
+    a,
+  ): Promise<
+    | { refusal: { code: string; message: string } }
+    | { invoiceId: Id<"invoices">; number: string; amountDueCents: number; sentTo: string }
+  > => {
+    const refusal = (code: string, message: string) => ({ refusal: { code, message } });
+    // Only the live link pays: a re-send ends the old one, and an old email
+    // must not be a way to pay.
+    const opened = await invoiceStillOpenedBy(ctx, a.token);
+    if (!opened) return refusal("link_ended", "This link is no longer live.");
+    const { invoice } = opened;
+    if (invoice.state !== "sent" || !invoice.frozen || invoice.number === undefined)
+      return refusal("void", "This invoice was voided, so nothing is due on it.");
+    const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
+    if (amountDueCents <= 0) return refusal("nothing_due", "Nothing is due on this invoice.");
+    if (await paymentFor(ctx, invoice._id))
+      return refusal("paid", "This invoice is already paid.");
+    if (await paymentOnItsWayFor(ctx, invoice._id))
+      return refusal("on_its_way", "A bank payment for this invoice is already on its way.");
+    if (!waysToPay(amountDueCents).includes(a.method))
+      return refusal("card_limit", "Card is for invoices up to $1,000.");
+    return {
+      invoiceId: invoice._id,
+      number: invoiceNumberLabel(invoice.number),
+      amountDueCents,
+      sentTo: invoice.frozen.sentTo,
+    };
+  },
+});
+
+// The success return: the customer back on the link from Stripe's page, with
+// the session's id in the address. The session is read from Stripe itself,
+// never taken from the address, and applied through `applyStripeEvent` as if
+// its completion had just arrived, so the paper is right the moment the
+// customer is back, whether or not the webhook has landed yet; whichever
+// comes second finds the work done. A session not yet complete applies
+// nothing, and nor does anything that goes wrong reaching Stripe: the
+// webhook still records the payment.
+export const applyCheckoutReturn = action({
+  args: { token: v.string(), sessionId: v.string() },
+  handler: async (ctx, a): Promise<{ applied: boolean }> => {
+    const invoiceId = await ctx.runQuery(internal.stripePayments.invoiceLinkedBy, {
+      token: a.token,
+    });
+    const secretKey = stripeSecretKey();
+    const sessionId = a.sessionId.trim();
+    if (!invoiceId || !secretKey || !/^cs_\w+$/.test(sessionId)) return { applied: false };
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripeClient(secretKey).checkout.sessions.retrieve(sessionId, {
+        expand: ["payment_intent"],
+      });
+    } catch (error) {
+      console.error(`Stripe session ${sessionId} could not be read back: ${messageOf(error)}`);
+      return { applied: false };
+    }
+    if (session.client_reference_id !== invoiceId)
+      throw new ConvexError({
+        code: "wrong_invoice",
+        message: "That payment was made on another invoice, not this one.",
+      });
+    if (session.status !== "complete") return { applied: false };
+    await ctx.runMutation(internal.stripePayments.applyStripeEvent, {
+      event: prunedStripeEvent({
+        type: "checkout.session.completed",
+        created: Math.floor(Date.now() / 1000),
+        data: { object: session },
+      }),
+    });
+    return { applied: true };
+  },
+});
+
+// The invoice a link belongs to, live or ended: a customer who paid and was
+// re-sent the invoice meanwhile still lands on the old link, and the money
+// still records. Only a token Expand minted names one.
+export const invoiceLinkedBy = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, a): Promise<Id<"invoices"> | null> =>
+    (await invoiceLinkForToken(ctx, a.token))?.invoiceId ?? null,
+});
+
+// The bank's words for a returned payment, for an `async_payment_failed`
+// event that came without them: Stripe keeps them on the payment intent,
+// which the event only names. Read before the mutation, which cannot call
+// out; nothing at all if Stripe cannot be asked.
+export async function failureReasonFromStripe(
+  event: StripeEventReading,
+): Promise<string | undefined> {
+  if (event.kind !== "session" || event.type !== "async_failed") return undefined;
+  const { paymentIntentId, failureMessage } = event.session;
+  const secretKey = stripeSecretKey();
+  if (failureMessage || !paymentIntentId || !secretKey) return undefined;
+  try {
+    const intent = await stripeClient(secretKey).paymentIntents.retrieve(paymentIntentId);
+    return intent.last_payment_error?.message || undefined;
+  } catch (error) {
+    console.error(`Stripe payment ${paymentIntentId} could not be read: ${messageOf(error)}`);
+    return undefined;
+  }
+}
+
+// Everything Stripe says about a payment, applied: the webhook's events and
+// the success return's session (spec #121, the events table). An event is
+// taken once, by its `evt_` id, and every rule is idempotent on the object
+// besides, so the same payment told twice, or out of order, or by both the
+// webhook and the success return, ends the same. Unknown and unused event
+// types are recorded too, so a redelivery is still a no-op.
+export const applyStripeEvent = internalMutation({
+  args: {
+    // A pruned Stripe event (lib/stripe-events.ts), narrowed below.
+    event: v.any(),
+    // The bank's words for a returned payment, when the webhook had to ask
+    // Stripe for them.
+    failureReason: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    const event = readStripeEvent(a.event);
+    if (event.eventId !== null) {
+      const eventId = event.eventId;
+      const seen = await ctx.db
+        .query("stripeEvents")
+        .withIndex("by_event", (q) => q.eq("eventId", eventId))
+        .first();
+      if (seen) return;
+      await ctx.db.insert("stripeEvents", {
+        eventId,
+        type: event.stripeType,
+        receivedAt: Date.now(),
+      });
+    }
+    switch (event.kind) {
+      case "session":
+        return applySession(ctx, event, a.failureReason);
+      case "refund":
+        // A partial refund changes nothing: a payment is there or gone.
+        if (event.full && event.paymentIntentId)
+          await endPayment(ctx, event.paymentIntentId, {
+            status: "refunded",
+            endedAt: event.created * 1000,
+          });
+        return;
+      case "dispute":
+        // Only a lost dispute sends the money back; one won or merely opened
+        // leaves the payment standing.
+        if (event.lost && event.paymentIntentId)
+          await endPayment(ctx, event.paymentIntentId, {
+            status: "dispute_lost",
+            endedAt: event.created * 1000,
+            reason: event.reason ?? undefined,
+          });
+        return;
+      case "other":
+        return;
+    }
+  },
+});
+
+async function applySession(
+  ctx: MutationCtx,
+  event: StripeEventReading & { kind: "session" },
+  failureReason: string | undefined,
+) {
+  const { session } = event;
+  // An expired session was never completed, so nothing was written for it.
+  if (event.type === "expired") return;
+  const invoiceId = session.invoiceId ? ctx.db.normalizeId("invoices", session.invoiceId) : null;
+  const invoice = invoiceId ? await ctx.db.get(invoiceId) : null;
+  const { paymentIntentId, method } = session;
+  // A session the app did not mint (the Stripe account may take other
+  // payments) names no invoice here, and is left alone.
+  if (!invoice || !paymentIntentId || !method || !session.id) {
+    console.warn(`Stripe session ${session.id || "(no id)"} is not an invoice's; left alone.`);
+    return;
+  }
+  const payment = {
+    invoice,
+    sessionId: session.id,
+    paymentIntentId,
+    method,
+    amountCents: session.amountCents,
+    at: event.created * 1000,
+  };
+  switch (event.type) {
+    case "completed":
+      // A card's money is in at once; a bank's is on its way until the bank
+      // confirms it, unless the payment intent, when the success return read
+      // it, has already failed.
+      if (session.paymentStatus === "paid") return recordPaid(ctx, payment);
+      if (
+        session.paymentStatus === "unpaid" &&
+        (session.paymentIntentStatus === null || session.paymentIntentStatus === "processing")
+      )
+        return recordOnItsWay(ctx, payment);
+      return;
+    case "async_succeeded":
+      return recordPaid(ctx, payment);
+    case "async_failed":
+      return recordReturned(ctx, payment, failureReason ?? session.failureMessage ?? undefined);
+  }
+}
+
+type StripePaymentFacts = {
+  invoice: Doc<"invoices">;
+  sessionId: string;
+  paymentIntentId: string;
+  method: PayMethod;
+  amountCents: number;
+  // When the event happened, in milliseconds.
+  at: number;
+};
+
+const Ended = new Set<Doc<"stripePayments">["status"]>(["returned", "refunded", "dispute_lost"]);
+
+function rowForSession(ctx: QueryCtx, sessionId: string) {
+  return ctx.db
+    .query("stripePayments")
+    .withIndex("by_checkout_session", (q) => q.eq("stripeCheckoutSessionId", sessionId))
+    .first();
+}
+
+function paymentsForIntent(ctx: QueryCtx, paymentIntentId: string) {
+  return ctx.db
+    .query("payments")
+    .withIndex("by_stripe_payment_intent", (q) => q.eq("stripePaymentIntentId", paymentIntentId))
+    .collect();
+}
+
+// The money arrived: a card at completion, a bank when it confirms. The
+// payment's day is the Pacific day of the event that said so, never the day
+// the customer pressed Pay. Written whatever the invoice now reads, even
+// void or already paid, because money that moved is never hidden; never
+// twice for one payment intent; and never for a payment already gone back,
+// which a late delivery must not bring back to life.
+async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
+  const row = await rowForSession(ctx, payment.sessionId);
+  if (row && Ended.has(row.status)) return;
+  const [existing] = await paymentsForIntent(ctx, payment.paymentIntentId);
+  const paymentId =
+    existing?._id ??
+    (await ctx.db.insert("payments", {
+      invoiceId: payment.invoice._id,
+      receivedOn: pacificDay(payment.at),
+      source: "stripe",
+      recordedBy: "stripe",
+      recordedAt: Date.now(),
+      method: payment.method,
+      stripePaymentIntentId: payment.paymentIntentId,
+    }));
+  if (row) await ctx.db.patch(row._id, { status: "paid", paymentId });
+  else
+    await ctx.db.insert("stripePayments", {
+      ...rowFields(payment),
+      status: "paid",
+      paymentId,
+    });
+  if (!existing) await paperChanged(ctx, payment.invoice);
+}
+
+// A bank payment accepted and not yet confirmed: the invoice reads Payment
+// on its way. Nothing when the session already has its row, which may be
+// paid already if the confirmation came first.
+async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
+  if (await rowForSession(ctx, payment.sessionId)) return;
+  await ctx.db.insert("stripePayments", { ...rowFields(payment), status: "on_its_way" });
+}
+
+// A **Returned payment** (CONTEXT.md): the bank refused the debit, so the
+// payment on its way ends and the invoice owes again from its sent day. The
+// paper never showed it, so no PDF copy goes. Stripe emails nobody, so the
+// app writes to the customer and the owner, once, and only while the
+// invoice still owes: a payment since, or a Void, leaves nothing to pay
+// again.
+async function recordReturned(
+  ctx: MutationCtx,
+  payment: StripePaymentFacts,
+  reason: string | undefined,
+) {
+  const row = await rowForSession(ctx, payment.sessionId);
+  if (row && row.status !== "on_its_way") return;
+  const ended = { status: "returned" as const, endedAt: payment.at, reason };
+  if (row) await ctx.db.patch(row._id, ended);
+  else await ctx.db.insert("stripePayments", { ...rowFields(payment), ...ended });
+
+  const { invoice } = payment;
+  if (invoice.state !== "sent" || !invoice.frozen || invoice.number === undefined) return;
+  if (await paymentFor(ctx, invoice._id)) return;
+  await ctx.scheduler.runAfter(0, internal.stripeEmails.sendReturnedPayment, {
+    paymentIntentId: payment.paymentIntentId,
+    number: invoiceNumberLabel(invoice.number),
+    amountCents: payment.amountCents,
+    customerName: invoice.frozen.customerName,
+    to: invoice.frozen.sentTo,
+    token: (await linkToPayAgain(ctx, invoice._id))?.token,
+    ...(reason ? { reason } : {}),
+  });
+}
+
+// A full refund or a lost dispute, done in Stripe's dashboard: the money went
+// back, so the payment goes, stamp and all, and the Stripe payment keeps why
+// for the owner's grey note. A second telling finds nothing left to remove.
+async function endPayment(
+  ctx: MutationCtx,
+  paymentIntentId: string,
+  ended: {
+    status: "refunded" | "dispute_lost";
+    endedAt: number;
+    reason?: string;
+  },
+) {
+  const rows = await ctx.db
+    .query("stripePayments")
+    .withIndex("by_payment_intent", (q) => q.eq("stripePaymentIntentId", paymentIntentId))
+    .collect();
+  for (const row of rows)
+    if (!Ended.has(row.status)) await ctx.db.patch(row._id, { ...ended, paymentId: undefined });
+  for (const payment of await paymentsForIntent(ctx, paymentIntentId)) {
+    await ctx.db.delete(payment._id);
+    const invoice = await ctx.db.get(payment.invoiceId);
+    if (invoice) await paperChanged(ctx, invoice);
+  }
+}
+
+// The fields a Stripe payment's row is made with, whichever event came first.
+function rowFields(payment: StripePaymentFacts) {
+  return {
+    invoiceId: payment.invoice._id,
+    stripeCheckoutSessionId: payment.sessionId,
+    stripePaymentIntentId: payment.paymentIntentId,
+    method: payment.method,
+    amountCents: payment.amountCents,
+    acceptedAt: payment.at,
+  };
+}
+
+// A payment written or removed changes a sent invoice's stamp, so its PDF
+// copy goes, as Mark paid and Mark unpaid let it go. A void invoice's paper
+// reads VOID whatever Stripe wrote, and keeps its copy.
+async function paperChanged(ctx: MutationCtx, invoice: Doc<"invoices">) {
+  if (invoice.state !== "sent") return;
+  await discardInvoicePdfCopy(ctx, invoice);
+  await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
+}
+
+// Where the Returned payment letter sends the customer to pay again: the
+// invoice's live link, which is the newest after a re-send; failing that, the
+// newest it has had.
+async function linkToPayAgain(ctx: QueryCtx, invoiceId: Id<"invoices">) {
+  const links = (await invoiceLinksFor(ctx, invoiceId)).sort(
+    (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
+  );
+  return links.find((link) => link.endedAt === undefined) ?? links[0] ?? null;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

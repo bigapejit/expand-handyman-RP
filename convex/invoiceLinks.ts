@@ -2,12 +2,14 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { invoiceStamp, paymentFor } from "./payments";
+import { invoiceStamp, paymentFor, paymentOnItsWayFor, stripeNoteFor } from "./payments";
 import { emailOutcome } from "./schema";
 import { zelleTag } from "./settings";
 import { ExpandBusiness } from "../lib/expand-business";
-import { invoiceNumberLabel } from "../lib/invoice-money";
+import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
 import type { PaperInvoice } from "../lib/invoice-paper";
+import { pacificDay } from "../lib/invoice-standing";
+import { waysToPay, type PayMethod } from "../lib/pay-now";
 
 // An invoice's **Invoice link** (CONTEXT.md): minted by each Send or Re-send
 // of an invoice, and answering the public `/sign/<token>` page with the
@@ -109,16 +111,63 @@ export function fixedInvoicePaper(
   };
 }
 
+// A Stripe payment as the customer's bar tells of it: a bank payment on its
+// way, or a **Returned payment** to pay again after. A refund or a lost
+// dispute tells the customer nothing: the link is the plain unpaid paper, so
+// nothing on it argues with what they asked for.
+export type LinkStripeState =
+  | { kind: "on_its_way" | "returned"; amountCents: number; acceptedOn: string }
+  | null;
+
+export type InvoiceLinkPage = {
+  paper: PaperInvoice;
+  // The ways the Pay sheet sends to Stripe, bank always and card up to
+  // $1,000.00, or none while the invoice owes nothing: not sent, $0 or a
+  // credit, paid, or with a payment on its way. Empty, the page shows no Pay
+  // button.
+  ways: PayMethod[];
+  // For the Zelle and check steps, as the paper's How to pay prints them.
+  zelleTag: string;
+  mailingAddress: string | null;
+  invoiceNumber: string;
+  amountDueCents: number;
+  stripe: LinkStripeState;
+};
+
 // What the customer's invoice link shows: the paper, stamped once paid or
-// void, or nothing once the link opens nothing. A query, and the page reports
-// no open: nothing is logged.
+// void, and the pay bar under it, or nothing once the link opens nothing. A
+// query, and the page reports no open: nothing is logged.
 export const page = query({
   args: { token: v.string() },
-  handler: async (ctx, a): Promise<{ paper: PaperInvoice } | null> => {
+  handler: async (ctx, a): Promise<InvoiceLinkPage | null> => {
     const opened = await invoiceStillOpenedBy(ctx, a.token);
     if (!opened) return null;
-    const paper = await fixedInvoicePaperOf(ctx, opened.invoice);
-    return paper ? { paper } : null;
+    const { invoice } = opened;
+    const paper = await fixedInvoicePaperOf(ctx, invoice);
+    if (!paper) return null;
+    const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
+    const sent = invoice.state === "sent";
+    const paid = (await paymentFor(ctx, invoice._id)) !== null;
+    const onItsWay = sent && !paid ? await paymentOnItsWayFor(ctx, invoice._id) : null;
+    // The grey note's payment, which applies only while the invoice owes
+    // again; of the three ways money goes back, only a return is told.
+    const note = sent && !paid && !onItsWay ? await stripeNoteFor(ctx, invoice) : null;
+    const told = onItsWay ?? (note?.status === "returned" ? note : null);
+    return {
+      paper,
+      ways: sent && amountDueCents > 0 && !paid && !onItsWay ? waysToPay(amountDueCents) : [],
+      zelleTag: paper.zelleTag,
+      mailingAddress: paper.mailingAddress,
+      invoiceNumber: paper.number,
+      amountDueCents,
+      stripe: told
+        ? {
+            kind: told.status === "on_its_way" ? "on_its_way" : "returned",
+            amountCents: told.amountCents,
+            acceptedOn: pacificDay(told.acceptedAt),
+          }
+        : null,
+    };
   },
 });
 

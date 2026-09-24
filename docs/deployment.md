@@ -93,3 +93,42 @@ CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… npx tsx scripts
 It prints the sheet count, the words on each sheet (an empty last sheet is a fault) and the embedded fonts, which should be Tinos and, on a signed copy, Homemade Apple. `python -m pip install pypdf` enables that read-out.
 
 This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers render passes (single use, expiry, bound to one state, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.
+
+## Pay now through Stripe
+
+An unpaid invoice's link offers Pay by bank and Pay by card through Stripe's hosted Checkout (spec #121). Pressing either mints a Checkout Session from `stripePayments.mintCheckoutSession` for the full Amount Due, 30 minutes to live, and sends the customer to Stripe's page; coming back, `stripePayments.applyCheckoutReturn` reads the session from Stripe so the paper is right at once. Stripe's webhook then records the payment, a bank payment's confirmation or return, and a full refund or a lost dispute, through one mutation, `stripePayments.applyStripeEvent`, which keeps every event it has taken in `stripeEvents` so a redelivery changes nothing. The app never moves money: refunds and disputes are handled in Stripe's dashboard, and the app only listens. The one mail it sends is the pair of Returned payment letters (`convex/stripeEmails.ts`), because Stripe sends nothing when a bank returns a debit; Stripe's own receipts and the owner's payment and dispute notifications are switched on in its dashboard.
+
+Two Convex variables drive it, set per deployment, test-mode values on dev and live ones on production:
+
+| Variable | What it is |
+| --- | --- |
+| `STRIPE_SECRET_KEY` | the account's secret key, `sk_test_…` on dev and `sk_live_…` on production. The panel's "See it in Stripe" links open the test dashboard while it starts `sk_test_`. |
+| `STRIPE_WEBHOOK_SECRET` | the signing secret, `whsec_…`, of the webhook destination that delivers to this deployment. |
+
+Neither is set on either deployment yet. Until `STRIPE_SECRET_KEY` is, the Pay sheet refuses bank and card with "Paying by bank or card is not switched on yet. Please pay by Zelle or check as How to pay says." and the rest of the link works; until `STRIPE_WEBHOOK_SECRET` is, the webhook answers 401 and writes nothing. Pay by bank and card also need `APP_ORIGIN`, already set for email, to bring the customer back to the link.
+
+```
+npx convex env set STRIPE_SECRET_KEY sk_test_…
+npx convex env set STRIPE_WEBHOOK_SECRET whsec_…
+npx convex env set --prod STRIPE_SECRET_KEY sk_live_…
+npx convex env set --prod STRIPE_WEBHOOK_SECRET whsec_…
+```
+
+The webhook is `POST https://<deployment>.convex.site/stripe/webhook` (`glorious-donkey-718` for dev, `dashing-cricket-260` for production). Each Stripe destination, the test one for dev and the live one for production, subscribes to exactly these six events:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `charge.refunded`
+- `charge.dispute.closed`
+
+Any other event it is sent is recorded and answered 200 untouched. A delivery whose signature does not check out, or whose body is not an event, is answered 400 and logged, never stored.
+
+Enable a destination only after the handler is deployed to the deployment it points at, so Stripe never retries against nothing: the test destination once this is on dev, the live one only after the test run below has passed.
+
+**Test run on dev**, in Stripe's test mode with the dev keys: send a throwaway invoice to `<owner>+test_email@<domain>` so Stripe's test emails go out, then on its link pay by card with `4242 4242 4242 4242`; by bank through the "Test (OAuth)" institution for a payment that confirms, and with the failing test account for one the bank returns (which account fails under instant verification is found while trying it); then refund one payment and lose a dispute from the sandbox dashboard. Check each on the link and in the panel, and for the return, both letters.
+
+**Live rehearsal**, on production with the live destination enabled: one typed invoice for a few dollars to the owner's own address paid by card, a second paid by bank, both refunded in Stripe's dashboard and seen to come off. Then customers get Pay now.
+
+`tests/stripe-pay-now.test.ts` covers minting and every refusal, each event twice and out of order, the success return, the webhook through the router with signed bodies, both letters and the link's page, with Stripe stubbed at `fetch`; `lib/stripe-events.test.ts` covers how an event is read.

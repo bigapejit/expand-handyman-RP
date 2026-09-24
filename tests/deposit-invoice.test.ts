@@ -276,7 +276,7 @@ describe("The invoice link email", () => {
 });
 
 describe("The invoice link", () => {
-  test("opens the invoice paper for a sent invoice, logging nothing", async () => {
+  test("opens the invoice paper for a sent invoice, with its pay bar, logging nothing", async () => {
     const { t, sent, approve, deliver, letters, linkIn } = fixture();
     const { token } = await sent();
     await approve(token);
@@ -299,6 +299,14 @@ describe("The invoice link", () => {
         mailingAddress: null,
         stamp: null,
       },
+      // The pay bar under it: $299.48 owed, so Pay by card is offered beside
+      // Pay by bank, and Stripe has nothing to tell yet.
+      ways: ["bank", "card"],
+      zelleTag: "expandhandyman",
+      mailingAddress: null,
+      invoiceNumber: "INV-1001",
+      amountDueCents: 29_948,
+      stripe: null,
     });
 
     // An invoice link is not a signing link: the proposal's view log never
