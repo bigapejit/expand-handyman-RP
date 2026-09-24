@@ -167,7 +167,7 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
         className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-slate-50"
       >
         <span className="min-w-0 flex-1">
-          {/* The chips drop under the title on a phone rather than
+          {/* Expand: the chips drop under the title on a phone rather than
               squeezing it down to its code. */}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="max-w-full truncate font-medium text-slate-900">
@@ -520,7 +520,7 @@ function SolutionPicker({
                 over === index && carrying !== index && "bg-slate-50",
               )}
             >
-              {/* A phone reorders with the arrows; a finger cannot
+              {/* Expand: a phone reorders with the arrows; a finger cannot
                   drag the grip, so it goes, and the tick grows to a size a
                   thumb can hit. */}
               <GripVertical
@@ -728,7 +728,7 @@ function MoneyBlock({
     <div className="space-y-2">
       <FieldHeading>Money</FieldHeading>
       <dl className="space-y-2 rounded-xl border px-3 py-3 text-sm">
-        {/* On a phone the field and its figure drop under the label
+        {/* Expand: on a phone the field and its figure drop under the label
             and its toggle, rather than squeezing the toggle onto two lines. */}
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <dt className="min-w-0 text-slate-900">

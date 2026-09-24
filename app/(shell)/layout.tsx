@@ -28,7 +28,7 @@ export default async function ShellLayout({
           <Separator orientation="vertical" className="mr-1 h-4" />
           <span className="text-sm text-muted-foreground">Staff console</span>
         </header>
-        {/* A phone's 412px cannot spare 32px a side. */}
+        {/* Expand: a phone's 412px cannot spare 32px a side. */}
         <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">
           <OwnerGate>{children}</OwnerGate>
         </div>

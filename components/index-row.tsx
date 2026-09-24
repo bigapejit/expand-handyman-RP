@@ -40,7 +40,7 @@ export function IndexRow({
             {title}
           </p>
           <p className="truncate text-sm text-slate-500">{subtitle}</p>
-          {/* A phone keeps the hint as a third line rather than
+          {/* Expand: a phone keeps the hint as a third line rather than
               losing it, since it is the one thing the row says to act on. */}
           <div className="mt-1 flex min-w-0 items-center gap-2 text-sm text-slate-500 sm:hidden">
             {hint}

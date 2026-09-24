@@ -74,7 +74,7 @@ export function SidePanel({
         onClose();
       }}
     >
-      {/* Full width on a phone, where the sheet's stock 75% cut
+      {/* Expand: full width on a phone, where the sheet's stock 75% cut
           solution names short and pushed the tax row onto its label. */}
       <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:w-3/4 data-[side=right]:sm:max-w-3xl">
         <SheetHeader className="border-b px-6 py-5 pr-14">

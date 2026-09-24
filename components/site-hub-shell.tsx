@@ -49,7 +49,7 @@ export function SiteHubShell({ siteId, children }: { siteId: string; children: R
             <p className="text-sm">
               <Link
                 href={`/customers/${detail.customerId}`}
-                // A taller target on a phone, the margin keeping the
+                // Expand: a taller target on a phone, the margin keeping the
                 // header's rhythm.
                 className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline max-md:-my-2.5 max-md:py-2.5"
               >

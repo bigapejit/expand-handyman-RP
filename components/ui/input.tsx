@@ -3,7 +3,7 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 
 import { cn } from "@/lib/utils";
 
-// A thumb-sized field on a phone; 16px text there already keeps a
+// Expand: a thumb-sized field on a phone; 16px text there already keeps a
 // phone from zooming in on focus.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (

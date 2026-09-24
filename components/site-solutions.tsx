@@ -638,7 +638,7 @@ function MaterialAllowanceRow({
           No markup
         </span>
       </div>
-      {/* One column on a phone, as Qty is above it, so its amount and
+      {/* Expand: one column on a phone, as Qty is above it, so its amount and
           its remove button share the row rather than the button sitting
           alone on a third. */}
       <div className="relative sm:col-span-3 sm:ml-auto sm:w-40">

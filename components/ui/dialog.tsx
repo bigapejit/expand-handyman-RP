@@ -39,7 +39,7 @@ function DialogOverlay({
   );
 }
 
-// A tall dialog scrolls inside the screen rather than running off a
+// Expand: a tall dialog scrolls inside the screen rather than running off a
 // phone's top and bottom, where nothing could reach its fields or its button.
 function DialogContent({
   className,

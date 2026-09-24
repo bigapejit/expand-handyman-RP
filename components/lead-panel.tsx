@@ -90,7 +90,7 @@ export function LeadPanel({
         <div className="space-y-2 text-sm text-slate-700">
           {lead.phone ? (
             <FactRow icon={Phone}>
-              {/* On a phone this is the call button, so the padding
+              {/* Expand: on a phone this is the call button, so the padding
                   gives a thumb room without moving the line. */}
               <a
                 href={`tel:${lead.phone}`}

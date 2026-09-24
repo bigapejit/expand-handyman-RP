@@ -34,7 +34,7 @@ export function ZelleSetting() {
           disabled={settings === undefined}
           onClick={() => setEditing(true)}
           aria-label="Edit the Zelle email"
-          // Padding a phone's thumb can find, cancelled by the margin so
+          // Expand: padding a phone's thumb can find, cancelled by the margin so
           // the line reads the same.
           className="font-medium text-primary hover:underline disabled:opacity-50 max-md:-m-2 max-md:p-2"
         >

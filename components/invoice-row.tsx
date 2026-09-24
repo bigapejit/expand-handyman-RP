@@ -34,7 +34,7 @@ export function InvoiceRow({
         )}
       >
         <span className="min-w-0 flex-1">
-          {/* On a phone the chip drops under a long title. */}
+          {/* Expand: on a phone the chip drops under a long title. */}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={cn(
