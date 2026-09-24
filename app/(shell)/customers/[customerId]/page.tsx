@@ -1,11 +1,10 @@
-import { redirect } from "next/navigation";
+import { CustomerPage } from "@/components/customer-page";
 
-// Proposals is the customer's landing tab.
-export default async function CustomerPage({
+export default async function Page({
   params,
 }: {
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  redirect(`/customers/${customerId}/proposals`);
+  return <CustomerPage customerId={customerId} />;
 }

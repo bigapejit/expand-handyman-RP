@@ -54,9 +54,9 @@ It skips drafts and any document already frozen, so it is safe to run twice. It 
 
 ## Sites and address lookup
 
-A customer's addresses are Sites, managed on the customer page's Sites tab and optionally created with the customer. Every site is a Google Places pick: the browser asks Convex for suggestions (`places.suggest`), and saving a site looks the picked place up again on the server, so no site holds an address Google did not return. Both calls share one session token per dialog, so Google bills a lookup as one session.
+A customer's addresses are Sites, added with New site on the Sites list or the customer's page, or created with the customer, and corrected or deleted from Edit site on the site's own page. Every site is a Google Places pick: the browser asks Convex for suggestions (`places.suggest`), and saving a site looks the picked place up again on the server, so no site holds an address Google did not return. Both calls share one session token per dialog, so Google bills a lookup as one session.
 
-The Google key lives only on the Convex deployments, never in the browser or on Vercel, and every lookup requires the owner's sign-in. Before the Sites tab can find addresses:
+The Google key lives only on the Convex deployments, never in the browser or on Vercel, and every lookup requires the owner's sign-in. Before the site dialog can find addresses:
 
 1. In Google Cloud, enable **Places API (New)** and create an API key restricted to it. Convex calls Google from its own servers, so restrict the key by API, not by referrer or IP.
 2. Set it on both deployments:
@@ -70,7 +70,7 @@ Without it the address box says "Address lookup is not set up". This adds the `s
 
 ## Moving legacy addresses onto Sites
 
-Customers created before Sites carried one free-text address in `customers.site`. A one-off action looks each non-empty one up through the same Places calls as the address box. When Google suggests exactly one place and that place is a street address, it becomes the customer's site; anything else creates no site and is reported with the original text, so the owner can add it by hand on the customer's Sites tab. Every lookup runs before anything is written, so a Google or network fault changes nothing and the run can simply be repeated. Each customer's legacy address is cleared as it is reported, which is what lets the schema drop the field.
+Customers created before Sites carried one free-text address in `customers.site`. A one-off action looks each non-empty one up through the same Places calls as the address box. When Google suggests exactly one place and that place is a street address, it becomes the customer's site; anything else creates no site and is reported with the original text, so the owner can add it by hand from the customer's page. Every lookup runs before anything is written, so a Google or network fault changes nothing and the run can simply be repeated. Each customer's legacy address is cleared as it is reported, which is what lets the schema drop the field.
 
 `GOOGLE_MAPS_API_KEY` must be set on the deployment first (see above). Then:
 

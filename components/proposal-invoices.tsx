@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { CheckCheck, Plus } from "lucide-react";
 import { useState } from "react";
 
-import { HubLoading } from "@/components/customer-hub-shell";
+import { HubLoading } from "@/components/hub-section";
 import { InvoiceRow } from "@/components/invoice-row";
 import { FieldHeading } from "@/components/side-panel";
 import {

@@ -220,8 +220,8 @@ describe("Mark paid", () => {
     });
     const [row] = await owner.query(api.invoices.forProposal, { proposalId, today: today() });
     expect(row.standing).toBe("paid");
-    const [tabRow] = await owner.query(api.invoices.forCustomer, {
-      customerId: row.customerId,
+    const [tabRow] = await owner.query(api.invoices.forSite, {
+      siteId: row.siteId,
       today: today(),
     });
     expect(tabRow.standing).toBe("paid");

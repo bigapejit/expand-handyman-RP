@@ -69,7 +69,7 @@ export function CustomerDialog({
           <DialogDescription>
             {customer
               ? "Changes apply to drafts only. Anything already sent keeps what it was sent with."
-              : "Name, email and phone. A first site is optional; add more on the customer's Sites tab."}
+              : "Name, email and phone. A first site is optional; add more from the customer's page."}
           </DialogDescription>
         </DialogHeader>
         <CustomerForm

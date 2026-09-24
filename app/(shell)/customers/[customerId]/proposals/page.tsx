@@ -1,17 +1,1 @@
-import { Suspense } from "react";
-
-import { CustomerProposals } from "@/components/customer-proposals";
-import type { Id } from "@/convex/_generated/dataModel";
-
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ customerId: string }>;
-}) {
-  const { customerId } = await params;
-  return (
-    <Suspense>
-      <CustomerProposals scope={{ customerId: customerId as Id<"customers"> }} />
-    </Suspense>
-  );
-}
+export { default } from "../old-tab";

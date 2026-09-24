@@ -12,11 +12,10 @@ import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
-// The Site page, the one the owner works from: the customer hub one level
-// down, as FRSG's site-hub-shell.tsx is. The street as the title, the city
-// line, whose site it is and how to get in under it, Edit site on the right,
-// then a tab row, each tab its own route so it can be bookmarked and Back
-// works.
+// The Site page, the one the owner works from, laid out as FRSG's
+// site-hub-shell.tsx is. The street as the title, the city line, whose site
+// it is and how to get in under it, Edit site on the right, then a tab row,
+// each tab its own route so it can be bookmarked and Back works.
 const TABS = [
   { key: "proposals", label: "Proposals" },
   { key: "solutions", label: "Solutions" },

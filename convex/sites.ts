@@ -18,7 +18,6 @@ import {
   createSiteName,
   parseSiteDetails,
   sameUnit,
-  siteAddress,
   siteCityLine,
   siteDeleteRefusal,
   siteStreetLine,
@@ -37,6 +36,8 @@ export const place = v.object({
 });
 const details = { addressLine2: v.string(), accessNotes: v.string() };
 
+// The customer page's Sites cards: each of the customer's sites with its
+// address over two lines and how many proposals it has.
 export const forCustomer = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, a) => {
@@ -50,7 +51,8 @@ export const forCustomer = query({
         .sort((x, y) => x.name.localeCompare(y.name))
         .map(async (site) => ({
           ...site,
-          address: siteAddress(site),
+          streetLine: siteStreetLine(site),
+          cityLine: siteCityLine(site),
           proposalCount: (
             await ctx.db
               .query("proposals")

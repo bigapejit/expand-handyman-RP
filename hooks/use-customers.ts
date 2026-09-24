@@ -4,8 +4,8 @@ import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 
-// Every staff surface that needs customers reads this one list, so the hub's
-// header, its tabs and the dialogs share a single subscription.
+// Every staff surface that needs customers reads this one list, so the
+// customer page, its sections and the dialogs share a single subscription.
 export function useCustomers() {
   return useQuery(api.customers.list);
 }

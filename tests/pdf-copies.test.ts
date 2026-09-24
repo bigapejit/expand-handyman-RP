@@ -108,10 +108,10 @@ function fixture() {
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
-    return { customerId, siteId, proposalId, token: await liveToken(customerId, proposalId) };
+    return { customerId, siteId, proposalId, token: await liveToken(siteId, proposalId) };
   };
-  const liveToken = async (customerId: Id<"customers">, proposalId: Id<"proposals">) => {
-    const tab = await owner.query(api.proposals.forCustomer, { customerId });
+  const liveToken = async (siteId: Id<"sites">, proposalId: Id<"proposals">) => {
+    const tab = await owner.query(api.proposals.forSite, { siteId });
     const token = tab.proposals.find((p) => p.proposalId === proposalId)?.liveToken;
     if (!token) throw new Error("No live link.");
     return token;
@@ -446,7 +446,7 @@ describe("who may download", () => {
     // The new link has a file; the old one still gets nothing.
     expect(
       await t.query(api.pdfCopies.downloadForCustomer, {
-        token: await liveToken(replaced.customerId, replaced.proposalId),
+        token: await liveToken(replaced.siteId, replaced.proposalId),
       }),
     ).not.toBeNull();
     const withdrawn = await sent();

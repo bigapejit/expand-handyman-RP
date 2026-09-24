@@ -1,4 +1,4 @@
-import { HubEmpty, HubSection } from "@/components/customer-hub-shell";
+import { HubEmpty, HubSection } from "@/components/hub-section";
 
 // Photos of the site, seen only by the owner. Taking and keeping them comes
 // next; until then the tab says so.

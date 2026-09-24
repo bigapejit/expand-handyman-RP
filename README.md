@@ -5,7 +5,7 @@ Staff portal for uploaded PDF signing. Built with Next.js, shadcn/Base UI, Conve
 ## Use
 
 1. Sign in at https://staff.expandhandyman.com with the owner account. On first use, choose **Create your owner account**, use **andrew@cogtex.ai**, and verify your email.
-2. Add a customer, and their sites on the customer page's **Sites** tab. Every site address is picked from Google's suggestions.
+2. Add a site with **New site** on the **Sites** list, or from the customer's page. Every site address is picked from Google's suggestions.
 3. Upload an unlocked PDF (up to 20 MB / 100 pages).
 4. Add customer signature/date fields and, if needed, your own signature/date fields. Drag to position; drag a corner to resize both dimensions, or enter width and height. Apply your own signature before sending.
 5. Create a signing link, copy it, and send it yourself.

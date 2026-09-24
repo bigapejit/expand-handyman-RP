@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   createSiteName,
   siteActivityLabel,
-  siteAddress,
   siteCityLine,
   siteDeleteRefusal,
   siteStreetLine,
@@ -45,32 +44,6 @@ describe("createSiteName", () => {
 
   it("falls back to the whole line when there is no second word", () => {
     expect(createSiteName("Plaza")).toBe("PLAZA");
-  });
-});
-
-describe("siteAddress", () => {
-  it("prints the street, unit, city, region and ZIP on one line", () => {
-    expect(
-      siteAddress({
-        addressLine1: "4410 NE 94th St",
-        addressLine2: "Apt 2",
-        city: "Vancouver",
-        region: "WA",
-        postalCode: "98665",
-      }),
-    ).toBe("4410 NE 94th St, Apt 2, Vancouver, WA 98665");
-  });
-
-  it("leaves out the parts a site does not have", () => {
-    expect(
-      siteAddress({
-        addressLine1: "4410 NE 94th St",
-        addressLine2: "",
-        city: "Vancouver",
-        region: "WA",
-        postalCode: "",
-      }),
-    ).toBe("4410 NE 94th St, Vancouver, WA");
   });
 });
 

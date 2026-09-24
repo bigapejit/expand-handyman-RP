@@ -205,7 +205,8 @@ describe("sites.add", () => {
       placeId: "place-94th",
       latitude: 45.69,
       longitude: -122.61,
-      address: "4410 NE 94th St, Apt 2, Vancouver, WA 98665",
+      streetLine: "4410 NE 94th St, Apt 2",
+      cityLine: "Vancouver, WA 98665",
       proposalCount: 0,
     });
     // The details call closes the lookup's billing session.
@@ -551,7 +552,12 @@ describe("customers.add", () => {
       firstSite: { placeId: "place-apt", sessionToken: session },
     });
     expect(await owner.query(api.sites.forCustomer, { customerId })).toMatchObject([
-      { name: "1215MAIN", addressLine2: "#4", address: "1215 Main St, #4, Vancouver, WA 98660" },
+      {
+        name: "1215MAIN",
+        addressLine2: "#4",
+        streetLine: "1215 Main St, #4",
+        cityLine: "Vancouver, WA 98660",
+      },
     ]);
   });
 
@@ -670,6 +676,50 @@ describe("customers.update", () => {
         phone: "",
       }),
     ).rejects.toThrow("Owner access required");
+  });
+});
+
+describe("sites.forCustomer", () => {
+  test("gives the customer page each of their sites: the address over two lines, access notes and proposal count", async () => {
+    const { owner, customer, addSite, proposal } = fixture();
+    const maria = await customer();
+    const ben = await customer("Ben Okafor", "ben@example.com");
+    const home = await addSite(maria, "place-94th", "Apt 2");
+    const rental = await addSite(maria, "place-main");
+    await addSite(ben, "place-apt");
+    await owner.action(api.sites.update, {
+      siteId: rental,
+      addressLine2: "",
+      accessNotes: "Key in the lockbox",
+    });
+    await proposal(home);
+    await proposal(home);
+
+    const cards = await owner.query(api.sites.forCustomer, { customerId: maria });
+    expect(
+      cards.map(({ _id, streetLine, cityLine, accessNotes, proposalCount }) => ({
+        _id,
+        streetLine,
+        cityLine,
+        accessNotes,
+        proposalCount,
+      })),
+    ).toEqual([
+      {
+        _id: rental,
+        streetLine: "1215 Main St",
+        cityLine: "Vancouver, WA 98660",
+        accessNotes: "Key in the lockbox",
+        proposalCount: 0,
+      },
+      {
+        _id: home,
+        streetLine: "4410 NE 94th St, Apt 2",
+        cityLine: "Vancouver, WA 98665",
+        accessNotes: "",
+        proposalCount: 2,
+      },
+    ]);
   });
 });
 

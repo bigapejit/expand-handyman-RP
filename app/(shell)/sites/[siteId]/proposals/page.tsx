@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { CustomerProposals } from "@/components/customer-proposals";
+import { SiteProposals } from "@/components/site-proposals";
 import type { Id } from "@/convex/_generated/dataModel";
 
 // The site layout shows this page only once the id names a site.
@@ -12,7 +12,7 @@ export default async function Page({
   const { siteId } = await params;
   return (
     <Suspense>
-      <CustomerProposals scope={{ siteId: siteId as Id<"sites"> }} />
+      <SiteProposals siteId={siteId as Id<"sites">} />
     </Suspense>
   );
 }

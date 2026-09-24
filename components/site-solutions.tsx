@@ -5,10 +5,9 @@ import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
-import type { HubScope } from "@/components/hub-scope";
-import { NewForSite, SiteTag } from "@/components/new-for-site";
+import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
+import { SiteTag } from "@/components/site-tag";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,19 +58,12 @@ type CatalogSuggestion = FunctionReturnType<typeof api.catalog.suggestions>[numb
 type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId">;
 
 // The Solutions tab, ported from FRSG's site-solutions.tsx: one site's
-// solutions on the site page, and on the customer page every solution across
-// the customer's sites, each tagged with its site. Opening a row slides the
-// panel in over the list and puts the solution in the URL, so a reload or a
-// copied link reopens it. Every edit lands as the field is left; nothing here
-// is customer-visible until a proposal is sent.
-export function CustomerSolutions({ scope }: { scope: HubScope }) {
-  const { siteId, customerId } = scope;
-  const atSite = useQuery(api.solutions.forSite, siteId ? { siteId } : "skip");
-  const acrossSites = useQuery(
-    api.solutions.forCustomer,
-    customerId ? { customerId } : "skip",
-  );
-  const solutions = siteId ? atSite : acrossSites;
+// solutions on the site page. Opening a row slides the panel in over the list
+// and puts the solution in the URL, so a reload or a copied link reopens it.
+// Every edit lands as the field is left; nothing here is customer-visible
+// until a proposal is sent.
+export function SiteSolutions({ siteId }: { siteId: Id<"sites"> }) {
+  const solutions = useQuery(api.solutions.forSite, { siteId });
   const create = useMutation(api.solutions.create);
   const { openId, open, close } = useSidePanel("solution");
   const [adding, setAdding] = useState(false);
@@ -80,7 +72,7 @@ export function CustomerSolutions({ scope }: { scope: HubScope }) {
   // A link naming a solution since deleted just shows the list.
   const openSolution = solutions?.find((solution) => solution._id === openId);
 
-  const add = async (siteId: Id<"sites">) => {
+  const add = async () => {
     setAdding(true);
     setError("");
     try {
@@ -101,18 +93,9 @@ export function CustomerSolutions({ scope }: { scope: HubScope }) {
           : "The priced pieces of work proposals are assembled from."
       }
       action={
-        siteId ? (
-          <Button variant="outline" size="lg" disabled={adding} onClick={() => void add(siteId)}>
-            <Plus data-icon="inline-start" aria-hidden /> New solution
-          </Button>
-        ) : customerId ? (
-          <NewForSite
-            customerId={customerId}
-            label="New solution"
-            disabled={adding}
-            onPick={(picked) => void add(picked)}
-          />
-        ) : null
+        <Button variant="outline" size="lg" disabled={adding} onClick={() => void add()}>
+          <Plus data-icon="inline-start" aria-hidden /> New solution
+        </Button>
       }
     >
       {error ? (
@@ -123,14 +106,13 @@ export function CustomerSolutions({ scope }: { scope: HubScope }) {
       {solutions === undefined ? (
         <HubLoading label="Loading solutions" />
       ) : solutions.length === 0 ? (
-        <HubEmpty>No solutions yet. Price one for each piece of work a site needs.</HubEmpty>
+        <HubEmpty>No solutions yet. Price one for each piece of work this site needs.</HubEmpty>
       ) : (
         <ol>
           {solutions.map((solution) => (
             <SolutionRow
               key={solution._id}
               solution={solution}
-              tagSite={!siteId}
               open={() => open(solution._id)}
             />
           ))}
@@ -143,16 +125,8 @@ export function CustomerSolutions({ scope }: { scope: HubScope }) {
   );
 }
 
-// On the site page every row is at the same site, so the tag is left off.
-function SolutionRow({
-  solution,
-  tagSite,
-  open,
-}: {
-  solution: Solution;
-  tagSite: boolean;
-  open: () => void;
-}) {
+// Every row is at the same site, so none repeats the site's name.
+function SolutionRow({ solution, open }: { solution: Solution; open: () => void }) {
   return (
     <li className="border-b last:border-b-0">
       <button
@@ -162,16 +136,8 @@ function SolutionRow({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-slate-900">{solution.title}</span>
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            {tagSite ? (
-              <>
-                <SiteTag name={solution.siteName} />
-                <span aria-hidden>·</span>
-              </>
-            ) : null}
-            <span className="truncate">
-              {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
-            </span>
+          <span className="block truncate text-xs text-slate-500">
+            {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
           </span>
         </span>
         <span

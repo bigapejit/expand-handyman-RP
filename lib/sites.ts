@@ -33,11 +33,6 @@ function normalizeToken(value: string) {
   return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
-/** `4410 NE 94th St, Apt 2, Vancouver, WA 98665`, skipping any empty part. */
-export function siteAddress(site: SiteAddress) {
-  return joinParts([site.addressLine1, site.addressLine2, siteCityLine(site)]);
-}
-
 /** The address as the paper prints it over two lines: `4410 NE 94th St, Apt 2`. */
 export function siteStreetLine(site: SiteAddress) {
   return joinParts([site.addressLine1, site.addressLine2]);

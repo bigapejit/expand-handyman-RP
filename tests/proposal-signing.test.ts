@@ -118,12 +118,16 @@ function fixture() {
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
     resendCalls = [];
-    const token = (await read(customerId, proposalId)).liveToken;
+    const token = (await read(proposalId)).liveToken;
     if (!token) throw new Error("No live link.");
     return { customerId, siteId, solutionId, proposalId, token };
   };
-  const read = async (customerId: Id<"customers">, proposalId: Id<"proposals">) => {
-    const tab = await owner.query(api.proposals.forCustomer, { customerId });
+  const read = async (proposalId: Id<"proposals">) => {
+    const row = (await owner.query(api.proposals.list, {})).find(
+      (p) => p.proposalId === proposalId,
+    );
+    if (!row) throw new Error("Proposal not on the Proposals page.");
+    const tab = await owner.query(api.proposals.forSite, { siteId: row.siteId });
     const found = tab.proposals.find((p) => p.proposalId === proposalId);
     if (!found) throw new Error("Proposal not on the tab.");
     return found;
@@ -147,7 +151,7 @@ function fixture() {
 describe("Approve", () => {
   test("records the signature, seals the offer and ends the link as approved", async () => {
     const { t, owner, sent, read, approval, open } = fixture();
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     // The owner's preview comes first and is not the customer's view.
     await owner.mutation(api.signingLinks.opened, { token, userAgent: "owner browser" });
     vi.advanceTimersByTime(60_000);
@@ -176,7 +180,7 @@ describe("Approve", () => {
     expect(proposal?.signature?.noticeWording).toBeUndefined();
     expect(proposal?.signature?.noticeWordingVersion).toBeUndefined();
 
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row.state).toBe("approved");
     expect(row.liveToken).toBeNull();
     expect(row.links[0]).toMatchObject({ endedReason: "approved", endedAt: Date.now() });
@@ -333,12 +337,12 @@ describe("Approve", () => {
     expect(await refusal(t.action(api.proposals.approve, approval("x".repeat(43))))).toMatchObject(
       { code: "link_ended" },
     );
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     await owner.action(api.proposals.resend, { proposalId });
     expect(await refusal(t.action(api.proposals.approve, approval(token)))).toMatchObject({
       code: "link_ended",
     });
-    const fresh = (await read(customerId, proposalId)).liveToken!;
+    const fresh = (await read(proposalId)).liveToken!;
     await owner.mutation(api.proposals.withdraw, { proposalId });
     expect(await refusal(t.action(api.proposals.approve, approval(fresh)))).toMatchObject({
       code: "link_ended",
@@ -367,16 +371,16 @@ describe("Approve", () => {
     await sent(30_000, at);
     await sent(35_000, at);
     await t.action(api.proposals.approve, approval(first.token));
-    expect((await read(first.customerId, first.proposalId)).otherSentAtSite).toBe(2);
+    expect((await read(first.proposalId)).otherSentAtSite).toBe(2);
   });
 });
 
 describe("The approval emails", () => {
   test("go separately to the customer and to contact@expandhandyman.com, dated in Pacific time", async () => {
     const { t, sent, read, approval, deliver } = fixture();
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     await t.action(api.proposals.approve, approval(token));
-    expect((await read(customerId, proposalId)).decisionEmails).toEqual([
+    expect((await read(proposalId)).decisionEmails).toEqual([
       { to: "maria@example.com", email: null },
       { to: "contact@expandhandyman.com", email: null },
     ]);
@@ -414,7 +418,7 @@ describe("The approval emails", () => {
       },
     ]);
     expect(new Set(approvals.map((call) => call.headers["idempotency-key"])).size).toBe(2);
-    expect((await read(customerId, proposalId)).decisionEmails).toEqual([
+    expect((await read(proposalId)).decisionEmails).toEqual([
       { to: "maria@example.com", email: { outcome: "sent", id: "resend-message-1" } },
       { to: "contact@expandhandyman.com", email: { outcome: "sent", id: "resend-message-1" } },
     ]);
@@ -423,11 +427,11 @@ describe("The approval emails", () => {
   test("a failed send is recorded and leaves the approval standing", async () => {
     const { t, sent, read, approval, deliver } = fixture();
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     resend.mockImplementation(async () => new Response("down", { status: 503 }));
     await t.action(api.proposals.approve, approval(token));
     await deliver();
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row.state).toBe("approved");
     expect(row.decisionEmails.map((sent) => sent.email)).toEqual([
       { outcome: "fault", fault: "HTTP_503" },
@@ -439,7 +443,7 @@ describe("The approval emails", () => {
 describe("Decline through the link", () => {
   test("takes an optional reason, ends the link and emails contact@expandhandyman.com only", async () => {
     const { t, sent, read, deliver } = fixture();
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     await t.mutation(api.proposals.declineFromLink, { token, reason: "  Too expensive  " });
 
     const proposal = await t.run((ctx) => ctx.db.get(proposalId));
@@ -450,7 +454,7 @@ describe("Decline through the link", () => {
       declinedBy: "customer",
     });
     expect(proposal?.signature).toBeUndefined();
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row.links[0].endedReason).toBe("declined");
 
     await deliver();
@@ -468,7 +472,7 @@ describe("Decline through the link", () => {
         tags: [{ name: "letter", value: "decline_notice" }],
       },
     ]);
-    expect((await read(customerId, proposalId)).decisionEmails).toEqual([
+    expect((await read(proposalId)).decisionEmails).toEqual([
       { to: "contact@expandhandyman.com", email: { outcome: "sent", id: "resend-message-1" } },
     ]);
   });
@@ -503,12 +507,12 @@ describe("Decline through the link", () => {
 describe("Decline recorded by the owner", () => {
   test("takes an optional reason, ends the link as declined and emails nobody", async () => {
     const { t, owner, sent, read, deliver } = fixture();
-    const { customerId, proposalId, token } = await sent();
+    const { proposalId, token } = await sent();
     await owner.mutation(api.proposals.decline, { proposalId, reason: "Said no on the phone" });
     await deliver();
 
     expect(resendCalls).toEqual([]);
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row).toMatchObject({
       state: "declined",
       declineReason: "Said no on the phone",

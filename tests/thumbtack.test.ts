@@ -129,7 +129,7 @@ function fixture() {
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
     await owner.action(api.proposals.send, { proposalId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    const tab = await owner.query(api.proposals.forCustomer, { customerId });
+    const tab = await owner.query(api.proposals.forSite, { siteId });
     const token = tab.proposals.find((p) => p.proposalId === proposalId)?.liveToken;
     if (!token) throw new Error("No live link.");
     return token;

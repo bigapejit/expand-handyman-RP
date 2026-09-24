@@ -118,14 +118,18 @@ function fixture() {
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
     return { customerId, siteId, solutionId, proposalId };
   };
-  const read = async (customerId: Id<"customers">, proposalId: Id<"proposals">) => {
-    const tab = await owner.query(api.proposals.forCustomer, { customerId });
+  const read = async (proposalId: Id<"proposals">) => {
+    const row = (await owner.query(api.proposals.list, {})).find(
+      (p) => p.proposalId === proposalId,
+    );
+    if (!row) throw new Error("Proposal not on the Proposals page.");
+    const tab = await owner.query(api.proposals.forSite, { siteId: row.siteId });
     const found = tab.proposals.find((p) => p.proposalId === proposalId);
     if (!found) throw new Error("Proposal not on the tab.");
     return found;
   };
-  const liveToken = async (customerId: Id<"customers">, proposalId: Id<"proposals">) => {
-    const token = (await read(customerId, proposalId)).liveToken;
+  const liveToken = async (proposalId: Id<"proposals">) => {
+    const token = (await read(proposalId)).liveToken;
     if (!token) throw new Error("No live link.");
     return token;
   };
@@ -207,7 +211,7 @@ describe("proposals.send", () => {
     // $598.95 with one, and the $1,000 stays as typed.
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [gate] });
 
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       payment: { deposit: { kind: "amount", cents: 100_000 }, balanceCents: -40_105 },
       sendBlockers: ["deposit_over_total"],
     });
@@ -218,7 +222,7 @@ describe("proposals.send", () => {
 
   test("freezes a set Deposit, which the paper and the customer's link then carry", async () => {
     const { t, owner, sendable, liveToken } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.mutation(api.proposals.update, { proposalId, depositCents: 20_000 });
     await owner.action(api.proposals.send, { proposalId });
 
@@ -229,7 +233,7 @@ describe("proposals.send", () => {
       depositPercent: 50,
       depositCents: 20_000,
     });
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     expect((await t.query(api.signingLinks.page, { token }))?.paper).toMatchObject({
       depositCents: 20_000,
     });
@@ -237,10 +241,10 @@ describe("proposals.send", () => {
 
   test("the panel is told the same reasons before Send is pressed", async () => {
     const { owner, read, sendable } = fixture();
-    const { customerId, proposalId } = await sendable("");
-    expect((await read(customerId, proposalId)).sendBlockers).toEqual(["no_email"]);
+    const { proposalId } = await sendable("");
+    expect((await read(proposalId)).sendBlockers).toEqual(["no_email"]);
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [] });
-    expect((await read(customerId, proposalId)).sendBlockers).toEqual([
+    expect((await read(proposalId)).sendBlockers).toEqual([
       "no_solutions",
       "no_email",
     ]);
@@ -249,9 +253,9 @@ describe("proposals.send", () => {
   test("is not held up by the unknown L&I registration", async () => {
     const { owner, read, sendable } = fixture();
     expect(WashingtonNoticeToCustomer.text).toContain(Unknown);
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    expect((await read(customerId, proposalId)).state).toBe("sent");
+    expect((await read(proposalId)).state).toBe("sent");
   });
 
   test("sends only a draft", async () => {
@@ -282,7 +286,7 @@ describe("What Send freezes", () => {
     const { customerId, siteId, solutionId, proposalId } = await sendable();
     await owner.mutation(api.proposals.update, { proposalId, notes: "Gate hardware extra." });
     await owner.action(api.proposals.send, { proposalId });
-    const sentRow = await read(customerId, proposalId);
+    const sentRow = await read(proposalId);
     const sentPaper = await owner.query(api.proposals.paper, { proposalId });
 
     vi.setSystemTime(new Date("2026-09-24T17:00:00Z"));
@@ -299,7 +303,7 @@ describe("What Send freezes", () => {
       await ctx.db.patch(siteId, { name: "1302FRANKLIN", addressLine1: "1302 Franklin St" });
     });
 
-    expect(await read(customerId, proposalId)).toMatchObject({
+    expect(await read(proposalId)).toMatchObject({
       code: "1300FRANKLIN-P1",
       title: "Fix gate",
       solutions: [{ solutionId, title: "Fix gate", priceCents: 55_000 }],
@@ -339,7 +343,7 @@ describe("What Send freezes", () => {
     // proposal frozen before allowances existed.
     expect(paper?.solutions[0]).not.toHaveProperty("materialAllowanceCents");
     // The customer's link shows the same frozen paper.
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     expect(await t.query(api.signingLinks.page, { token })).toEqual({
       paper: { ...sentPaper, unpricedSolutions: undefined },
       noticeRequired: false,
@@ -364,7 +368,7 @@ describe("What Send freezes", () => {
     await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 130_000 });
     const proposalId = await owner.action(api.proposals.create, { siteId });
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [solutionId] });
-    expect((await read(customerId, proposalId)).sendBlockers).toEqual([]);
+    expect((await read(proposalId)).sendBlockers).toEqual([]);
 
     await owner.action(api.proposals.send, { proposalId });
     const frozen = (await t.run((ctx) => ctx.db.get(proposalId)))?.frozen;
@@ -414,10 +418,10 @@ describe("What Send freezes", () => {
 describe("Withdraw", () => {
   test("ends the link as withdrawn and returns a draft reading its live solutions", async () => {
     const { t, owner, read, liveToken, sendable, deliver } = fixture();
-    const { customerId, solutionId, proposalId } = await sendable();
+    const { solutionId, proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     resendCalls = [];
 
     await owner.mutation(api.proposals.withdraw, { proposalId });
@@ -429,7 +433,7 @@ describe("Withdraw", () => {
       solutionId,
       lineItems: [{ name: "Lumber", quantity: 1, unitCostCents: 10_000 }],
     });
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row).toMatchObject({
       state: "draft",
       sentAt: null,
@@ -459,12 +463,12 @@ describe("Withdraw", () => {
 
   test("a withdrawn proposal sent again freezes what it offers then", async () => {
     const { t, owner, read, sendable } = fixture();
-    const { customerId, siteId, proposalId } = await sendable();
+    const { siteId, proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await owner.mutation(api.proposals.withdraw, { proposalId });
     await t.run((ctx) => ctx.db.patch(siteId, { name: "1302FRANKLIN" }));
     await owner.action(api.proposals.send, { proposalId });
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row.code).toBe("1302FRANKLIN-P1");
     expect(row.links.map((link) => link.endedReason)).toEqual([null, "withdrawn"]);
   });
@@ -477,7 +481,7 @@ describe("Re-send", () => {
     const { customerId, proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
-    const first = await liveToken(customerId, proposalId);
+    const first = await liveToken(proposalId);
     const paper = await owner.query(api.proposals.paper, { proposalId });
 
     vi.setSystemTime(new Date("2026-09-25T17:00:00Z"));
@@ -488,8 +492,8 @@ describe("Re-send", () => {
     await owner.action(api.proposals.resend, { proposalId });
     await deliver();
 
-    const row = await read(customerId, proposalId);
-    const second = await liveToken(customerId, proposalId);
+    const row = await read(proposalId);
+    const second = await liveToken(proposalId);
     expect(second).not.toBe(first);
     expect(row).toMatchObject({ state: "sent", sentTo: "maria.new@example.com" });
     expect(row.links).toMatchObject([
@@ -520,7 +524,7 @@ describe("Re-send", () => {
     expect(await refusal(owner.action(api.proposals.resend, { proposalId }))).toMatchObject(
       { code: "no_email" },
     );
-    expect((await read(customerId, proposalId)).links).toMatchObject([{ endedReason: null }]);
+    expect((await read(proposalId)).links).toMatchObject([{ endedReason: null }]);
   });
 
   test("re-sends only a sent proposal, and only for the owner", async () => {
@@ -539,13 +543,13 @@ describe("Re-send", () => {
 describe("The signing-link email", () => {
   test("goes through Resend with an idempotency key, tags, a User-Agent and no attachment", async () => {
     const { owner, read, liveToken, sendable, deliver } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    expect((await read(customerId, proposalId)).links[0].email).toBeNull();
+    expect((await read(proposalId)).links[0].email).toBeNull();
     await deliver();
 
-    const token = await liveToken(customerId, proposalId);
-    const [link] = (await read(customerId, proposalId)).links;
+    const token = await liveToken(proposalId);
+    const [link] = (await read(proposalId)).links;
     expect(resendCalls).toHaveLength(1);
     const [call] = resendCalls;
     expect(call.url).toBe("https://api.resend.com/emails");
@@ -574,7 +578,7 @@ describe("The signing-link email", () => {
     });
     expect(link.email).toEqual({ outcome: "sent", id: "resend-message-1" });
     // The link the panel copies is the one the email carried.
-    expect((await read(customerId, proposalId)).liveUrl).toBe(
+    expect((await read(proposalId)).liveUrl).toBe(
       `https://staff.expandhandyman.com/sign/${token}`,
     );
   });
@@ -597,16 +601,16 @@ describe("The signing-link email", () => {
     vi.stubEnv("APP_ORIGIN", "");
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const { owner, read, liveToken, sendable, deliver } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
     expect(resendCalls).toEqual([]);
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     expect(log).toHaveBeenCalledWith(expect.stringContaining(`/sign/${token}`));
     expect(log).toHaveBeenCalledWith(
       expect.stringContaining("Subject: Your Expand Handyman proposal for 1300 Franklin St"),
     );
-    expect((await read(customerId, proposalId)).links[0].email).toEqual({
+    expect((await read(proposalId)).links[0].email).toEqual({
       outcome: "notSent",
       reason: "noApiKey",
     });
@@ -618,10 +622,10 @@ describe("The signing-link email", () => {
       Response.json({ message: "The domain is not verified" }, { status: 403 }),
     );
     const { t, owner, read, sendable, deliver } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
-    const row = await read(customerId, proposalId);
+    const row = await read(proposalId);
     expect(row.state).toBe("sent");
     expect(row.links[0].email).toEqual({ outcome: "fault", fault: "HTTP_403" });
     expect(await t.query(api.signingLinks.resolve, { token: row.liveToken! })).toBe("proposal");
@@ -633,10 +637,10 @@ describe("The signing-link email", () => {
       throw new TypeError("fetch failed");
     });
     const { owner, read, sendable, deliver } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
-    expect((await read(customerId, proposalId)).links[0].email).toEqual({
+    expect((await read(proposalId)).links[0].email).toEqual({
       outcome: "fault",
       fault: "REQUEST_FAILED",
     });
@@ -646,11 +650,11 @@ describe("The signing-link email", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("APP_ORIGIN", "");
     const { owner, read, sendable, deliver } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     await deliver();
     expect(resendCalls).toEqual([]);
-    expect((await read(customerId, proposalId)).links[0].email).toEqual({
+    expect((await read(proposalId)).links[0].email).toEqual({
       outcome: "fault",
       fault: "MISSING_APP_ORIGIN",
     });
@@ -660,9 +664,9 @@ describe("The signing-link email", () => {
 describe("/sign/<token>", () => {
   test("tells a document's token from a proposal's, and serves the document as before", async () => {
     const { t, owner, customer, liveToken, sendable } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    const proposalToken = await liveToken(customerId, proposalId);
+    const proposalToken = await liveToken(proposalId);
 
     const documentToken = "d".repeat(64);
     const documentCustomerId = await customer("doc@example.com", "Doc Customer");
@@ -702,9 +706,9 @@ describe("/sign/<token>", () => {
 describe("Proposal views", () => {
   test("the customer's open is a view and marks the link Opened; the owner's is a preview", async () => {
     const { t, owner, read, liveToken, sendable } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
 
     const previewId = await owner.mutation(api.signingLinks.opened, { token, userAgent: "Owner" });
     expect(await t.run((ctx) => ctx.db.get(previewId!))).toMatchObject({
@@ -713,7 +717,7 @@ describe("Proposal views", () => {
       viewer: "owner",
       proposalState: "sent",
     });
-    expect((await read(customerId, proposalId)).opened).toBe(false);
+    expect((await read(proposalId)).opened).toBe(false);
 
     const viewId = await t.mutation(api.signingLinks.opened, { token, userAgent: "iPhone" });
     expect(await t.run((ctx) => ctx.db.get(viewId!))).toMatchObject({
@@ -721,31 +725,31 @@ describe("Proposal views", () => {
       userAgent: "iPhone",
       viewedMs: 0,
     });
-    expect((await read(customerId, proposalId)).opened).toBe(true);
+    expect((await read(proposalId)).opened).toBe(true);
   });
 
   test("Opened counts only the current link, and an ended link logs nothing", async () => {
     const { t, owner, read, liveToken, sendable } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    const first = await liveToken(customerId, proposalId);
+    const first = await liveToken(proposalId);
     await t.mutation(api.signingLinks.opened, { token: first });
-    expect((await read(customerId, proposalId)).opened).toBe(true);
+    expect((await read(proposalId)).opened).toBe(true);
 
     await owner.action(api.proposals.resend, { proposalId });
-    expect((await read(customerId, proposalId)).opened).toBe(false);
+    expect((await read(proposalId)).opened).toBe(false);
     expect(await t.mutation(api.signingLinks.opened, { token: first })).toBeNull();
-    await t.mutation(api.signingLinks.opened, { token: await liveToken(customerId, proposalId) });
-    expect((await read(customerId, proposalId)).opened).toBe(true);
+    await t.mutation(api.signingLinks.opened, { token: await liveToken(proposalId) });
+    expect((await read(proposalId)).opened).toBe(true);
     expect(await t.mutation(api.signingLinks.opened, { token: "unknown" })).toBeNull();
   });
 
   test("the heartbeat and the close beacon count only visible time", async () => {
     vi.setSystemTime(new Date("2026-09-23T10:00:00Z"));
     const { t, owner, liveToken, sendable } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     const viewId = await t.mutation(api.signingLinks.opened, { token });
 
     vi.setSystemTime(new Date("2026-09-23T10:00:20Z"));
@@ -772,9 +776,9 @@ describe("Proposal views", () => {
   test("a view's closing beacon still counts after its link is withdrawn", async () => {
     vi.setSystemTime(new Date("2026-09-23T10:00:00Z"));
     const { t, owner, liveToken, sendable } = fixture();
-    const { customerId, proposalId } = await sendable();
+    const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
-    const token = await liveToken(customerId, proposalId);
+    const token = await liveToken(proposalId);
     const viewId = await t.mutation(api.signingLinks.opened, { token });
     vi.setSystemTime(new Date("2026-09-23T10:00:15Z"));
     await owner.mutation(api.proposals.withdraw, { proposalId });
