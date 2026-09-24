@@ -23,10 +23,10 @@ const WebhookSecret = "whsec_test_expand";
 
 // Outbound HTTP, stubbed at fetch. Stripe's API answers from `stripeAnswer`,
 // by default a fresh session for every create and the sessions, payment
-// intents and charges a test has put in `sessions`, `intents` and
-// `charges`; every call to it is
-// kept, form fields decoded, to be asserted on. Resend answers with an id
-// and every letter is kept; DOR answers with Vancouver's rate.
+// intents and charges a test has put in `sessions`, `intents` and `charges`;
+// every call to it is kept, form fields decoded, to be asserted on. Resend
+// answers with an id and every letter is kept; DOR answers with Vancouver's
+// rate.
 type StripeCall = {
   method: string;
   path: string;
