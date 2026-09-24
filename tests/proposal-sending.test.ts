@@ -295,7 +295,9 @@ describe("What Send freezes", () => {
       sentTo: "maria@example.com",
     });
     // The whole paper is the one read the moment it was sent, the allowance
-    // added since included; the parity test above pins what that paper holds.
+    // added since included. The parity test below checks that a sent paper
+    // matches its draft, and the proposals.paper suite in
+    // tests/proposals.test.ts pins what a draft paper holds.
     const paper = await owner.query(api.proposals.paper, { proposalId });
     expect(paper).toEqual(sentPaper);
     expect(paper).toMatchObject({
@@ -332,6 +334,10 @@ describe("What Send freezes", () => {
       depositCents: 20_000,
     });
     const draft = await owner.query(api.proposals.paper, { proposalId });
+    // The paper carries the set Deposit, not only the percent split, because
+    // the set amount is what the customer signs for. Everything below
+    // compares papers with each other, so this is the one check on the value.
+    expect(draft).toMatchObject({ depositPercent: 50, depositCents: 20_000 });
     const offer = await owner.run(async (ctx) => offerOf(ctx, (await ctx.db.get(proposalId))!));
     // A solution with no allowance reads as having none, as does every
     // proposal frozen before allowances existed.
