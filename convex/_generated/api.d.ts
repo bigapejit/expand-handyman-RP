@@ -11,7 +11,6 @@
 import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
 import type * as customers from "../customers.js";
-import type * as documents from "../documents.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
 import type * as invoiceEmails from "../invoiceEmails.js";
@@ -20,7 +19,6 @@ import type * as invoices from "../invoices.js";
 import type * as leads from "../leads.js";
 import type * as migrations from "../migrations.js";
 import type * as payments from "../payments.js";
-import type * as pdfActions from "../pdfActions.js";
 import type * as pdfCopies from "../pdfCopies.js";
 import type * as pdfCopyFiles from "../pdfCopyFiles.js";
 import type * as pdfRenderer from "../pdfRenderer.js";
@@ -44,7 +42,6 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   catalog: typeof catalog;
   customers: typeof customers;
-  documents: typeof documents;
   email: typeof email;
   http: typeof http;
   invoiceEmails: typeof invoiceEmails;
@@ -53,7 +50,6 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   migrations: typeof migrations;
   payments: typeof payments;
-  pdfActions: typeof pdfActions;
   pdfCopies: typeof pdfCopies;
   pdfCopyFiles: typeof pdfCopyFiles;
   pdfRenderer: typeof pdfRenderer;

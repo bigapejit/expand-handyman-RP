@@ -4,12 +4,10 @@ import { useQuery } from "convex/react";
 import dynamic from "next/dynamic";
 
 import { LinkNotLive } from "@/components/link-not-live";
-import { SigningPage } from "@/components/signing-page";
 import { api } from "@/convex/_generated/api";
 
 // The proposal page brings the paper's own stylesheets, including its print
-// rules, so it loads only for a proposal's link and a document's link prints
-// exactly as it always has.
+// rules, so it loads only for a proposal's link.
 const ProposalSigningPage = dynamic(
   () => import("@/components/proposal-signing-page").then((m) => m.ProposalSigningPage),
   { loading: () => <SignLoading /> },
@@ -22,21 +20,20 @@ const InvoiceLinkPage = dynamic(
 );
 
 // `/sign/<token>`: one address for every link Expand sends, whether it opens a
-// document, a proposal (CONTEXT.md, **Signing link**) or an invoice
-// (**Invoice link**). A token naming nothing goes to the document page, which
-// has always answered one with "This link is no longer live".
+// proposal (CONTEXT.md, **Signing link**) or an invoice (**Invoice link**). A
+// token naming nothing gets "This link is no longer live", like an ended
+// link but without a proposal to speak of.
 export function SignRoute({ token }: { token: string }) {
   const kind = useQuery(api.signingLinks.resolve, { token });
   if (kind === undefined) return <SignLoading />;
   if (kind === "proposal") return <ProposalSigningPage token={token} />;
   if (kind === "invoice") return <InvoiceLinkPage token={token} />;
-  if (kind === "ended") return <LinkNotLive what="proposal" />;
-  return <SigningPage token={token} />;
+  return <LinkNotLive what={kind === "ended" ? "proposal" : "unknown"} />;
 }
 
-// The signing screen's top bar over an empty backdrop, the way the document
-// page draws itself while its file loads, so nothing jumps whichever page
-// follows. Nothing here needs the paper's stylesheets.
+// The signing screen's top bar over an empty backdrop while the page finds
+// out what the link opens, so nothing jumps whichever page follows. Nothing
+// here needs the paper's stylesheets.
 function SignLoading() {
   return (
     <div className="paper-screen paper-screen-signing">

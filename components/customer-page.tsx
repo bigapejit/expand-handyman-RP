@@ -16,7 +16,6 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { CustomerDialog } from "@/components/customer-dialog";
-import { CustomerDocuments } from "@/components/customer-documents";
 import { CustomerThumbtack } from "@/components/customer-thumbtack";
 import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
 import { SiteDialog } from "@/components/site-dialog";
@@ -29,8 +28,8 @@ import { displayPhone } from "@/lib/customer";
 type CustomerSite = FunctionReturnType<typeof api.sites.forCustomer>[number];
 
 // The Customer page, thin: who they are, their sites as cards that open the
-// Site page, where the work lives, then their Documents. No tabs; correcting
-// or deleting a site happens on the site's own page.
+// Site page, where the work lives, then their Thumbtack leads. No tabs;
+// correcting or deleting a site happens on the site's own page.
 export function CustomerPage({ customerId }: { customerId: string }) {
   const customer = useCustomer(customerId);
   const [editing, setEditing] = useState(false);
@@ -63,7 +62,6 @@ export function CustomerPage({ customerId }: { customerId: string }) {
         </Button>
       </header>
       <CustomerSites customerId={customer._id} />
-      <CustomerDocuments customerId={customer._id} />
       <CustomerThumbtack customerId={customer._id} />
       {editing ? (
         <CustomerDialog customer={customer} onClose={() => setEditing(false)} />

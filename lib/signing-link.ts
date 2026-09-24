@@ -1,5 +1,5 @@
-// Where a customer opens a **Signing link** (CONTEXT.md). Documents and
-// proposals share the one `/sign/<token>` address, so every link from Expand
+// Where a customer opens a **Signing link** (CONTEXT.md). Proposals and
+// invoices share the one `/sign/<token>` address, so every link from Expand
 // looks the same; the page asks Convex which of the two a token belongs to.
 // Named once here so the link the panel copies and the link the email carries
 // are the same string, character for character.

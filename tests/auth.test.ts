@@ -13,7 +13,7 @@ function access(env: Record<string, string>, identity?: { subject: string; email
     vi.stubEnv(key, value);
   const t = convexTest(schema, modules);
   const caller = identity ? t.withIdentity(identity) : t;
-  return caller.query(api.documents.access, {}).then((r) => r.owner);
+  return caller.query(api.auth.access, {}).then((r) => r.owner);
 }
 
 const owner = { subject: "user_owner", email: "andrew.p@expandhandyman.com", emailVerified: true };

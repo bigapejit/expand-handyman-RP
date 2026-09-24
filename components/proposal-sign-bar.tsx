@@ -16,8 +16,7 @@ import { SigningConsent, signingFaultMessage, signingFaults } from "@/lib/propos
 // paper, pinned to the bottom of the screen where a thumb already is. FRSG's
 // roof-report/sign-bar.tsx with the owner's changes: the signer gives a name
 // and no title, and "Read the Terms" sits in the closed bar beside Decline and
-// again after the consent sentence. (Uploaded documents keep their own bar,
-// components/sign-bar.tsx.)
+// again after the consent sentence.
 //
 // Closed it is one row: what the proposal costs and how long it stands, then
 // Read the Terms, Decline and Sign. Open it rises into a sheet holding the

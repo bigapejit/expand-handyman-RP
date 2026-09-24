@@ -12,45 +12,13 @@
 
 The owner must create their first production account and verify their own email. No production user password was created during setup.
 
-Deploy Convex with `npx convex deploy --yes` when backend or shared PDF code changes. Push frontend changes to `main` for Vercel deployment. Keep `.env.local` and `.env.production.local` out of Git.
+Production Vercel builds run `npx convex deploy` themselves (`vercel.json`), so a push to `main` deploys both; the notes below that say to run it by hand after merging predate that. Deploy Convex by hand with `npx convex deploy --yes` only when the backend must move ahead of the app. Keep `.env.local` and `.env.production.local` out of Git.
 
-## Verification on 2026-09-09
+## Legacy uploaded documents
 
-- Automated tests cover owner authorization, private link scope, view tracking, withdrawal, signing retries, immutable completed documents, tampered PDF rejection and rotated page geometry.
-- A synthetic development customer and two-page PDF exercised the real authenticated upload API, browser field placement, link creation, customer consent and signing, persisted completion and reopening.
-- Desktop and mobile customer layouts were inspected. Full-font embedding fixes missing Allura letters in downloaded PDFs; normal and rotated pages and the signature record were checked visually.
-- Production HTTPS and the Clerk login screen were checked. The first production owner session remains for the owner to complete.
-- Browser automation could not operate Chrome's file chooser because the extension's file URL access was disabled. The upload was verified through the authenticated API; the rest of the flow was exercised in the browser.
+The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23: proposals, which the app makes itself, are what customers sign now. Nothing was migrated. The `documents` and `documentViews` tables, the `/file` endpoint that served the PDFs, the `/documents` pages, the Dashboard's Documents card, the Customer page's Documents section, the `backfillCustomerDetails` migration and the PDF.js and pdf-lib dependencies are gone. The `access` query the owner gate reads moved to `auth.ts`, and the upload URL the Photos tab uses to `photos.ts`.
 
-Development helpers in `scripts/prepare-browser-test.mjs`, `scripts/create-test-pdf.mjs`, and `scripts/upload-test-document.ts` use a synthetic test identity. The authentication/upload helpers refuse production credentials. Test artifacts and temporary login links live in ignored `test-results/`.
-
-## FRSG customer flow and placement update
-
-The customer screen now ports the original FRSG paper-screen CSS and signing-sheet markup, including the bottom Sign/Decline bar, live name preview, optional title, yellow tag and Homemade Apple font. Only Expand branding and uploaded-document wording replace proposal-specific information. No FRSG business terms or notice text are added to uploaded PDFs.
-
-Eleven tests cover the expanded lifecycle: owner signature authorization and freezing, requirement for a customer signature, independently placed dates, two-signer PDF verification, forged owner-signature rejection, decline/completion races and two-dimensional resize bounds. A browser test confirmed corner resizing changes width and height without moving the field. Desktop and mobile customer screens were inspected, and a synthetic customer completed the FRSG sheet against a document with an owner signature and four fields. The saved PDF was inspected on normal and rotated pages.
-
-`scripts/prepare-signing-preview.ts` prepares that four-field synthetic development fixture. Existing signed files remain stored unchanged. Previously issued unsigned links keep their placed fields; withdraw them to add new fields or an owner signature.
-
-Signature alignment now measures the handwriting's visible glyph bounds instead of its font-wide ascender/descender spacing. Preview and PDF export share one layout calculation, with visible ink positioned two PDF points above the field's bottom edge. The editor shows a customer-name preview and bottom alignment guide. Three regression cases cover both ordinary names and descending letters; all 14 tests pass. A rendered PDF with explicit placement boxes confirms signatures and dates sit above their bottom guides.
-
-## View log
-
-Every open of a signing link is recorded in the `documentViews` table with who opened it, the link token, the document status at the time, the user agent and a last-seen time. The owner's own opens are recognised from their Clerk session and logged as previews, so they never change document status. Customers' first view still moves a document from "Link ready" to "Viewed". The signing page heartbeats every twenty seconds while visible and beacons `POST /seen` on hide; each update adds only the time since the previous one, and a gap longer than thirty seconds adds nothing. Documents viewed before this change fall back to their first-viewed time in the feed and dashboard. The editor's Activity card lists every open with its duration, a "You" tag and a "Previous link" tag, and the dashboard shows the last customer view. Twelve tests in `tests/views.test.ts` cover the owner/customer split, heartbeat clamping, previous-link tagging, opens after signing or declining, the beacon endpoint and the duration formatter.
-
-This adds a table and two indexes, so run `npx convex deploy --yes` after merging.
-
-## Frozen customer details
-
-A document is a snapshot. Issuing its signing link copies the customer's name onto the document, and from then on the dashboard, the editor and the signing page read that copy, so renaming a customer never rewrites an issued or signed document. A draft has no copy and still shows the live customer; withdrawing a link drops the copy and returns the document to the live customer until it is issued again. Documents issued before Sites also copied the customer's one free-text address; they keep showing it in the document editor's header, and a withdrawn one drops it with the rest of the copy.
-
-Documents issued before this change carry no copy, and until they are backfilled they still follow a renamed customer. Run the one-off backfill immediately after `npx convex deploy --yes`:
-
-```
-npx convex run --prod migrations:backfillCustomerDetails
-```
-
-It skips drafts and any document already frozen, so it is safe to run twice. It freezes a bounded page per run and reports `done: false` if more are waiting; repeat until it reports `done: true`. Five tests in `tests/signing.test.ts` cover the frozen issued document, the site text kept by documents issued before Sites, edits reaching only drafts, the live draft and the backfill.
+A customer opening an old document link now sees "This link is no longer live", and the signed PDF can no longer be downloaded through it. Convex accepts the schema without the two tables even where they still hold rows: they just stop being declared, and nothing in the app reads them. To tidy a deployment by hand, download any signed PDF worth keeping first, from the dashboard's Files page by the storage id in the row's `signedId` (`originalId` is the upload); then delete those files, and the `documents` and `documentViews` tables from the Data page. Files hold the proposal and invoice PDF copies and the site photos too, so delete only by those ids.
 
 ## Sites and address lookup
 
@@ -84,7 +52,7 @@ Once it has run on a deployment, that deployment holds no legacy addresses and t
 
 ## Sending proposals
 
-Send, Re-send and Withdraw live in the proposal panel. Send freezes the offer and mints a signing link at `/sign/<token>`, the same address documents use; the page asks Convex which of the two a token belongs to. Each Send or Re-send is one row in `signingLinks`, and Withdraw or Re-send ends the previous row rather than deleting it, which is the panel's link history. Opens of a proposal's link are logged in `proposalViews`, with the same owner-preview rule, heartbeat and `POST /seen` beacon as documents (the beacon body carries `kind: "proposal"`).
+Send, Re-send and Withdraw live in the proposal panel. Send freezes the offer and mints a signing link at `/sign/<token>`, the address invoice links share; the page asks Convex which of the two a token belongs to. Each Send or Re-send is one row in `signingLinks`, and Withdraw or Re-send ends the previous row rather than deleting it, which is the panel's link history. Opens of a proposal's link are logged in `proposalViews` (ADR 0001): the owner's own opens are previews, the page heartbeats every twenty seconds while visible and beacons `POST /seen` on hide, and a gap longer than thirty seconds adds nothing.
 
 The signing-link email goes through Resend from a scheduled Convex action (`convex/email.ts`), plain text and with no attachment. Its outcome, `sent` with Resend's message id, `notSent` or `fault` with its code, is written onto the link, and a failed email never undoes the Send: the panel says "Email not sent" and offers the link to copy. These Convex variables drive it:
 
@@ -95,7 +63,7 @@ The signing-link email goes through Resend from a scheduled Convex action (`conv
 | `EMAIL_FROM` | optional; defaults to `Expand Handyman <proposals@expandhandyman.com>` | optional |
 | `EMAIL_REPLY_TO` | optional; defaults to `contact@expandhandyman.com` | optional |
 
-A deployment with a key but no `APP_ORIGIN` records the fault `MISSING_APP_ORIGIN` instead of sending a letter with no link. This adds the `signingLinks` and `proposalViews` tables, so run `npx convex deploy --yes` after merging. Then send one proposal to the owner's own address and check that it arrives From `proposals@expandhandyman.com` with Reply-To `contact@expandhandyman.com`. `tests/proposal-sending.test.ts` covers every blocker, what Send freezes, Withdraw, Re-send, each email outcome with Resend stubbed at `fetch`, token resolution for documents and proposals, and views versus owner previews.
+A deployment with a key but no `APP_ORIGIN` records the fault `MISSING_APP_ORIGIN` instead of sending a letter with no link. This adds the `signingLinks` and `proposalViews` tables, so run `npx convex deploy --yes` after merging. Then send one proposal to the owner's own address and check that it arrives From `proposals@expandhandyman.com` with Reply-To `contact@expandhandyman.com`. `tests/proposal-sending.test.ts` covers every blocker, what Send freezes, Withdraw, Re-send, each email outcome with Resend stubbed at `fetch`, token resolution, and views versus owner previews.
 
 ## PDF copies
 

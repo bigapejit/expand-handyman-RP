@@ -66,7 +66,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
       })
       .catch(() => {});
   }, [arrived, opened, token]);
-  useViewHeartbeat(view, token, seen, "proposal");
+  useViewHeartbeat(view, token, seen);
 
   if (page === undefined) return <PaperLoading />;
   if (page === null) return <LinkNotLive what="proposal" />;

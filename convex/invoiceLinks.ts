@@ -11,7 +11,7 @@ import type { PaperInvoice } from "../lib/invoice-paper";
 // An invoice's **Invoice link** (CONTEXT.md): minted by each Send or Re-send
 // of an invoice, and answering the public `/sign/<token>` page with the
 // invoice paper. Nothing is signed through it, and opening it is never
-// logged (ADR 0001 stops at documents and proposals).
+// logged (ADR 0001 stops at proposals).
 // Like a signing link, the token is the whole access model.
 
 export async function mintInvoiceLink(

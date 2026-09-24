@@ -76,6 +76,14 @@ function fixture() {
   return { t, owner, stranger, site, file, url, photo };
 }
 
+describe("photos.uploadUrl", () => {
+  test("is the owner's only", async () => {
+    const { t, owner } = fixture();
+    await expect(t.mutation(api.photos.uploadUrl, {})).rejects.toThrow("Owner access required");
+    expect(await owner.mutation(api.photos.uploadUrl, {})).toMatch(/^https?:\/\//);
+  });
+});
+
 describe("photos.add", () => {
   test("saves the photo on its site with the upload time, and the camera time when there is one", async () => {
     const { owner, site, file, url } = fixture();

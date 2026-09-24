@@ -4,7 +4,6 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   FileSignature,
-  FileText,
   Inbox,
   LayoutDashboard,
   LogOut,
@@ -43,7 +42,6 @@ const navigation = [
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
-  { title: "Documents", href: "/documents", icon: FileText },
 ] as const;
 
 export function AppSidebar() {
@@ -102,7 +100,7 @@ export function AppSidebar() {
 // shows nothing until it hears back or while there are none.
 function UnreadBadge() {
   const auth = useConvexAuth();
-  const access = useQuery(api.documents.access, auth.isAuthenticated ? {} : "skip");
+  const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");
   const unread = useQuery(api.leads.unreadCount, access?.owner ? {} : "skip");
   if (!unread) return null;
   return (

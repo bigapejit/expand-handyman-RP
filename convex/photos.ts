@@ -5,11 +5,20 @@ import { requireOwner } from "./auth";
 import { FULL_LONG_EDGE, photoShownAt } from "../lib/photos";
 
 // A site's **Photos** (CONTEXT.md; ADR 0003). The browser shrinks each picture
-// to two JPEGs and uploads both through the owner's upload URL
-// (`documents.uploadUrl`); only then is the photo saved here. Owner-only
+// to two JPEGs and uploads both through the owner's upload URL (`uploadUrl`);
+// only then is the photo saved here. Owner-only
 // throughout: a storage URL reads its file for anyone who holds it, so the
 // URLs leave only through the owner's own query, and a deleted photo's files
 // go with it so its URLs stop working.
+
+// Where the browser puts each shrunk JPEG before `add` records it.
+export const uploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireOwner(ctx);
+    return ctx.storage.generateUploadUrl();
+  },
+});
 
 // The Photos tab: the site's photos, the newest by the time each shows first,
 // each with its thumbnail for the grid and its full image for the dialog.

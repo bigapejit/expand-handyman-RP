@@ -83,7 +83,7 @@ export function CustomerDialog({
   );
 }
 
-export function CustomerForm({
+function CustomerForm({
   customer,
   busy,
   setBusy,
