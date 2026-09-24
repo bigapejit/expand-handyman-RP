@@ -487,6 +487,20 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
       paymentId,
     });
   if (!existing) await paperChanged(ctx, payment.invoice);
+  else if (payment.method === "card" && payment.day < existing.receivedOn) {
+    // A card's money is confirmed by its completion, which both the webhook
+    // and the success return tell, each reading that moment a few seconds
+    // apart: the webhook by the event's time, the return by when Stripe made
+    // the payment intent, just before. Across Pacific midnight the two fall
+    // on different days, and the paper must not carry whichever request won
+    // the race, so the earlier day wins, as `acceptedAtCompletion` only ever
+    // moves the row's time earlier: it is the first moment anyone saw the
+    // money. A later day never moves it on. A bank's money is confirmed only
+    // by its own event, days after the completion the return reads, so a
+    // bank payment keeps the day it was written with.
+    await ctx.db.patch(existing._id, { receivedOn: payment.day });
+    await paperChanged(ctx, payment.invoice);
+  }
 }
 
 // A completion delivered after another event already wrote its session's
