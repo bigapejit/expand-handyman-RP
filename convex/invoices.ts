@@ -18,13 +18,19 @@ import {
   mintInvoiceLink,
   fixedInvoicePaperOf,
 } from "./invoiceLinks";
-import { invoiceStamp, paymentFor } from "./payments";
+import {
+  invoiceStamp,
+  paymentFor,
+  paymentOnItsWayFor,
+  paymentsFor,
+  stripeNoteFor,
+} from "./payments";
 import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceLine } from "./schema";
-import { zelleEmail } from "./settings";
+import { zelleTag } from "./settings";
 import { mintLinkToken } from "./signingLinks";
 import { sendableEmail } from "../lib/customer";
-import { Unknown } from "../lib/expand-business";
+import { ExpandBusiness, Unknown } from "../lib/expand-business";
 import {
   depositLine,
   finalInvoiceLines,
@@ -45,6 +51,7 @@ import {
   oldestSentFirst,
   type InvoiceSendBlocker,
 } from "../lib/invoices";
+import { stripePaymentUrl } from "../lib/pay-now";
 import { proposalDisplayName } from "../lib/proposal-pricing";
 import { signingUrl } from "../lib/signing-link";
 import { siteCityLine, siteStreetLine } from "../lib/sites";
@@ -245,8 +252,10 @@ export const forProposal = query({
 // The invoice panel: one invoice whole, read by the id the page address
 // carries, which may be anything a link was typed as, so an id naming no
 // invoice opens nothing rather than failing. Its header, its lines and money,
-// where Re-send would go now, and every link it has had, newest first, with
-// the live one's address to copy.
+// where Re-send would go now, every link it has had, newest first, with the
+// live one's address to copy, and its money as Stripe and the owner recorded
+// it: every payment, a bank payment on its way, and the grey note left by
+// one that went back.
 export const panel = query({
   args: { invoiceId: v.string(), today },
   handler: async (ctx, a) => {
@@ -257,7 +266,13 @@ export const panel = query({
     if (!invoice) return null;
     const [row] = await invoiceRows(ctx, [invoice], a.today);
     const proposal = await proposalOf(ctx, invoice);
-    const payment = await paymentFor(ctx, invoice._id);
+    const payments = await paymentsFor(ctx, invoice._id);
+    const onItsWay = await paymentOnItsWayFor(ctx, invoice._id);
+    const note = await stripeNoteFor(ctx, invoice);
+    // The secret key is read only to know whether the links go to Stripe's
+    // test mode; nothing here talks to Stripe.
+    const stripeUrl = (paymentIntentId: string) =>
+      stripePaymentUrl(paymentIntentId, process.env.STRIPE_SECRET_KEY);
     const customer = await ctx.db.get(invoice.customerId);
     // Two sends in the same millisecond still list newest first.
     const links = (await invoiceLinksFor(ctx, invoice._id)).sort(
@@ -281,9 +296,42 @@ export const panel = query({
       // Why a draft's Send would be refused now, asked exactly as Send asks.
       sendBlockers:
         invoice.state === "draft" ? invoiceSendBlockers(invoice.lines, customerEmail) : [],
-      // The payment Mark paid recorded, and who recorded it: one the app
-      // wrote from Stripe cannot be taken back here.
-      payment: payment ? { receivedOn: payment.receivedOn, source: payment.source } : null,
+      // The earliest payment, the one the paper's stamp carries, and who
+      // recorded it: one the app wrote from Stripe cannot be taken back here.
+      payment: payments[0]
+        ? { receivedOn: payments[0].receivedOn, source: payments[0].source }
+        : null,
+      // Every payment, earliest first, as the green sentences read them
+      // (lib/pay-now.ts, `paidSentence`), each Stripe one with where it lives
+      // in Stripe. More than one is money that came twice.
+      payments: payments.map((row) => ({
+        receivedOn: row.receivedOn,
+        source: row.source,
+        method: row.method ?? null,
+        stripeUrl: row.stripePaymentIntentId ? stripeUrl(row.stripePaymentIntentId) : null,
+      })),
+      // A bank payment Stripe accepted and the bank has not yet confirmed.
+      onItsWay: onItsWay
+        ? {
+            amountCents: onItsWay.amountCents,
+            acceptedOn: pacificDay(onItsWay.acceptedAt),
+            stripeUrl: stripeUrl(onItsWay.stripePaymentIntentId),
+          }
+        : null,
+      // Why the invoice is owed again after Stripe had its money, while that
+      // still explains it (`stripeNoteFor`).
+      note:
+        note && note.status !== "on_its_way" && note.status !== "paid"
+          ? {
+              kind: note.status,
+              method: note.method,
+              amountCents: note.amountCents,
+              acceptedOn: pacificDay(note.acceptedAt),
+              endedOn: pacificDay(note.endedAt ?? note.acceptedAt),
+              reason: note.reason ?? null,
+              stripeUrl: stripeUrl(note.stripePaymentIntentId),
+            }
+          : null,
       voidedAt: invoice.voidedAt ?? null,
       voidReason: invoice.voidReason ?? null,
       // Only the live link's token is handed over: it is the one the panel
@@ -330,7 +378,7 @@ export const paper = query({
       const sent = await fixedInvoicePaperOf(ctx, invoice);
       return sent ? { ...sent, state: invoice.state } : null;
     }
-    const zelle = await zelleEmail(ctx);
+    const zelle = await zelleTag(ctx);
     return {
       ...(await blockAsItStands(ctx, invoice)),
       state: invoice.state,
@@ -338,7 +386,8 @@ export const paper = query({
       sentAt: null,
       lines: invoice.lines,
       taxRate: invoice.taxRate,
-      zelleEmail: zelle,
+      zelleTag: zelle,
+      mailingAddress: ExpandBusiness.mailingAddress,
       stamp: null,
     };
   },
@@ -538,11 +587,12 @@ export const resendWithLink = internalMutation({
 });
 
 // **Mark paid** (CONTEXT.md): the owner recording that a sent invoice's money
-// arrived, and on which Pacific day, today unless they say otherwise. One
-// payment per invoice; a void one owes nothing to record. A credit is marked
-// paid too, once the owner has refunded it by hand. The paper is stamped PAID
-// with the day, so a PDF copy of the unstamped sheet goes, and nobody is
-// emailed.
+// arrived, and on which Pacific day, today unless they say otherwise. Only
+// where no payment stands, and never while a bank payment is on its way
+// through Stripe, so the record and the money cannot disagree; a void
+// invoice owes nothing to record. A credit is marked paid too, once the
+// owner has refunded it by hand. The paper is stamped PAID with the day, so
+// a PDF copy of the unstamped sheet goes, and nobody is emailed.
 export const markPaid = mutation({
   args: { invoiceId: v.id("invoices"), receivedOn: v.optional(v.string()) },
   handler: async (ctx, a) => {
@@ -555,6 +605,7 @@ export const markPaid = mutation({
     if (invoice.state !== "sent") throw new Error("Only a sent invoice can be marked paid.");
     if (await paymentFor(ctx, invoice._id))
       throw new Error("This invoice is already marked paid.");
+    if (await paymentOnItsWayFor(ctx, invoice._id)) throw new Error(OnItsWayRefusal);
     const now = Date.now();
     const today = pacificDay(now);
     const receivedOn = a.receivedOn ?? today;
@@ -576,18 +627,19 @@ export const markPaid = mutation({
 
 // Mark unpaid: the owner's payment taken back, stamp and all, with the PDF
 // copy that bore it, and the invoice reads Unpaid or Overdue again as its sent
-// day says. A payment the app
-// recorded from Stripe is money that really moved, and is never taken back by
-// hand.
+// day says. A payment the app recorded from Stripe is money that really
+// moved, and is never taken back by hand: only the owner's own row goes, and
+// a Stripe payment beside it keeps the invoice Paid.
 export const markUnpaid = mutation({
   args: { invoiceId: v.id("invoices") },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) throw new Error("Invoice not found.");
-    const payment = await paymentFor(ctx, invoice._id);
-    if (!payment) throw new Error("This invoice is not marked paid.");
-    if (payment.source !== "owner")
+    const payments = await paymentsFor(ctx, invoice._id);
+    if (payments.length === 0) throw new Error("This invoice is not marked paid.");
+    const payment = payments.find((row) => row.source === "owner");
+    if (!payment)
       throw new Error("This invoice was paid online, so it can't be marked unpaid here.");
     await ctx.db.delete(payment._id);
     await discardInvoicePdfCopy(ctx, invoice);
@@ -596,8 +648,10 @@ export const markUnpaid = mutation({
 });
 
 // **Void** (CONTEXT.md): a wrong sent invoice cancelled, with an optional
-// reason the customer never sees. Refused while it is marked paid, so taking
-// money off the books is always a step of its own. It keeps its number, its
+// reason the customer never sees. Refused while any payment stands, the
+// owner's or Stripe's, so taking money off the books is always a step of its
+// own, and while a bank payment is on its way, so the record and the money
+// cannot disagree. It keeps its number, its
 // frozen block and its link, which now opens the paper stamped VOID; its PDF
 // copy goes, and nobody is emailed. A void final invoice gives Job done back (`holdsFinalInvoice`),
 // and the next final invoice does not take it off (lib/invoice-money.ts).
@@ -609,8 +663,12 @@ export const voidInvoice = mutation({
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) throw new Error("Invoice not found.");
     if (invoice.state !== "sent") throw new Error("Only a sent invoice can be voided.");
-    if (await paymentFor(ctx, invoice._id))
+    const payments = await paymentsFor(ctx, invoice._id);
+    if (payments.some((row) => row.source === "stripe"))
+      throw new Error("This invoice was paid through Stripe. Refund it in Stripe first to void it.");
+    if (payments.length > 0)
       throw new Error("This invoice is marked paid. Mark it unpaid first to void it.");
+    if (await paymentOnItsWayFor(ctx, invoice._id)) throw new Error(OnItsWayRefusal);
     const now = Date.now();
     const reason = a.reason?.trim().slice(0, VoidReasonMaxLength);
     await discardInvoicePdfCopy(ctx, invoice);
@@ -626,9 +684,10 @@ export const voidInvoice = mutation({
 // The Dashboard's Invoices card, "Owed to you": every sent invoice still
 // owed, read by index so drafts and void ones are never scanned, and paid
 // ones left out. Overdue oldest first, the longest waited on at the top, then
-// Unpaid newest sent first, as the Invoices page orders them; and what they
-// come to together. A credit still to refund is owed the other way, so it
-// takes its amount off the total.
+// Unpaid newest sent first, as the Invoices page orders them, with a payment
+// on its way among the unpaid, since it is owed until the bank confirms it;
+// and what they come to together. A credit still to refund is owed the other
+// way, so it takes its amount off the total.
 export const dashboard = query({
   args: { today },
   handler: async (ctx, a) => {
@@ -640,7 +699,9 @@ export const dashboard = query({
       .collect();
     const rows = await invoiceRows(ctx, sent, a.today);
     const overdue = rows.filter((row) => row.standing === "overdue").sort(oldestSentFirst);
-    const unpaid = rows.filter((row) => row.standing === "unpaid").sort(newestSentFirst);
+    const unpaid = rows
+      .filter((row) => row.standing === "unpaid" || row.standing === "on_its_way")
+      .sort(newestSentFirst);
     const owedCents = [...overdue, ...unpaid].reduce((sum, row) => sum + row.amountDueCents, 0);
     return { owedCents, overdue, unpaid };
   },
@@ -648,8 +709,8 @@ export const dashboard = query({
 
 // Invoices as every list shows them: the row title, the customer, the amount
 // due tax included, and the standing as of `today`, read from the invoice's
-// payment each time and never stored. Only a sent invoice can have one, so a
-// draft or void one is not asked.
+// payments and any bank payment on its way each time and never stored. Only
+// a sent invoice can have one, so a draft or void one is not asked.
 async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: string) {
   const customerNames = new Map<Id<"customers">, string>();
   const customerName = async (invoice: Doc<"invoices">) => {
@@ -665,8 +726,10 @@ async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: st
   return Promise.all(
     invoices.map(async (invoice) => {
       const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
-      const hasPayment =
-        invoice.state === "sent" && (await paymentFor(ctx, invoice._id)) !== null;
+      const sent = invoice.state === "sent";
+      const hasPayment = sent && (await paymentFor(ctx, invoice._id)) !== null;
+      const hasPaymentOnItsWay =
+        sent && !hasPayment && (await paymentOnItsWayFor(ctx, invoice._id)) !== null;
       return {
         invoiceId: invoice._id,
         customerId: invoice.customerId,
@@ -683,7 +746,13 @@ async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: st
         customerName: await customerName(invoice),
         amountDueCents,
         standing: invoiceStanding(
-          { state: invoice.state, sentAt: invoice.sentAt, amountDueCents, hasPayment },
+          {
+            state: invoice.state,
+            sentAt: invoice.sentAt,
+            amountDueCents,
+            hasPayment,
+            hasPaymentOnItsWay,
+          },
           today,
         ),
         sentAt: invoice.sentAt ?? null,
@@ -831,6 +900,9 @@ function refuseSend(blockers: readonly InvoiceSendBlocker[]) {
     message: blockers.map(invoiceSendBlockerMessage).join(" "),
   });
 }
+
+// Why Mark paid and Void wait while a bank payment confirms.
+const OnItsWayRefusal = "A bank payment is on its way through Stripe. Wait for it to confirm.";
 
 const TitleMaxLength = 200;
 const VoidReasonMaxLength = 500;

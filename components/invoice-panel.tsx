@@ -104,8 +104,10 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
   // An amount typed in the draft that cannot be read yet (InvoiceDraftLines).
   const [unreadable, setUnreadable] = useState(false);
   const isDraft = invoice.state === "draft";
-  // Void is refused while a payment stands: marking it unpaid comes first.
-  const voidable = invoice.state === "sent" && invoice.payment === null;
+  // Void is refused while a payment stands, marking it unpaid coming first,
+  // and while a bank payment is on its way through Stripe.
+  const voidable =
+    invoice.state === "sent" && invoice.payment === null && invoice.onItsWay === null;
   // A sent or void invoice has a PDF copy; a draft has none.
   const pdf = usePdfDownload(isDraft ? null : { invoiceId: invoice.invoiceId });
   const shownRefusal = refusal || pdf.fault;

@@ -94,10 +94,13 @@ export function InvoicePaper({
           <div className="pd-scope-label">HOW TO PAY</div>
           <div className="pd-scope">
             <p>
-              Zelle: send to {invoice.zelleEmail}. The payment shows as{" "}
-              {ExpandBusiness.letterheadName}.
+              Zelle: send to the Zelle® tag {invoice.zelleTag} from your banking app. The
+              payment shows as {ExpandBusiness.letterheadName}.
             </p>
-            <p>Check: payable to {ExpandBusiness.letterheadName}, handed to us in person.</p>
+            <p>
+              Check: payable to {ExpandBusiness.letterheadName}, handed to us in person
+              {invoice.mailingAddress ? ` or mailed to ${invoice.mailingAddress}` : ""}.
+            </p>
           </div>
         </div>
 

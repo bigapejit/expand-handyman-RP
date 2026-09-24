@@ -17,9 +17,10 @@ type OwedRow = Dashboard["overdue"][number];
 
 // The Dashboard's Invoices card, "Owed to you", drawn as the Proposals card
 // is: what every sent invoice still owed comes to, then the Overdue ones, the
-// longest waited on first, and the Unpaid ones, newest sent first. Paid,
-// draft and void invoices never show. Every row opens the invoice in its
-// panel on its site's Invoices tab.
+// longest waited on first, and the Unpaid ones, newest sent first, a payment
+// on its way among them in its own chip, since it is owed until the bank
+// confirms it. Paid, draft and void invoices never show. Every row opens the
+// invoice in its panel on its site's Invoices tab.
 export function DashboardInvoices() {
   const today = usePacificToday();
   const invoices = useQuery(api.invoices.dashboard, { today });

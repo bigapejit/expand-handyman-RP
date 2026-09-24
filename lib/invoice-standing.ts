@@ -5,6 +5,9 @@
 //
 // - a draft or a void invoice has none;
 // - one with a payment recorded, or with nothing due, is Paid;
+// - one with a bank payment Stripe has accepted and the bank not yet
+//   confirmed is Payment on its way (spec #121, "Standing and the paper"),
+//   and never Overdue, so nobody chases money that is coming;
 // - one still unpaid more than seven full days after the day it was sent is
 //   Overdue: sent on the 1st, it reads Overdue from the 9th;
 // - anything else sent is Unpaid, a credit included, until it is marked paid.
@@ -13,7 +16,7 @@
 // boundary falls at Pacific midnight whatever the server's clock, and a
 // daylight-time change in between moves nothing.
 
-export type Standing = "unpaid" | "overdue" | "paid";
+export type Standing = "unpaid" | "overdue" | "on_its_way" | "paid";
 
 // Days past the sent day an unpaid invoice may run before it reads Overdue.
 export const OverdueAfterDays = 7;
@@ -51,12 +54,17 @@ export function invoiceStanding(
     amountDueCents: number;
     // Whether a payment is recorded on it.
     hasPayment: boolean;
+    // Whether a bank payment is on its way through Stripe. A returned one no
+    // longer is, and the Overdue rule counts from the sent day again as if it
+    // had never been.
+    hasPaymentOnItsWay: boolean;
   },
   // Today, as `pacificDay` writes it.
   today: string,
 ): Standing | null {
   if (invoice.state !== "sent") return null;
   if (invoice.hasPayment || invoice.amountDueCents === 0) return "paid";
+  if (invoice.hasPaymentOnItsWay) return "on_its_way";
   if (invoice.sentAt === undefined || invoice.sentAt === null) return "unpaid";
   const daysSinceSent = dayNumber(today) - dayNumber(pacificDay(invoice.sentAt));
   return daysSinceSent > OverdueAfterDays ? "overdue" : "unpaid";

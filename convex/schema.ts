@@ -421,27 +421,80 @@ export default defineSchema({
     .index("by_invoice", ["invoiceId"])
     .index("by_token", ["token"]),
   // A **Payment** (CONTEXT.md): that a sent invoice's money arrived, and
-  // nothing about how much or how. At most one per invoice, which Mark paid
-  // checks before it writes one. Never edited: Mark unpaid deletes the row,
-  // and refuses one the app wrote from Stripe. Its presence is what makes the
-  // invoice's **Standing** read Paid.
+  // nothing about how much. The owner's Mark paid writes one only on an
+  // invoice that holds none, so the owner's rows stay one per invoice; the
+  // app writes one whenever Stripe says money arrived, even on an invoice
+  // already paid or void, because money that moved is never hidden. So an
+  // invoice may hold more than one: its **Standing** reads Paid on any of
+  // them, the paper stamps the earliest day, and the panel lists them all.
+  // Never edited: Mark unpaid deletes the owner's row and refuses one the app
+  // wrote, which goes only when a full refund or a lost dispute sends the
+  // money back.
   payments: defineTable({
     invoiceId: v.id("invoices"),
     // The Pacific calendar day the money arrived, `YYYY-MM-DD`
-    // (lib/invoice-standing.ts, `pacificDay`).
+    // (lib/invoice-standing.ts, `pacificDay`). For a Stripe row, the day of
+    // the event that confirmed it, never the day the customer pressed Pay.
     receivedOn: v.string(),
-    // Who recorded it: the owner by hand, or, once Pay now exists, the app
-    // from Stripe.
+    // Who recorded it: the owner by hand, or the app from **Pay now**.
     source: v.union(v.literal("owner"), v.literal("stripe")),
     // The recorder's sign-in subject, or `stripe`.
     recordedBy: v.string(),
     recordedAt: v.number(),
-    // The Stripe payment a `stripe` row came from, so a webhook delivered
-    // twice finds the row it already wrote. Nothing writes it yet.
+    // How the money moved, on a `stripe` row only: the owner's rows say
+    // nothing about it, since Zelle and a check are both just money in.
+    method: v.optional(v.union(v.literal("bank"), v.literal("card"))),
+    // The Stripe payment a `stripe` row came from, always there on one, so a
+    // webhook delivered twice finds the row it already wrote.
     stripePaymentIntentId: v.optional(v.string()),
   })
     .index("by_invoice", ["invoiceId"])
     .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
+  // One **Pay now** through Stripe whose Checkout Session completed: the
+  // payment's life before its `payments` row exists and after it is gone. A
+  // bank payment is `on_its_way` until the bank confirms it, which is what
+  // makes the invoice read **Payment on its way**; `paid` while its
+  // `payments` row stands; and `returned` (a **Returned payment**),
+  // `refunded` or `dispute_lost` once the money has gone back, which the
+  // panel keeps as a grey note until the invoice is paid, on its way again or
+  // void. Written only by what Stripe tells the app, never by the owner.
+  stripePayments: defineTable({
+    invoiceId: v.id("invoices"),
+    stripeCheckoutSessionId: v.string(),
+    stripePaymentIntentId: v.string(),
+    method: v.union(v.literal("bank"), v.literal("card")),
+    // What Stripe took, in whole cents. Only the sentences read it: the
+    // payment itself has no amount, and the invoice's Amount Due is the
+    // figure owed.
+    amountCents: v.number(),
+    // When Stripe accepted the payment: the session's completion.
+    acceptedAt: v.number(),
+    status: v.union(
+      v.literal("on_its_way"),
+      v.literal("paid"),
+      v.literal("returned"),
+      v.literal("refunded"),
+      v.literal("dispute_lost"),
+    ),
+    // Once returned, refunded or lost: when, and the bank's or Stripe's own
+    // words for why, which only the owner reads.
+    endedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    // The `payments` row this payment wrote, while it stands.
+    paymentId: v.optional(v.id("payments")),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_checkout_session", ["stripeCheckoutSessionId"])
+    .index("by_payment_intent", ["stripePaymentIntentId"]),
+  // Every Stripe webhook event the app applied, keyed by Stripe's `evt_` id,
+  // so a redelivered event is found here and changes nothing. A refused
+  // delivery (a bad signature, a body that cannot be read) is answered and
+  // logged, never stored, as the Thumbtack route treats a wrong secret.
+  stripeEvents: defineTable({
+    eventId: v.string(),
+    type: v.string(),
+    receivedAt: v.number(),
+  }).index("by_event", ["eventId"]),
   // Counters that run across the whole business, one row per name. `invoice`
   // holds the last Invoice number given; the first is 1001.
   sequences: defineTable({
@@ -451,9 +504,10 @@ export default defineSchema({
   // The business's few settings the owner edits in the app, in one row. Read
   // at render time, so a change reaches every paper without a deploy.
   settings: defineTable({
-    // The Zelle address the invoice paper prints; absent until the owner sets
-    // one, when the paper prints lib/expand-business.ts's default.
-    zelleEmail: v.optional(v.string()),
+    // The **Zelle tag** the invoice paper and the Pay sheet name, stored as
+    // Zelle reads it, in lower case; absent until the owner sets one, when
+    // both print lib/expand-business.ts's default.
+    zelleTag: v.optional(v.string()),
   }),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
   // paper with, at `/paper/<token>`. One per render, expiring within minutes

@@ -4,7 +4,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { invoiceStamp, paymentFor } from "./payments";
 import { emailOutcome } from "./schema";
-import { zelleEmail } from "./settings";
+import { zelleTag } from "./settings";
+import { ExpandBusiness } from "../lib/expand-business";
 import { invoiceNumberLabel } from "../lib/invoice-money";
 import type { PaperInvoice } from "../lib/invoice-paper";
 
@@ -74,16 +75,14 @@ export async function invoiceStillOpenedBy(
 }
 
 // A sent or void invoice as its paper, read wholly from what Send fixed and
-// stamped from its payment or its Void, with the Zelle address as the
-// settings hold it now. A draft has no fixed paper, and gets none here.
+// stamped from its earliest payment or its Void, with the Zelle tag as the
+// settings hold it now and the mailing address as the business has it. A
+// draft has no fixed paper, and gets none here.
 export async function fixedInvoicePaperOf(
   ctx: QueryCtx,
   invoice: Doc<"invoices">,
 ): Promise<PaperInvoice | null> {
-  const [zelle, payment] = await Promise.all([
-    zelleEmail(ctx),
-    paymentFor(ctx, invoice._id),
-  ]);
+  const [zelle, payment] = await Promise.all([zelleTag(ctx), paymentFor(ctx, invoice._id)]);
   return fixedInvoicePaper(invoice, zelle, payment);
 }
 
@@ -104,7 +103,8 @@ export function fixedInvoicePaper(
     proposalName: frozen.proposalName,
     lines: invoice.lines,
     taxRate: invoice.taxRate,
-    zelleEmail: zelle,
+    zelleTag: zelle,
+    mailingAddress: ExpandBusiness.mailingAddress,
     stamp: invoiceStamp(invoice, payment),
   };
 }

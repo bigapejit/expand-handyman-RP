@@ -295,7 +295,8 @@ describe("The invoice link", () => {
         proposalName: "Fix gate",
         lines: [{ description: "Deposit (50%) for Fix gate", cents: 27_500 }],
         taxRate: 0.089,
-        zelleEmail: "pay@expandhandyman.com",
+        zelleTag: "expandhandyman",
+        mailingAddress: null,
         stamp: null,
       },
     });
@@ -308,16 +309,16 @@ describe("The invoice link", () => {
     expect(await t.query(api.signingLinks.resolve, { token })).toBe("proposal");
   });
 
-  test("prints the Zelle email the settings hold", async () => {
+  test("prints the Zelle tag the settings hold", async () => {
     const { t, sent, approve, deliver, letters, linkIn } = fixture();
     const { token } = await sent();
     await approve(token);
     await deliver();
-    await t.run((ctx) => ctx.db.insert("settings", { zelleEmail: "billing@expandhandyman.com" }));
+    await t.run((ctx) => ctx.db.insert("settings", { zelleTag: "expand-handyman-wa" }));
     const page = await t.query(api.invoiceLinks.page, {
       token: linkIn(letters("invoice_link")[0]),
     });
-    expect(page?.paper.zelleEmail).toBe("billing@expandhandyman.com");
+    expect(page?.paper.zelleTag).toBe("expand-handyman-wa");
   });
 
   test("a link a re-send has ended is still an invoice's, and opens nothing", async () => {
