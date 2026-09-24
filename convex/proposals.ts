@@ -16,6 +16,7 @@ import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
 import {
+  draftFieldsOf,
   freezeOffer,
   offerOf,
   offerTitle,
@@ -463,12 +464,9 @@ export const update = mutation({
     // Measured against the total this same edit leaves, so a set amount typed
     // alongside a change of solutions or rate is judged on what they come to.
     if (a.depositCents !== undefined) {
-      const edited = { ...proposal, ...patch };
-      const money = proposalMoney(
-        (await liveSolutions(ctx, edited)).map(priceStoredSolution),
-        edited.tax,
-      );
-      refuse(depositCentsFault(a.depositCents, money.totalCents));
+      const offer = await offerOf(ctx, { ...proposal, ...patch });
+      if (!offer) throw new Error("Site not found.");
+      refuse(depositCentsFault(a.depositCents, offer.totalCents));
       patch.depositCents = a.depositCents;
     }
 
@@ -496,11 +494,11 @@ export const setRecommended = mutation({
 });
 
 // A new draft offering the same work on the same terms: the same solutions in
-// the same order, deposit, tax and notes. It carries neither the name nor the
-// Recommended mark, which are what tell two proposals apart. Unlike FRSG this
-// works from any state, so trying again after a decline or repricing approved
-// work starts from what was offered; the copy reads the solutions live like
-// any draft.
+// the same order, deposit, tax and notes, read off the proposal's offer. It
+// carries neither the name nor the Recommended mark, which are what tell two
+// proposals apart. Unlike FRSG this works from any state, so trying again
+// after a decline or repricing approved work starts from what was offered;
+// the copy reads the solutions live like any draft.
 export const duplicate = mutation({
   args: { proposalId: v.id("proposals") },
   handler: async (ctx, a) => {
@@ -508,19 +506,16 @@ export const duplicate = mutation({
     const proposal = await requireProposal(ctx, a.proposalId);
     const site = await ctx.db.get(proposal.siteId);
     if (!site) throw new Error("Site not found.");
-    const solutions = await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)));
+    const offer = await offerOf(ctx, proposal);
+    if (!offer) throw new Error("Site not found.");
     const now = Date.now();
     return ctx.db.insert("proposals", {
       siteId: site._id,
       // A copy is a new proposal to the customer, so it takes the next number.
       number: await issueProposalNumber(ctx, site),
       state: "draft",
-      solutionIds: solutions.flatMap((solution) => (solution ? [solution._id] : [])),
       recommended: false,
-      depositPercent: proposal.depositPercent,
-      ...(proposal.depositCents === undefined ? {} : { depositCents: proposal.depositCents }),
-      tax: proposal.tax,
-      ...(proposal.notes === undefined ? {} : { notes: proposal.notes }),
+      ...draftFieldsOf(offer),
       createdAt: now,
       updatedAt: now,
     });
@@ -1071,14 +1066,6 @@ async function verifiedSolutions(
       throw new Error("A proposal can only offer solutions written for its own site.");
   }
   return unique;
-}
-
-// A draft's solutions as it offers them, read live. An id naming a solution
-// since deleted is simply not there.
-async function liveSolutions(ctx: QueryCtx, proposal: Doc<"proposals">) {
-  return (await Promise.all(proposal.solutionIds.map((id) => ctx.db.get(id)))).flatMap(
-    (solution) => (solution ? [solution] : []),
-  );
 }
 
 function proposalsAtSite(ctx: QueryCtx, siteId: Id<"sites">) {
