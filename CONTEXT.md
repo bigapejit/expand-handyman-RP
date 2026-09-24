@@ -5,10 +5,10 @@ Expand Handyman prepares documents for customers to review and sign.
 ## Language
 
 **Customer**:
-A person receiving handyman services, added by the owner by hand or made by a Thumbtack lead arriving. Has zero or more sites; a customer can exist with no site until a proposal is needed.
+The person who pays for handyman work and signs its paperwork, added by the owner by hand or made by a Thumbtack lead arriving. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
 
 **Site**:
-One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. A customer may have many. Every proposal is for exactly one site; documents are not.
+One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many. Documents belong to the customer, not the site.
 _Avoid_: Property, address, location, service address (as the name of the record)
 
 **Site name**:
@@ -37,6 +37,9 @@ The record of every view and owner preview of a document or proposal: who opened
 
 **Signed document**:
 The completed PDF containing the customer's signature, retained for later download.
+
+**Photo**:
+A picture the owner took at a site, kept on the site with the time it was taken. It has no caption. Only the owner sees photos.
 
 **Solution**:
 One priced piece of handyman work at a site: a title, a scope of work and its line items. Its price is never typed; it is worked out from the line items and the markup, rounded up to the whole dollar, plus any material allowance. A solution with neither line items nor a material allowance has no price, which is different from a price of $0.
