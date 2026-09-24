@@ -620,7 +620,6 @@ describe("The staff paper for an invoice", () => {
     const { invoiceId } = await approved(await customer());
     await owner.query(api.invoices.paper, { invoiceId });
     expect(await t.run((ctx) => ctx.db.query("proposalViews").collect())).toEqual([]);
-    expect(await t.run((ctx) => ctx.db.query("documentViews").collect())).toEqual([]);
   });
 });
 

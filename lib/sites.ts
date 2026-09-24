@@ -1,4 +1,4 @@
-import { calendarDay } from "./document-lines";
+import { calendarDay } from "./dashboard-lines";
 
 // A Site's address as stored: the parts Google returns, with no formatted
 // string beside them. One helper prints it, so every surface reads the same.

@@ -9,7 +9,6 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { isOwner } from "./auth";
-import { seenUpdate } from "./documents";
 import { invoiceLinkForToken } from "./invoiceLinks";
 import { emailOutcome } from "./schema";
 import { proposalDisplayName } from "../lib/proposal-pricing";
@@ -23,9 +22,9 @@ import { offeredLineItems } from "../lib/solution-pricing";
 // page. Rows are ended rather than deleted, so they stay as the record of what
 // went where and how it finished.
 //
-// Nothing public here is owner-gated: the token is the whole access model, as
-// a document's is. The owner opening a link is told apart from the customer by
-// their Clerk session, and logged as an owner preview (ADR 0001).
+// Nothing public here is owner-gated: the token is the whole access model.
+// The owner opening a link is told apart from the customer by their Clerk
+// session, and logged as an owner preview (ADR 0001).
 
 export function signingLinksForProposal(ctx: QueryCtx, proposalId: Id<"proposals">) {
   return ctx.db
@@ -203,24 +202,15 @@ function decision(proposal: Doc<"proposals">): Pick<PaperProposal, "signature" |
   return {};
 }
 
-// What the `/sign/<token>` page is looking at. Documents, proposals and
-// invoices share the address, so the page asks here first and draws whichever
-// it is. A token naming nothing is left to the document page, which has always
-// said "This link is no longer live" for one; an ended proposal link says
-// the same, and so does the invoice page for an ended invoice link.
+// What the `/sign/<token>` page is looking at. Proposals and invoices share
+// the address, so the page asks here first and draws whichever it is. A token
+// naming nothing, like an ended proposal link, gets "This link is no longer
+// live"; the invoice page says the same for an ended invoice link.
 export const resolve = query({
   args: { token: v.string() },
-  handler: async (
-    ctx,
-    a,
-  ): Promise<"document" | "proposal" | "invoice" | "ended" | "unknown"> => {
+  handler: async (ctx, a): Promise<"proposal" | "invoice" | "ended" | "unknown"> => {
     const token = a.token.trim();
     if (!token) return "unknown";
-    const document = await ctx.db
-      .query("documents")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .unique();
-    if (document) return "document";
     if (await paperStillOpenedBy(ctx, token)) return "proposal";
     // An invoice link's own page says when it no longer opens anything, in
     // words about an invoice rather than an answer the customer owes.
@@ -281,7 +271,26 @@ export const opened = mutation({
 
 const seenArgs = { viewId: v.id("proposalViews"), token: v.string() };
 
-// The heartbeat and the close beacon, counted exactly as documents count them.
+// Heartbeats arrive every 20 seconds while the tab is visible. A longer gap
+// since the last one means the tab was hidden, and that time is not counted
+// as reading.
+export const MAX_SEEN_STEP = 30_000;
+
+// What one heartbeat or beacon changes on a view, or nothing when the clock
+// has not moved forward.
+export function seenUpdate(
+  view: { lastSeenAt: number; viewedMs: number },
+  now: number,
+): { lastSeenAt: number; viewedMs: number } | null {
+  const gap = now - view.lastSeenAt;
+  if (gap <= 0) return null;
+  return {
+    lastSeenAt: now,
+    viewedMs: view.viewedMs + (gap <= MAX_SEEN_STEP ? gap : 0),
+  };
+}
+
+// The heartbeat and the close beacon.
 async function touchView(ctx: MutationCtx, a: { viewId: Id<"proposalViews">; token: string }) {
   const view = await ctx.db.get(a.viewId);
   if (!view || view.token !== a.token) return;

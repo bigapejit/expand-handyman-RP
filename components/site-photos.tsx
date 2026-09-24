@@ -39,7 +39,7 @@ type Upload = { key: string; file: File; failure?: string };
 // is newest first by the time each photo shows.
 export function SitePhotos({ siteId }: { siteId: Id<"sites"> }) {
   const photos = useQuery(api.photos.forSite, { siteId });
-  const getUploadUrl = useMutation(api.documents.uploadUrl);
+  const getUploadUrl = useMutation(api.photos.uploadUrl);
   const add = useMutation(api.photos.add);
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);

@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 import { ProposalStateChip } from "@/components/proposal-chips";
 import { api } from "@/convex/_generated/api";
-import { openedLine } from "@/lib/document-lines";
+import { openedLine } from "@/lib/dashboard-lines";
 import { formatCents } from "@/lib/money";
 import { proposalDecidedLine, proposalPanelHref, sentLine } from "@/lib/proposals";
 

@@ -10,7 +10,7 @@ import { api } from "@/convex/_generated/api";
 // half-loaded pages.
 export function OwnerGate({ children }: { children: React.ReactNode }) {
   const auth = useConvexAuth();
-  const access = useQuery(api.documents.access, auth.isAuthenticated ? {} : "skip");
+  const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");
 
   if (auth.isLoading || (auth.isAuthenticated && access === undefined)) {
     return (

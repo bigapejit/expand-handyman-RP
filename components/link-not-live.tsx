@@ -1,7 +1,7 @@
 // What a signing or invoice link says once it opens nothing: withdrawn,
 // replaced by a re-send, or never a link at all. It never says why: that is
 // Expand's to tell the customer, not a URL's.
-export function LinkNotLive({ what }: { what: "document" | "proposal" | "invoice" }) {
+export function LinkNotLive({ what }: { what: "proposal" | "invoice" }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center gap-3 px-6 py-16">
       <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">

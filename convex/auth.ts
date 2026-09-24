@@ -1,4 +1,4 @@
-import type { QueryCtx, MutationCtx, ActionCtx } from "./_generated/server";
+import { query, type QueryCtx, type MutationCtx, type ActionCtx } from "./_generated/server";
 
 // Who counts as the Owner (CONTEXT.md): the Clerk account pinned in
 // OWNER_CLERK_ID, any account whose verified email is listed in OWNER_EMAIL,
@@ -31,3 +31,10 @@ export async function requireOwner(ctx: QueryCtx | MutationCtx | ActionCtx) {
       "Owner access required. Sign in with the authorized account.",
     );
 }
+
+// The staff app's gate: whether the signed-in account is the Owner. The
+// sidebar shares the answer to know when its owner-only badges may ask.
+export const access = query({
+  args: {},
+  handler: async (ctx) => ({ owner: await isOwner(ctx) }),
+});
