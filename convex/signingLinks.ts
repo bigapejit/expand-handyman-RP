@@ -9,9 +9,11 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { isOwner } from "./auth";
-import { invoiceLinkForToken } from "./invoiceLinks";
+import { invoiceLinkForToken, invoiceLinksFor } from "./invoiceLinks";
 import { sentPaper } from "./offers";
+import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { emailOutcome } from "./schema";
+import { invoiceMoney } from "../lib/invoice-money";
 import { noticeToCustomerApplies } from "../lib/proposal-signing";
 
 // A proposal's **Signing link** (CONTEXT.md), ported from FRSG's
@@ -148,10 +150,40 @@ export const resolve = query({
   },
 });
 
+// The deposit an approved proposal's bar offers to take there and then: the
+// **Deposit invoice**'s live **Invoice link** and its Amount Due, while that
+// invoice still owes and nothing is on its way. Null when the proposal had no
+// Deposit, and as soon as the deposit is paid, on its way or void, so the bar
+// never offers a payment that is not owed. The link is whichever the invoice
+// has live now: a re-send moves the button to the new one, and an ended link
+// is never offered, since it can no longer pay.
+type DepositToPay = { token: string; amountDueCents: number } | null;
+
+async function depositToPay(ctx: QueryCtx, proposal: Doc<"proposals">): Promise<DepositToPay> {
+  if (proposal.state !== "approved") return null;
+  const invoice = (
+    await ctx.db
+      .query("invoices")
+      .withIndex("by_proposal", (q) => q.eq("proposalId", proposal._id))
+      .collect()
+  ).find((row) => row.kind === "deposit");
+  if (!invoice || invoice.state !== "sent") return null;
+  const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
+  if (amountDueCents <= 0) return null;
+  if ((await paymentFor(ctx, invoice._id)) || (await paymentOnItsWayFor(ctx, invoice._id)))
+    return null;
+  const live = (await invoiceLinksFor(ctx, invoice._id)).find(
+    (link) => link.endedAt === undefined,
+  );
+  return live ? { token: live.token, amountDueCents } : null;
+}
+
 // What the customer's link shows: the paper, stamped with their answer once
-// they have given one, and whether the sign bar must show Washington's Notice
-// to Customer. A query, so reading it writes nothing; the page reports the
-// open itself through `opened`.
+// they have given one, whether the sign bar must show Washington's Notice to
+// Customer, and once they have signed, the deposit the bar offers to take. A
+// query, so reading it writes nothing; the page reports the open itself
+// through `opened`, and following the deposit button logs nothing either,
+// as no invoice link ever does.
 export const page = query({
   args: { token: v.string() },
   handler: async (ctx, a) => {
@@ -161,6 +193,7 @@ export const page = query({
     const site = await ctx.db.get(opened.proposal.siteId);
     return {
       paper,
+      deposit: await depositToPay(ctx, opened.proposal),
       noticeRequired:
         // The frozen total, read the way Approve reads it, so the notice the
         // page shows is the notice Approve asks to have been ticked.

@@ -547,39 +547,44 @@ describe("Re-send", () => {
   });
 });
 
-describe("The Zelle setting", () => {
-  test("reads pay@expandhandyman.com until the owner sets another, which the paper then prints", async () => {
+describe("The Zelle tag setting", () => {
+  test("reads expandhandyman until the owner sets another, which the paper and its link then print", async () => {
     const { t, owner, customer, approved, links } = fixture();
     const { invoiceId } = await approved(await customer());
     const [link] = await links(invoiceId);
-    expect(await owner.query(api.settings.get, {})).toEqual({
-      zelleEmail: "pay@expandhandyman.com",
-    });
+    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expandhandyman" });
+    const before = await t.query(api.invoiceLinks.page, { token: link.token });
+    expect(before?.paper.zelleTag).toBe("expandhandyman");
 
-    await owner.mutation(api.settings.setZelleEmail, { zelleEmail: " Billing@ExpandHandyman.com " });
-    expect(await owner.query(api.settings.get, {})).toEqual({
-      zelleEmail: "billing@expandhandyman.com",
-    });
+    // Zelle ignores case, so the tag is kept as Zelle reads it.
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: " Expand-Handyman-WA " });
+    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expand-handyman-wa" });
     const page = await t.query(api.invoiceLinks.page, { token: link.token });
-    expect(page?.paper.zelleEmail).toBe("billing@expandhandyman.com");
+    expect(page?.paper.zelleTag).toBe("expand-handyman-wa");
     const paper = await owner.query(api.invoices.paper, { invoiceId });
-    expect(paper?.zelleEmail).toBe("billing@expandhandyman.com");
+    expect(paper?.zelleTag).toBe("expand-handyman-wa");
 
     // One row, however often it is changed.
-    await owner.mutation(api.settings.setZelleEmail, { zelleEmail: "pay2@expandhandyman.com" });
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: "expandhandyman2" });
     expect(await t.run((ctx) => ctx.db.query("settings").collect())).toHaveLength(1);
   });
 
-  test("goes back to the default when cleared, and refuses what is not an email", async () => {
+  test("goes back to the default when cleared", async () => {
     const { owner } = fixture();
-    await owner.mutation(api.settings.setZelleEmail, { zelleEmail: "billing@expandhandyman.com" });
-    await owner.mutation(api.settings.setZelleEmail, { zelleEmail: "  " });
-    expect(await owner.query(api.settings.get, {})).toEqual({
-      zelleEmail: "pay@expandhandyman.com",
-    });
-    await expect(
-      owner.mutation(api.settings.setZelleEmail, { zelleEmail: "not an email" }),
-    ).rejects.toThrow(/email address/);
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: "expand-handyman-wa" });
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: "  " });
+    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expandhandyman" });
+  });
+
+  test("refuses a tag Zelle would refuse, in Zelle's own rule, and keeps the one before", async () => {
+    const { t, owner } = fixture();
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: "expand-handyman-wa" });
+    for (const tag of ["short", "a".repeat(41), "pay@expandhandyman.com", "expand handyman"])
+      await expect(owner.mutation(api.settings.setZelleTag, { zelleTag: tag })).rejects.toThrow(
+        "A Zelle tag is 6 to 40 letters, digits and hyphens, like expandhandyman.",
+      );
+    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expand-handyman-wa" });
+    expect(await t.run((ctx) => ctx.db.query("settings").collect())).toHaveLength(1);
   });
 });
 
@@ -610,7 +615,8 @@ describe("The staff paper for an invoice", () => {
       proposalName: "Fix gate",
       lines: [{ description: "Fix gate", cents: 55_000 }],
       taxRate: 0.089,
-      zelleEmail: "pay@expandhandyman.com",
+      zelleTag: "expandhandyman",
+      mailingAddress: null,
       stamp: null,
     });
   });
@@ -647,7 +653,7 @@ describe("A stranger", () => {
     await expect(stranger.action(api.invoices.resend, { invoiceId })).rejects.toThrow(refused);
     await expect(stranger.query(api.settings.get, {})).rejects.toThrow(refused);
     await expect(
-      stranger.mutation(api.settings.setZelleEmail, { zelleEmail: "thief@example.com" }),
+      stranger.mutation(api.settings.setZelleTag, { zelleTag: "thief-tag" }),
     ).rejects.toThrow(refused);
   });
 });

@@ -1,8 +1,11 @@
 "use client";
 
+import type { FunctionReturnType } from "convex/server";
 import { useEffect, useState } from "react";
 
+import type { api } from "@/convex/_generated/api";
 import { ExpandBusiness, WashingtonNoticeToCustomer } from "@/lib/expand-business";
+import { formatCentsExact } from "@/lib/money";
 import {
   HelpBeforeNumber,
   paperDate,
@@ -11,6 +14,7 @@ import {
   type PaperProposal,
 } from "@/lib/proposal-paper";
 import { SigningConsent, signingFaultMessage, signingFaults } from "@/lib/proposal-signing";
+import { signingPath } from "@/lib/signing-link";
 
 // The sign bar on a proposal's signing link: what the customer does on the
 // paper, pinned to the bottom of the screen where a thumb already is. FRSG's
@@ -31,7 +35,8 @@ import { SigningConsent, signingFaultMessage, signingFaults } from "@/lib/propos
 // records verbatim, and the checks run before Sign is let through are the same
 // `signingFaults` the mutation refuses with, so the bar and the server can
 // never disagree about what is missing. Once the customer has decided, the bar
-// stops asking.
+// stops asking; once they have signed, it offers the deposit, while the
+// deposit invoice still owes, as the one thing left to do (**Pay now**).
 
 export type SignatureInput = {
   signerName: string;
@@ -43,9 +48,14 @@ export type SignatureInput = {
 // than by the bar, because the Sign here tag on the paper opens it too.
 export type SignBarOpen = "sign" | "decline" | null;
 
+// The deposit invoice the signed bar offers to pay: its live invoice link's
+// token and its Amount Due, or null (convex/signingLinks.ts, `depositToPay`).
+type DepositToPay = NonNullable<FunctionReturnType<typeof api.signingLinks.page>>["deposit"];
+
 export function ProposalSignBar({
   paper,
   noticeRequired,
+  deposit,
   open,
   busy,
   error,
@@ -57,6 +67,7 @@ export function ProposalSignBar({
 }: {
   paper: PaperProposal;
   noticeRequired: boolean;
+  deposit: DepositToPay;
   open: SignBarOpen;
   busy: boolean;
   // What the server said when it refused the act.
@@ -89,6 +100,23 @@ export function ProposalSignBar({
               ? `Signed by ${signature.signerName} · ${paperDate(signature.signedAt)}`
               : "Signed"}
           </span>
+          {deposit ? (
+            <>
+              <span className="paper-grow" />
+              {/* The invoice email carries the same link, so paying now is
+                  an offer, not the only way. */}
+              <span className="paper-bar-help paper-bar-aside">or pay later, from the email</span>
+              {/* The deposit invoice's own link, with the Pay sheet open on
+                  arrival. Opening it counts for nothing, as any invoice
+                  link's opening does. */}
+              <a
+                className="paper-btn paper-btn-primary"
+                href={`${signingPath(deposit.token)}?pay=1`}
+              >
+                Pay the {formatCentsExact(deposit.amountDueCents)} deposit
+              </a>
+            </>
+          ) : null}
         </div>
       </div>
     );

@@ -276,7 +276,7 @@ describe("The invoice link email", () => {
 });
 
 describe("The invoice link", () => {
-  test("opens the invoice paper for a sent invoice, logging nothing", async () => {
+  test("opens the invoice paper for a sent invoice, with its pay bar, logging nothing", async () => {
     const { t, sent, approve, deliver, letters, linkIn } = fixture();
     const { token } = await sent();
     await approve(token);
@@ -295,9 +295,19 @@ describe("The invoice link", () => {
         proposalName: "Fix gate",
         lines: [{ description: "Deposit (50%) for Fix gate", cents: 27_500 }],
         taxRate: 0.089,
-        zelleEmail: "pay@expandhandyman.com",
+        zelleTag: "expandhandyman",
+        mailingAddress: null,
         stamp: null,
       },
+      // The pay bar under it: $299.48 owed, so Pay by card is offered beside
+      // Pay by bank, and Stripe has nothing to tell yet.
+      payable: true,
+      ways: ["bank", "card"],
+      zelleTag: "expandhandyman",
+      mailingAddress: null,
+      invoiceNumber: "INV-1001",
+      amountDueCents: 29_948,
+      stripe: null,
     });
 
     // An invoice link is not a signing link: the proposal's view log never
@@ -308,16 +318,16 @@ describe("The invoice link", () => {
     expect(await t.query(api.signingLinks.resolve, { token })).toBe("proposal");
   });
 
-  test("prints the Zelle email the settings hold", async () => {
+  test("prints the Zelle tag the settings hold", async () => {
     const { t, sent, approve, deliver, letters, linkIn } = fixture();
     const { token } = await sent();
     await approve(token);
     await deliver();
-    await t.run((ctx) => ctx.db.insert("settings", { zelleEmail: "billing@expandhandyman.com" }));
+    await t.run((ctx) => ctx.db.insert("settings", { zelleTag: "expand-handyman-wa" }));
     const page = await t.query(api.invoiceLinks.page, {
       token: linkIn(letters("invoice_link")[0]),
     });
-    expect(page?.paper.zelleEmail).toBe("billing@expandhandyman.com");
+    expect(page?.paper.zelleTag).toBe("expand-handyman-wa");
   });
 
   test("a link a re-send has ended is still an invoice's, and opens nothing", async () => {

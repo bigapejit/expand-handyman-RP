@@ -2,17 +2,17 @@ import { ConvexError, v } from "convex/values";
 
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOwner } from "./auth";
-import { sendableEmail } from "../lib/customer";
-import { DefaultZelleEmail } from "../lib/expand-business";
+import { DefaultZelleTag } from "../lib/expand-business";
+import { readZelleTag, ZelleTagRule } from "../lib/pay-now";
 
 // The business's one row of settings (convex/schema.ts, `settings`), edited
 // by the owner from the Invoices page's header. There is no Settings page.
 
-// The Zelle address the invoice paper prints, read at render time so a
-// change reaches every paper, sent or not, without a deploy.
-export async function zelleEmail(ctx: QueryCtx): Promise<string> {
+// The **Zelle tag** the invoice paper and the Pay sheet name, read at render
+// time so a change reaches every paper, sent or not, without a deploy.
+export async function zelleTag(ctx: QueryCtx): Promise<string> {
   const settings = await ctx.db.query("settings").first();
-  return settings?.zelleEmail?.trim() || DefaultZelleEmail;
+  return settings?.zelleTag || DefaultZelleTag;
 }
 
 // The settings as the owner reads them, every one with its default filled in.
@@ -20,27 +20,25 @@ export const get = query({
   args: {},
   handler: async (ctx) => {
     await requireOwner(ctx);
-    return { zelleEmail: await zelleEmail(ctx) };
+    return { zelleTag: await zelleTag(ctx) };
   },
 });
 
-// The Zelle address the paper tells customers to pay. A blank field puts the
-// default back rather than printing nothing; anything that is not an email
-// address is refused, since the paper would print it to every customer.
-export const setZelleEmail = mutation({
-  args: { zelleEmail: v.string() },
+// The Zelle tag the paper and the Pay sheet tell customers to pay. A blank
+// field puts the default back rather than printing nothing; a tag Zelle's own
+// rule would refuse (lib/pay-now.ts, `readZelleTag`) is refused here, since
+// every customer would be sent to it.
+export const setZelleTag = mutation({
+  args: { zelleTag: v.string() },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
-    const typed = a.zelleEmail.trim();
-    const email = typed ? sendableEmail(typed) : null;
-    if (typed && email === null)
-      throw new ConvexError({
-        code: "invalid_email",
-        message: "Enter an email address, like pay@expandhandyman.com.",
-      });
+    const typed = a.zelleTag.trim();
+    const tag = typed ? readZelleTag(typed) : null;
+    if (typed && tag === null)
+      throw new ConvexError({ code: "invalid_zelle_tag", message: ZelleTagRule });
     const settings = await ctx.db.query("settings").first();
-    const zelle = email ?? undefined;
-    if (settings) await ctx.db.patch(settings._id, { zelleEmail: zelle });
-    else await ctx.db.insert("settings", { zelleEmail: zelle });
+    const zelle = tag ?? undefined;
+    if (settings) await ctx.db.patch(settings._id, { zelleTag: zelle });
+    else await ctx.db.insert("settings", { zelleTag: zelle });
   },
 });

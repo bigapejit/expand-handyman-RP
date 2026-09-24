@@ -34,6 +34,8 @@ import type * as signingLinks from "../signingLinks.js";
 import type * as sites from "../sites.js";
 import type * as solutions from "../solutions.js";
 import type * as staff from "../staff.js";
+import type * as stripeEmails from "../stripeEmails.js";
+import type * as stripePayments from "../stripePayments.js";
 
 import type {
   ApiFromModules,
@@ -68,6 +70,8 @@ declare const fullApi: ApiFromModules<{
   sites: typeof sites;
   solutions: typeof solutions;
   staff: typeof staff;
+  stripeEmails: typeof stripeEmails;
+  stripePayments: typeof stripePayments;
 }>;
 
 /**
