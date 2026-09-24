@@ -1049,6 +1049,47 @@ describe("A Returned payment", () => {
     });
   });
 
+  test("while another bank payment was on its way, which came back too before the letters went, tells the owner so and leaves the customer to that one's letter", async () => {
+    const f = fixture();
+    const { invoiceId } = await f.approved();
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId)));
+    vi.setSystemTime(pdt(9, 2));
+    const other = { id: "cs_test_2", payment_intent: "pi_test_2" };
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId, other)));
+    vi.setSystemTime(pdt(9, 5));
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId)),
+      "insufficient funds",
+    );
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId, other)),
+      "account closed",
+    );
+    await f.deliver();
+
+    const owner = (paymentIntentId: string) =>
+      f
+        .letters("returned_payment_owner")
+        .find((letter) => letter.headers["idempotency-key"].includes(paymentIntentId))?.body.text;
+    expect(owner("pi_test_1")).toBe(
+      [
+        "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
+        "",
+        "Another bank payment of $299.48 accepted Sept 2 was on its way when this one came back, so the customer (Maria Delgado, maria@example.com) was not asked to pay again here. It has since come back too, and its own letters went.",
+        "",
+        "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
+      ].join("\n"),
+    );
+    // The second return found nothing else on its way, so its letters ask
+    // the customer, once.
+    expect(owner("pi_test_2")).toContain(
+      "The customer (Maria Delgado, maria@example.com) has been emailed to pay again.",
+    );
+    const customer = f.letters("returned_payment_customer");
+    expect(customer).toHaveLength(1);
+    expect(customer[0].headers["idempotency-key"]).toBe("returned-payment/pi_test_2/customer");
+  });
+
   test("while another bank payment was on its way, which confirmed before the letters went, tells the owner the invoice was paid since", async () => {
     const f = fixture();
     const { invoiceId } = await f.approved();

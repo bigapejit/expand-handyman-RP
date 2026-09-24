@@ -67,11 +67,10 @@ export const sendReturnedPayment = internalAction({
     // other payment has come back too since: that return writes letters of
     // its own. The owner is told the invoice as it now stands, so a Void, a
     // Mark paid or the other payment confirming since is what the letter
-    // says, not the payment that was on its way when this came back. Only
-    // when nothing now stands in the way, because the other payment came
-    // back as well, is the reason the customer was left alone the one the
-    // mutation saw.
-    if (a.stillOnItsWay) customer = notAsked ?? { kind: "still_on_its_way", ...a.stillOnItsWay };
+    // says, not the payment that was on its way when this came back. When
+    // nothing now stands in the way, the other payment came back as well,
+    // and the letter says so rather than that it is still on its way.
+    if (a.stillOnItsWay) customer = notAsked ?? { kind: "came_back_too", ...a.stillOnItsWay };
     else {
       const emailed = notAsked ? false : await sendCustomerLetter(letter, amount, token);
       // Kept for the owner's grey note, which otherwise could only guess.
@@ -230,8 +229,14 @@ type OwnerLetter = {
   customerName: string;
   to: string;
   // What became of the customer: asked to pay again, not reachable, or left
-  // alone because the invoice no longer asks for the money.
-  customer: { kind: "emailed" } | { kind: "not_emailed" } | NotAsked;
+  // alone because the invoice no longer asks for the money, or because
+  // another bank payment was on its way when this one came back, which has
+  // since come back too and written letters of its own.
+  customer:
+    | { kind: "emailed" }
+    | { kind: "not_emailed" }
+    | NotAsked
+    | { kind: "came_back_too"; amountCents: number; acceptedOn: string };
   stripeUrl: string;
 };
 
@@ -263,6 +268,8 @@ function customerLine({ customer, customerName, to }: OwnerLetter): string {
       return `The ${who} could not be emailed. Ask them to pay again.`;
     case "still_on_its_way":
       return `Another bank payment of ${formatCentsExact(customer.amountCents, "en-US")} accepted ${shortDay(customer.acceptedOn)} is still on its way, so the ${who} was not asked to pay again.`;
+    case "came_back_too":
+      return `Another bank payment of ${formatCentsExact(customer.amountCents, "en-US")} accepted ${shortDay(customer.acceptedOn)} was on its way when this one came back, so the ${who} was not asked to pay again here. It has since come back too, and its own letters went.`;
     case "voided":
       return `The invoice was voided since, so the ${who} was not asked to pay again.`;
     case "paid":
