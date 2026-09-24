@@ -329,6 +329,7 @@ export const panel = query({
               acceptedOn: pacificDay(note.acceptedAt),
               endedOn: pacificDay(note.endedAt ?? note.acceptedAt),
               reason: note.reason ?? null,
+              customerEmailed: note.customerEmailed ?? null,
               stripeUrl: stripeUrl(note.stripePaymentIntentId),
             }
           : null,

@@ -486,6 +486,12 @@ export default defineSchema({
     // words for why, which only the owner reads.
     endedAt: v.optional(v.number()),
     reason: v.optional(v.string()),
+    // Once returned: whether the letter asking the customer to pay again
+    // went, written back by its scheduled send, so the owner's grey note
+    // never says they were emailed when Resend refused it or there was no
+    // link to give. False too when another bank payment was still on its
+    // way and the customer was not asked. Absent until the send has run.
+    customerEmailed: v.optional(v.boolean()),
     // The `payments` row this payment wrote, while it stands.
     paymentId: v.optional(v.id("payments")),
   })

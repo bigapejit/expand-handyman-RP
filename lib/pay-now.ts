@@ -18,11 +18,20 @@ export type PayMethod = "bank" | "card";
 // neither carries a fee.
 export const CardUpToCents = 100_000;
 
+// The least and the most Stripe will charge in dollars, in cents: $0.50, and
+// eight digits, $999,999.99. Outside them Stripe refuses the session, so
+// neither bank nor card is offered there
+// (https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts).
+export const StripeMinimumCents = 50;
+export const StripeMaximumCents = 99_999_999;
+
 // The ways the Pay sheet sends to Stripe, in the order it lists them: the
-// bank always, the card only while the Amount Due is $1,000.00 or less. Who
-// may pay at all (a sent invoice, something due, nothing paid or on its way)
-// is the link's question, not this one.
+// bank for any Amount Due Stripe will charge, the card only while it is
+// $1,000.00 or less, and neither outside Stripe's range, when Zelle and check
+// are still there. Who may pay at all (a sent invoice, something due,
+// nothing paid or on its way) is the link's question, not this one.
 export function waysToPay(amountDueCents: number): PayMethod[] {
+  if (amountDueCents < StripeMinimumCents || amountDueCents > StripeMaximumCents) return [];
   return amountDueCents <= CardUpToCents ? ["bank", "card"] : ["bank"];
 }
 
@@ -34,6 +43,11 @@ export const NoFeeNote = "No fee on any of them.";
 // anyway: the sheet and the server say the one sentence, and it names the
 // limit the rule above keeps, so the two never disagree.
 export const CardLimitNote = `Card is for invoices up to ${formatCents(CardUpToCents, "en-US")}.`;
+
+// In the card line's place when the Amount Due is one Stripe will not
+// charge, and the refusal when bank or card is asked for anyway: the sheet
+// and the server say the one sentence, naming the range the rule above keeps.
+export const StripeRangeNote = `Bank and card are for invoices from ${formatCentsExact(StripeMinimumCents, "en-US")} to ${formatCentsExact(StripeMaximumCents, "en-US")}.`;
 
 // Zelle's own rule for a tag: 6 to 40 characters, letters, digits and
 // hyphens, and case does not matter.
@@ -127,6 +141,9 @@ export function ownerOnItsWay(onItsWay: { amountCents: number; acceptedOn: strin
 // Why an invoice is unpaid again after Stripe had its money, as the panel's
 // grey note reads it until the invoice is paid, on its way again or void. The
 // reason is the bank's or Stripe's own words, shown only to the owner.
+// `customerEmailed` is whether a return's letter to the customer went: null
+// until its scheduled send has run, and absent on a refund or a dispute,
+// which write to nobody.
 export type StripeNote = {
   kind: "returned" | "refunded" | "dispute_lost";
   method: PayMethod;
@@ -134,6 +151,7 @@ export type StripeNote = {
   acceptedOn: string;
   endedOn: string;
   reason: string | null;
+  customerEmailed?: boolean | null;
 };
 
 export function stripeNoteSentence(note: StripeNote): string {
@@ -144,7 +162,13 @@ export function stripeNoteSentence(note: StripeNote): string {
     case "returned": {
       // The reason ends the clause, whatever Stripe ended its own words with.
       const reason = note.reason?.trim().replace(/[.\s]+$/, "");
-      return `${capitalized(note.method)} payment of ${amount} accepted ${accepted} was returned ${ended}${reason ? `: ${reason}` : ""}. The customer was emailed to pay again.`;
+      // Only a letter known not to have gone says so: until the send has
+      // run, it is on its way to the customer as the spec's sentence says.
+      const emailed =
+        note.customerEmailed === false
+          ? "The customer could not be emailed. Ask them to pay again."
+          : "The customer was emailed to pay again.";
+      return `${capitalized(note.method)} payment of ${amount} accepted ${accepted} was returned ${ended}${reason ? `: ${reason}` : ""}. ${emailed}`;
     }
     case "refunded":
       return `${capitalized(note.method)} payment of ${amount} from ${accepted} was refunded ${ended} in Stripe.`;

@@ -121,10 +121,12 @@ export type LinkStripeState =
 
 export type InvoiceLinkPage = {
   paper: PaperInvoice;
-  // The ways the Pay sheet sends to Stripe, bank always and card up to
-  // $1,000.00, or none while the invoice owes nothing: not sent, $0 or a
-  // credit, paid, or with a payment on its way. Empty, the page shows no Pay
-  // button.
+  // Whether the customer may pay now, and so has the Pay button: a sent
+  // invoice with something due, not paid and with nothing on its way.
+  payable: boolean;
+  // The ways the Pay sheet sends to Stripe while it may be paid, bank and
+  // card up to $1,000.00 and bank alone above, or none where Stripe will not
+  // charge the Amount Due; Zelle and check are always listed.
   ways: PayMethod[];
   // For the Zelle and check steps, as the paper's How to pay prints them.
   zelleTag: string;
@@ -153,9 +155,11 @@ export const page = query({
     // again; of the three ways money goes back, only a return is told.
     const note = sent && !paid && !onItsWay ? await stripeNoteFor(ctx, invoice) : null;
     const told = onItsWay ?? (note?.status === "returned" ? note : null);
+    const payable = sent && amountDueCents > 0 && !paid && !onItsWay;
     return {
       paper,
-      ways: sent && amountDueCents > 0 && !paid && !onItsWay ? waysToPay(amountDueCents) : [],
+      payable,
+      ways: payable ? waysToPay(amountDueCents) : [],
       zelleTag: paper.zelleTag,
       mailingAddress: paper.mailingAddress,
       invoiceNumber: paper.number,

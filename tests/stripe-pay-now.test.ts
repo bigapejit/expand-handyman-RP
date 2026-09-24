@@ -6,6 +6,7 @@ import { api, internal } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { WashingtonNoticeToCustomer } from "../lib/expand-business";
 import { pacificDay } from "../lib/invoice-standing";
+import { stripeNoteSentence } from "../lib/pay-now";
 import { SigningConsent } from "../lib/proposal-signing";
 
 const modules = import.meta.glob("../convex/**/*.ts");
@@ -532,6 +533,28 @@ describe("Pay now refused", () => {
     expect(stripeCalls).toEqual([]);
   });
 
+  test("outside the $0.50 to $999,999.99 Stripe will charge, where the sheet still opens for Zelle and check", async () => {
+    const { pay, approved, sentInvoice, page } = fixture();
+    const { proposalId } = await approved();
+    const tooSmall = await sentInvoice(proposalId, {
+      lines: [{ description: "Washer", cents: 49 }],
+    });
+    const tooLarge = await sentInvoice(proposalId, {
+      lines: [{ description: "Estate", cents: 100_000_000 }],
+    });
+    const outOfRange = {
+      code: "stripe_range",
+      message: "Bank and card are for invoices from $0.50 to $999,999.99.",
+    };
+
+    for (const { token } of [tooSmall, tooLarge]) {
+      expect(await page(token)).toMatchObject({ payable: true, ways: [] });
+      expect(await refusal(pay(token, "bank"))).toEqual(outOfRange);
+      expect(await refusal(pay(token, "card"))).toEqual(outOfRange);
+    }
+    expect(stripeCalls).toEqual([]);
+  });
+
   test("with a plain sentence where the deployment has no Stripe key or no app origin", async () => {
     const { pay, approved, page } = fixture();
     const { token } = await approved();
@@ -877,6 +900,7 @@ describe("A Returned payment", () => {
       ].join("\n"),
     );
     expect(resendCalls).toHaveLength(2);
+    expect(await f.stripeRows()).toMatchObject([{ status: "returned", customerEmailed: true }]);
   });
 
   test("tells the owner to ask the customer to pay again when the customer's letter did not go", async () => {
@@ -895,6 +919,37 @@ describe("A Returned payment", () => {
     expect(f.letters("returned_payment_customer")).toEqual([]);
     expect(f.letters("returned_payment_owner")[0].body.text).toContain(
       "The customer (Maria Delgado, maria@example.com) could not be emailed. Ask them to pay again.",
+    );
+  });
+
+  test("keeps in the owner's grey note that the customer could not be emailed when Resend refused the letter", async () => {
+    const f = fixture();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubbed = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) =>
+      String(input).startsWith("https://api.resend.com/") &&
+      String(init?.body).includes("returned_payment_customer")
+        ? Response.json(
+            { name: "validation_error", message: "Invalid `to` field." },
+            { status: 422 },
+          )
+        : stubbed(input, init),
+    );
+    const { invoiceId } = await returnedFor(f);
+    const note = async () => {
+      const panelNote = (await f.panel(invoiceId))?.note;
+      if (!panelNote) throw new Error("No grey note.");
+      return stripeNoteSentence(panelNote);
+    };
+    // Until the letter's send has run, the note says what it is about to do.
+    expect(await note()).toBe(
+      "Bank payment of $299.48 accepted Sept 1 was returned Sept 12: insufficient funds. The customer was emailed to pay again.",
+    );
+
+    await f.deliver();
+    expect((await f.stripeRows())[0].customerEmailed).toBe(false);
+    expect(await note()).toBe(
+      "Bank payment of $299.48 accepted Sept 1 was returned Sept 12: insufficient funds. The customer could not be emailed. Ask them to pay again.",
     );
   });
 
@@ -919,6 +974,49 @@ describe("A Returned payment", () => {
     await f.deliver();
     expect(await f.stripeRows()).toHaveLength(1);
     expect(resendCalls).toHaveLength(2);
+  });
+
+  test("while another bank payment is still on its way, asks the customer nothing and tells the owner why", async () => {
+    const f = fixture();
+    const { invoiceId, token } = await f.approved();
+    // Two tabs: both sessions minted before either completed, so both are
+    // on their way.
+    await f.apply(f.event("checkout.session.completed", f.bankSession(invoiceId)));
+    vi.setSystemTime(pdt(9, 2));
+    await f.apply(
+      f.event(
+        "checkout.session.completed",
+        f.bankSession(invoiceId, { id: "cs_test_2", payment_intent: "pi_test_2" }),
+      ),
+    );
+    vi.setSystemTime(pdt(9, 5));
+    await f.apply(
+      f.event("checkout.session.async_payment_failed", f.bankSession(invoiceId)),
+      "insufficient funds",
+    );
+    await f.deliver();
+
+    expect(f.letters("returned_payment_customer")).toEqual([]);
+    expect(f.letters("returned_payment_owner")[0].body.text).toBe(
+      [
+        "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
+        "",
+        "Another bank payment of $299.48 accepted Sept 2 is still on its way, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+        "",
+        "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
+      ].join("\n"),
+    );
+    expect((await f.list("unpaid")).map((row) => [row.invoiceId, row.standing])).toEqual([
+      [invoiceId, "on_its_way"],
+    ]);
+    expect(await f.page(token)).toMatchObject({
+      payable: false,
+      stripe: { kind: "on_its_way", acceptedOn: "2026-09-02" },
+    });
+    expect(await f.panel(invoiceId)).toMatchObject({
+      onItsWay: { acceptedOn: "2026-09-02" },
+      note: null,
+    });
   });
 
   test("sends the customer to the invoice's live link after a re-send", async () => {

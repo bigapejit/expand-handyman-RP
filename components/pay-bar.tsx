@@ -12,6 +12,7 @@ import {
   customerOnItsWay,
   customerReturned,
   NoFeeNote,
+  StripeRangeNote,
   zelleQrUrl,
   type PayMethod,
 } from "@/lib/pay-now";
@@ -22,7 +23,8 @@ import { errorMessage } from "@/lib/utils";
 // Sketch D of the prototype/pay-now branch, fed from the link's page query.
 //
 // Closed it is one row: what is due, and one black Pay button. Open it lists
-// the four ways at the one price. Bank and card go to Stripe's own page for
+// the four ways at the one price, or Zelle and check alone for an Amount Due
+// Stripe will not charge. Bank and card go to Stripe's own page for
 // the full Amount Due, so no bank or card details are ever typed here; Zelle
 // and check turn the sheet into the steps to follow, since no link can fill
 // in a customer's banking app for them. While a bank payment is on its way
@@ -34,9 +36,11 @@ import { errorMessage } from "@/lib/utils";
 export type InvoiceLinkPage = NonNullable<FunctionReturnType<typeof api.invoiceLinks.page>>;
 
 // Whether the link has a bar at all: while something is owed and may be
-// paid, or while a bank payment for it is on its way.
+// paid, or while a bank payment for it is on its way. Not whether Stripe is
+// offered: an Amount Due Stripe will not charge is still paid by Zelle or
+// check.
 export function payBarShows(page: InvoiceLinkPage): boolean {
-  return page.ways.length > 0 || page.stripe?.kind === "on_its_way";
+  return page.payable || page.stripe?.kind === "on_its_way";
 }
 
 // Which way's steps the open sheet shows in place of the list.
@@ -121,6 +125,7 @@ function PaySheet({
   const [fault, setFault] = useState<string | null>(null);
   const { ways, amountDueCents, invoiceNumber } = page;
   const amount = formatCentsExact(amountDueCents);
+  const bank = ways.includes("bank");
   const card = ways.includes("card");
 
   // A customer who backs out of Stripe's page with the browser's Back button
@@ -186,15 +191,19 @@ function PaySheet({
       ) : (
         <>
           <div className="paper-pay-choices">
-            <Choice
-              name="Pay by bank"
-              note={
-                opening === "bank" ? "Opening Stripe…" : "From your checking account, through Stripe."
-              }
-              amount={amount}
-              disabled={opening !== null}
-              onPress={() => void pay("bank")}
-            />
+            {bank ? (
+              <Choice
+                name="Pay by bank"
+                note={
+                  opening === "bank"
+                    ? "Opening Stripe…"
+                    : "From your checking account, through Stripe."
+                }
+                amount={amount}
+                disabled={opening !== null}
+                onPress={() => void pay("bank")}
+              />
+            ) : null}
             {card ? (
               <Choice
                 name="Pay by card"
@@ -225,7 +234,7 @@ function PaySheet({
             </p>
           ) : null}
           <p className="paper-pay-text">
-            {card ? NoFeeNote : `${NoFeeNote} ${CardLimitNote}`}
+            {card ? NoFeeNote : `${NoFeeNote} ${bank ? CardLimitNote : StripeRangeNote}`}
           </p>
         </>
       )}

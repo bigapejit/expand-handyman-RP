@@ -12,7 +12,10 @@ import {
   shortDay,
   stripeEventDay,
   stripeNoteSentence,
+  StripeMaximumCents,
+  StripeMinimumCents,
   stripePaymentUrl,
+  StripeRangeNote,
   waysToPay,
   zelleQrUrl,
 } from "./pay-now";
@@ -31,6 +34,22 @@ describe("The ways to pay through Stripe", () => {
 
   it("says why the card is missing in words that name the same limit", () => {
     expect(CardLimitNote).toBe("Card is for invoices up to $1,000.");
+  });
+
+  it("offers neither under Stripe's $0.50 least charge, and both from it", () => {
+    expect(StripeMinimumCents).toBe(50);
+    expect(waysToPay(49)).toEqual([]);
+    expect(waysToPay(50)).toEqual(["bank", "card"]);
+  });
+
+  it("offers the bank up to Stripe's $999,999.99 most charge, and neither a cent over", () => {
+    expect(StripeMaximumCents).toBe(99_999_999);
+    expect(waysToPay(99_999_999)).toEqual(["bank"]);
+    expect(waysToPay(100_000_000)).toEqual([]);
+  });
+
+  it("says why bank and card are both missing in words that name the same range", () => {
+    expect(StripeRangeNote).toBe("Bank and card are for invoices from $0.50 to $999,999.99.");
   });
 });
 
@@ -139,6 +158,24 @@ describe("The panel's words", () => {
     );
     expect(stripeNoteSentence({ ...returned, reason: null })).toBe(
       "Bank payment of $2,854.37 accepted Sept 23 was returned Sept 26. The customer was emailed to pay again.",
+    );
+  });
+
+  it("says the customer was emailed only when the letter went, or before its send has run", () => {
+    const returned = {
+      kind: "returned" as const,
+      method: "bank" as const,
+      amountCents: 285_437,
+      acceptedOn: "2026-09-23",
+      endedOn: "2026-09-26",
+      reason: "insufficient funds",
+    };
+    const emailed =
+      "Bank payment of $2,854.37 accepted Sept 23 was returned Sept 26: insufficient funds. The customer was emailed to pay again.";
+    expect(stripeNoteSentence({ ...returned, customerEmailed: true })).toBe(emailed);
+    expect(stripeNoteSentence({ ...returned, customerEmailed: null })).toBe(emailed);
+    expect(stripeNoteSentence({ ...returned, customerEmailed: false })).toBe(
+      "Bank payment of $2,854.37 accepted Sept 23 was returned Sept 26: insufficient funds. The customer could not be emailed. Ask them to pay again.",
     );
   });
 

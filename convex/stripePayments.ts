@@ -15,7 +15,14 @@ import { invoiceLinkForToken, invoiceLinksFor, invoiceStillOpenedBy } from "./in
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
-import { CardLimitNote, stripeEventDay, waysToPay, type PayMethod } from "../lib/pay-now";
+import { pacificDay } from "../lib/invoice-standing";
+import {
+  CardLimitNote,
+  stripeEventDay,
+  StripeRangeNote,
+  waysToPay,
+  type PayMethod,
+} from "../lib/pay-now";
 import { signingUrl } from "../lib/signing-link";
 import {
   prunedStripeEvent,
@@ -183,8 +190,10 @@ export const checkoutFor = internalQuery({
       return refusal("paid", "This invoice is already paid.");
     if (await paymentOnItsWayFor(ctx, invoice._id))
       return refusal("on_its_way", "A bank payment for this invoice is already on its way.");
-    if (!waysToPay(amountDueCents).includes(a.method))
-      return refusal("card_limit", CardLimitNote);
+    // Stripe refuses a charge outside its range, so it is never asked.
+    const ways = waysToPay(amountDueCents);
+    if (ways.length === 0) return refusal("stripe_range", StripeRangeNote);
+    if (!ways.includes(a.method)) return refusal("card_limit", CardLimitNote);
     return {
       invoiceId: invoice._id,
       number: invoiceNumberLabel(invoice.number),
@@ -493,7 +502,11 @@ async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
 // paper never showed it, so no PDF copy goes. Stripe emails nobody, so the
 // app writes to the customer and the owner, once, and only while the
 // invoice still owes: a payment since, or a Void, leaves nothing to pay
-// again.
+// again. Minting refuses while a payment is on its way, but two sessions
+// minted before either completed (two tabs) can both be on their way; while
+// the other still is, the invoice reads Payment on its way and the link has
+// no Pay button, so the customer is not asked to pay again and only the
+// owner is told.
 async function recordReturned(
   ctx: MutationCtx,
   payment: StripePaymentFacts,
@@ -502,12 +515,16 @@ async function recordReturned(
   const row = await rowForSession(ctx, payment);
   if (row && row.status !== "on_its_way") return;
   const ended = { status: "returned" as const, endedAt: payment.at, reason };
+  const returnedId =
+    row?._id ?? (await ctx.db.insert("stripePayments", { ...rowFields(payment), ...ended }));
   if (row) await ctx.db.patch(row._id, ended);
-  else await ctx.db.insert("stripePayments", { ...rowFields(payment), ...ended });
 
   const { invoice } = payment;
   if (invoice.state !== "sent" || !invoice.frozen || invoice.number === undefined) return;
   if (await paymentFor(ctx, invoice._id)) return;
+  const other = await paymentOnItsWayFor(ctx, invoice._id);
+  // Not asked, so should the grey note ever read this return, it says to ask.
+  if (other) await ctx.db.patch(returnedId, { customerEmailed: false });
   await ctx.scheduler.runAfter(0, internal.stripeEmails.sendReturnedPayment, {
     paymentIntentId: payment.paymentIntentId,
     number: invoiceNumberLabel(invoice.number),
@@ -516,6 +533,14 @@ async function recordReturned(
     to: invoice.frozen.sentTo,
     token: (await linkToPayAgain(ctx, invoice._id))?.token,
     ...(reason ? { reason } : {}),
+    ...(other
+      ? {
+          stillOnItsWay: {
+            amountCents: other.amountCents,
+            acceptedOn: pacificDay(other.acceptedAt),
+          },
+        }
+      : {}),
   });
 }
 

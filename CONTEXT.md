@@ -123,7 +123,7 @@ The customer paying a sent invoice from its link: one Pay button opens the Pay s
 _Avoid_: Payment link (the invoice link is where Pay now lives), checkout (Stripe's page, not an app concept), online payment (as the name of the action), card fee or surcharge (there is none)
 
 **Pay sheet**:
-What the Pay button on an invoice link opens: the ways to pay, each with the Amount Due. Pay by bank and Pay by card lead to Stripe; Pay by Zelle® and Pay by check turn the sheet into the steps for paying that way, naming the Zelle tag or the payee, the amount and the invoice number for the memo. Card is listed only when Amount Due is $1,000 or less.
+What the Pay button on an invoice link opens: the ways to pay, each with the Amount Due. Pay by bank and Pay by card lead to Stripe; Pay by Zelle® and Pay by check turn the sheet into the steps for paying that way, naming the Zelle tag or the payee, the amount and the invoice number for the memo. Card is listed only when Amount Due is $1,000 or less, and bank and card only for an Amount Due Stripe will charge, $0.50 to $999,999.99; Zelle and check are always there.
 _Avoid_: Payment options, payment methods (Stripe's word), checkout
 
 **Zelle tag**:
@@ -135,7 +135,7 @@ The standing of a sent invoice whose bank payment Stripe has accepted but not ye
 _Avoid_: Pending, processing, awaiting payment
 
 **Returned payment**:
-A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and the Pay button is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason. The invoice keeps the note until it is paid, on its way again or void.
+A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and the Pay button is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason and whether the customer's email went. While another bank payment of theirs is still on its way, only the owner is told. The invoice keeps the note until it is paid, on its way again or void.
 _Avoid_: Failed payment (Stripe's word; the money was accepted, then sent back), bounced payment, declined (a card word)
 
 **Invoice paper**:

@@ -301,6 +301,7 @@ describe("The invoice link", () => {
       },
       // The pay bar under it: $299.48 owed, so Pay by card is offered beside
       // Pay by bank, and Stripe has nothing to tell yet.
+      payable: true,
       ways: ["bank", "card"],
       zelleTag: "expandhandyman",
       mailingAddress: null,

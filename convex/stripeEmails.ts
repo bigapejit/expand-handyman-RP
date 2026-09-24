@@ -1,10 +1,11 @@
 import { v } from "convex/values";
 
-import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalAction, internalMutation } from "./_generated/server";
 import { appOrigin, emailReplyTo, sendEmail, sendsEmail } from "./email";
 import { ExpandBusiness } from "../lib/expand-business";
 import { formatCentsExact } from "../lib/money";
-import { stripePaymentUrl } from "../lib/pay-now";
+import { shortDay, stripePaymentUrl } from "../lib/pay-now";
 import { signingPath, signingUrl } from "../lib/signing-link";
 
 // The two letters of a **Returned payment** (CONTEXT.md), the only mail the
@@ -15,7 +16,8 @@ import { signingPath, signingUrl } from "../lib/signing-link";
 // the sender and with the reply-to the invoice email uses, scheduled by
 // `applyStripeEvent` once it has committed, so a Resend outage never undoes
 // the return. Each is keyed on the payment intent, so a retried action sends
-// neither twice.
+// neither twice. While another bank payment for the invoice is still on its
+// way the customer is not asked to pay again, and only the owner hears of it.
 
 export const sendReturnedPayment = internalAction({
   args: {
@@ -31,11 +33,25 @@ export const sendReturnedPayment = internalAction({
     token: v.optional(v.string()),
     // The bank's words, for the owner only.
     reason: v.optional(v.string()),
+    // Another bank payment for the invoice still on its way, from a second
+    // session minted before either completed: the customer's money may yet
+    // arrive that way, so only the owner is written to.
+    stillOnItsWay: v.optional(v.object({ amountCents: v.number(), acceptedOn: v.string() })),
   },
-  handler: async (_ctx, a) => {
+  handler: async (ctx, a) => {
     const amount = formatCentsExact(a.amountCents, "en-US");
-    const url = a.token ? signingUrl(appOrigin(), a.token) : null;
-    const customerEmailed = await sendCustomerLetter(a, amount, url);
+    let customer: OwnerLetter["customer"];
+    if (a.stillOnItsWay) customer = { kind: "still_on_its_way", ...a.stillOnItsWay };
+    else {
+      const url = a.token ? signingUrl(appOrigin(), a.token) : null;
+      const emailed = await sendCustomerLetter(a, amount, url);
+      // Kept for the owner's grey note, which otherwise could only guess.
+      await ctx.runMutation(internal.stripeEmails.recordCustomerLetter, {
+        paymentIntentId: a.paymentIntentId,
+        emailed,
+      });
+      customer = emailed ? { kind: "emailed" } : { kind: "not_emailed" };
+    }
 
     const owner = await sendEmail({
       to: ExpandBusiness.email,
@@ -43,7 +59,7 @@ export const sendReturnedPayment = internalAction({
       text: ownerLetter({
         ...a,
         amount,
-        customerEmailed,
+        customer,
         stripeUrl: stripePaymentUrl(a.paymentIntentId, process.env.STRIPE_SECRET_KEY),
       }),
       idempotencyKey: `returned-payment/${a.paymentIntentId}/owner`,
@@ -51,6 +67,20 @@ export const sendReturnedPayment = internalAction({
     });
     if (owner.outcome === "fault")
       console.error(`Returned payment letter to the owner was not sent (${owner.fault}).`);
+  },
+});
+
+// Whether the customer's letter went, on the return it was about. A payment
+// intent is one payment, so its returned row is the one.
+export const recordCustomerLetter = internalMutation({
+  args: { paymentIntentId: v.string(), emailed: v.boolean() },
+  handler: async (ctx, a) => {
+    const rows = await ctx.db
+      .query("stripePayments")
+      .withIndex("by_payment_intent", (q) => q.eq("stripePaymentIntentId", a.paymentIntentId))
+      .collect();
+    for (const row of rows)
+      if (row.status === "returned") await ctx.db.patch(row._id, { customerEmailed: a.emailed });
   },
 });
 
@@ -105,24 +135,41 @@ function customerLetter(letter: {
   ].join("\n");
 }
 
-function ownerLetter(letter: {
+type OwnerLetter = {
   number: string;
   amount: string;
   reason?: string;
   customerName: string;
   to: string;
-  customerEmailed: boolean;
+  // What became of the customer: asked to pay again, not reachable, or left
+  // alone because another bank payment of theirs is still on its way.
+  customer:
+    | { kind: "emailed" }
+    | { kind: "not_emailed" }
+    | { kind: "still_on_its_way"; amountCents: number; acceptedOn: string };
   stripeUrl: string;
-}): string {
+};
+
+function ownerLetter(letter: OwnerLetter): string {
   // The reason ends the sentence, whatever Stripe ended its own words with.
   const reason = letter.reason?.trim().replace(/[.\s]+$/, "");
   return [
     `Bank payment on ${letter.number} for ${letter.amount} was returned${reason ? `: ${reason}` : ""}.`,
     "",
-    letter.customerEmailed
-      ? `The customer (${letter.customerName}, ${letter.to}) has been emailed to pay again.`
-      : `The customer (${letter.customerName}, ${letter.to}) could not be emailed. Ask them to pay again.`,
+    customerLine(letter),
     "",
     `See it in Stripe: ${letter.stripeUrl}`,
   ].join("\n");
+}
+
+function customerLine({ customer, customerName, to }: OwnerLetter): string {
+  const who = `customer (${customerName}, ${to})`;
+  switch (customer.kind) {
+    case "emailed":
+      return `The ${who} has been emailed to pay again.`;
+    case "not_emailed":
+      return `The ${who} could not be emailed. Ask them to pay again.`;
+    case "still_on_its_way":
+      return `Another bank payment of ${formatCentsExact(customer.amountCents, "en-US")} accepted ${shortDay(customer.acceptedOn)} is still on its way, so the ${who} was not asked to pay again.`;
+  }
 }
