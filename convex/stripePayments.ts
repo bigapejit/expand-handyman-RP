@@ -15,8 +15,7 @@ import { invoiceLinkForToken, invoiceLinksFor, invoiceStillOpenedBy } from "./in
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
-import { pacificDay } from "../lib/invoice-standing";
-import { waysToPay, type PayMethod } from "../lib/pay-now";
+import { stripeEventDay, waysToPay, type PayMethod } from "../lib/pay-now";
 import { signingUrl } from "../lib/signing-link";
 import {
   prunedStripeEvent,
@@ -67,10 +66,14 @@ export function verifiedStripeEvent(
 
 const payMethod = v.union(v.literal("bank"), v.literal("card"));
 
-// How long a customer has on Stripe's page before the session expires, the
-// shortest Stripe allows: long enough to log in to a bank, short enough that
-// a session minted before a re-send or a Void is soon gone.
+// How long a customer has on Stripe's page before the session expires: the
+// spec's 30 minutes, long enough to log in to a bank, short enough that a
+// session minted before a re-send or a Void is soon gone. Thirty is also the
+// shortest Stripe allows, counted from when its own clock creates the
+// session, so asking for exactly thirty from this clock would land a few
+// seconds short and be refused; the extra minute is that margin.
 const SessionMinutes = 30;
+const SessionMarginSeconds = 60;
 
 // What the Pay sheet shows when this deployment cannot send anyone to Stripe:
 // no secret key yet, or no origin to bring the customer back to.
@@ -132,7 +135,7 @@ export const mintCheckoutSession = action({
         description: `Invoice ${checkout.number}, Expand Handyman`,
         metadata,
       },
-      expires_at: Math.floor(Date.now() / 1000) + SessionMinutes * 60,
+      expires_at: Math.floor(Date.now() / 1000) + SessionMinutes * 60 + SessionMarginSeconds,
       success_url: `${linkUrl}?session={CHECKOUT_SESSION_ID}`,
       cancel_url: linkUrl,
     };
@@ -221,10 +224,18 @@ export const applyCheckoutReturn = action({
         message: "That payment was made on another invoice, not this one.",
       });
     if (session.status !== "complete") return { applied: false };
+    // Dated when the customer paid on Stripe's page, which is when Stripe
+    // made the payment intent, not when the page came back: a return
+    // reloaded after midnight must not move the payment's day.
+    const intent = session.payment_intent;
+    const paidAt =
+      intent && typeof intent === "object" && typeof intent.created === "number"
+        ? intent.created
+        : Math.floor(Date.now() / 1000);
     await ctx.runMutation(internal.stripePayments.applyStripeEvent, {
       event: prunedStripeEvent({
         type: "checkout.session.completed",
-        created: Math.floor(Date.now() / 1000),
+        created: paidAt,
         data: { object: session },
       }),
     });
@@ -341,6 +352,7 @@ async function applySession(
     method,
     amountCents: session.amountCents,
     at: event.created * 1000,
+    day: stripeEventDay(event.created),
   };
   switch (event.type) {
     case "completed":
@@ -367,8 +379,9 @@ type StripePaymentFacts = {
   paymentIntentId: string;
   method: PayMethod;
   amountCents: number;
-  // When the event happened, in milliseconds.
+  // When the event happened, in milliseconds, and its Pacific day.
   at: number;
+  day: string;
 };
 
 const Ended = new Set<Doc<"stripePayments">["status"]>(["returned", "refunded", "dispute_lost"]);
@@ -401,7 +414,7 @@ async function recordPaid(ctx: MutationCtx, payment: StripePaymentFacts) {
     existing?._id ??
     (await ctx.db.insert("payments", {
       invoiceId: payment.invoice._id,
-      receivedOn: pacificDay(payment.at),
+      receivedOn: payment.day,
       source: "stripe",
       recordedBy: "stripe",
       recordedAt: Date.now(),

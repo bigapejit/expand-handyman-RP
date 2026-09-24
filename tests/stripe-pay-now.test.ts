@@ -406,8 +406,9 @@ describe("Pay by bank", () => {
       "payment_intent_data[description]": "Invoice INV-1001, Expand Handyman",
       "payment_intent_data[metadata][invoiceId]": invoiceId,
       "payment_intent_data[metadata][invoiceNumber]": "INV-1001",
-      // Thirty minutes from now, in Stripe's seconds.
-      expires_at: String(seconds(Date.now()) + 30 * 60),
+      // Thirty minutes from now in Stripe's seconds, and a minute's margin so
+      // Stripe's clock never finds it under its thirty-minute floor.
+      expires_at: String(seconds(Date.now()) + 31 * 60),
       success_url: `${link}?session={CHECKOUT_SESSION_ID}`,
       cancel_url: link,
     });
@@ -1002,6 +1003,27 @@ describe("The success return", () => {
 
     await apply(event("checkout.session.completed", session(invoiceId)));
     expect(await paymentsOf(invoiceId)).toHaveLength(1);
+  });
+
+  test("dates the payment by when the customer paid on Stripe's page, not by when the page came back", async () => {
+    const { t, session, approved, paymentsOf } = fixture();
+    const { invoiceId, token } = await approved();
+    sessions.set(
+      "cs_test_1",
+      session(invoiceId, {
+        payment_intent: {
+          id: "pi_test_1",
+          object: "payment_intent",
+          status: "succeeded",
+          created: seconds(pdt(9, 1, 23, 58)),
+        },
+      }),
+    );
+    // Back on the link a few minutes later, after midnight.
+    vi.setSystemTime(pdt(9, 2, 0, 3));
+
+    await t.action(api.stripePayments.applyCheckoutReturn, { token, sessionId: "cs_test_1" });
+    expect(await paymentsOf(invoiceId)).toMatchObject([{ receivedOn: "2026-09-01" }]);
   });
 
   test("reads a bank session back as Payment on its way", async () => {
