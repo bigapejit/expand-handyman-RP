@@ -469,6 +469,19 @@ describe("Re-send", () => {
     expect(page?.paper).toMatchObject({ number: "INV-1001", sentAt: pdt(9, 1) });
   });
 
+  test("of a paid invoice thanks the customer rather than asking for the money again", async () => {
+    const { owner, customer, approved, letters, deliver } = fixture();
+    const { invoiceId } = await approved(await customer());
+    await owner.mutation(api.invoices.markPaid, { invoiceId });
+    vi.setSystemTime(pdt(9, 4));
+    await owner.action(api.invoices.resend, { invoiceId });
+    await deliver();
+    const text = String(letters()[0].body.text);
+    expect(text).toContain("Deposit (50%) for Fix gate, $299.48. It was paid on 9/1/2026. Thank you.");
+    expect(text).toContain(`See it here:\n`);
+    expect(text).not.toContain("due on receipt");
+  });
+
   test("the panel then lists both links, newest first, the old one ended by the re-send", async () => {
     const { owner, customer, approved, today } = fixture();
     const { invoiceId } = await approved(await customer());
@@ -500,18 +513,35 @@ describe("Re-send", () => {
     const { proposalId } = await approved(await customer());
     const draft = await written(proposalId, { kind: "final" });
     await expect(owner.action(api.invoices.resend, { invoiceId: draft })).rejects.toThrow(
-      /Only a sent invoice can be re-sent/,
+      /Only a sent or void invoice can be re-sent/,
     );
   });
 
-  test("is refused for a void invoice while its link has no paper to open, and its link stays", async () => {
-    const { t, owner, customer, approved, links } = fixture();
+  test("works on a void invoice: the fresh link opens the paper stamped VOID and the old one ends", async () => {
+    const { t, owner, customer, approved, links, letters, deliver } = fixture();
     const { invoiceId } = await approved(await customer());
-    await t.run((ctx) => ctx.db.patch(invoiceId, { state: "void", voidedAt: Date.now() }));
-    await expect(owner.action(api.invoices.resend, { invoiceId })).rejects.toThrow(
-      /Only a sent invoice can be re-sent/,
+    const [old] = await links(invoiceId);
+    await owner.mutation(api.invoices.voidInvoice, { invoiceId });
+
+    vi.setSystemTime(pdt(9, 4));
+    await owner.action(api.invoices.resend, { invoiceId });
+    await deliver();
+
+    const fresh = (await links(invoiceId)).find((link) => link.endedAt === undefined)!;
+    expect(fresh.token).not.toBe(old.token);
+    expect(await t.query(api.invoiceLinks.page, { token: old.token })).toBeNull();
+    const page = await t.query(api.invoiceLinks.page, { token: fresh.token });
+    expect(page?.paper.stamp).toEqual({ kind: "void", day: "2026-09-01" });
+    expect(letters()).toHaveLength(1);
+    // Not a demand for money the paper says is not owed.
+    const text = String(letters()[0].body.text);
+    expect(text).toContain(
+      "Andrew Putilin at Expand Handyman has sent you Invoice INV-1001 for 1300 Franklin St: Deposit (50%) for Fix gate, $299.48. It was voided on 9/1/2026, and nothing is due on it.",
     );
-    expect((await links(invoiceId)).map((link) => link.endedAt)).toEqual([undefined]);
+    expect(text).toContain(`See it here:\n`);
+    expect(text).not.toContain("due on receipt");
+    expect(text).not.toContain("how to pay");
+    expect((await t.run((ctx) => ctx.db.get(invoiceId)))!.state).toBe("void");
   });
 });
 
@@ -579,6 +609,7 @@ describe("The staff paper for an invoice", () => {
       lines: [{ description: "Fix gate", cents: 55_000 }],
       taxRate: 0.089,
       zelleEmail: "pay@expandhandyman.com",
+      stamp: null,
     });
   });
 

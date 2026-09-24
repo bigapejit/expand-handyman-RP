@@ -16,8 +16,9 @@ import {
   endInvoiceLinks,
   invoiceLinksFor,
   mintInvoiceLink,
-  sentInvoicePaper,
+  fixedInvoicePaperOf,
 } from "./invoiceLinks";
+import { invoiceStamp, paymentFor } from "./payments";
 import { invoiceLine } from "./schema";
 import { zelleEmail } from "./settings";
 import { mintLinkToken } from "./signingLinks";
@@ -32,7 +33,7 @@ import {
   type InvoiceLine,
 } from "../lib/invoice-money";
 import type { PaperInvoice } from "../lib/invoice-paper";
-import { invoiceStanding, isCalendarDay } from "../lib/invoice-standing";
+import { invoiceStanding, isCalendarDay, pacificDay } from "../lib/invoice-standing";
 import {
   compareInvoiceRows,
   invoiceRowTitle,
@@ -40,6 +41,7 @@ import {
   invoiceSendBlockers,
   matchesInvoiceFilter,
   newestSentFirst,
+  oldestSentFirst,
   type InvoiceSendBlocker,
 } from "../lib/invoices";
 import { proposalDisplayName } from "../lib/proposal-pricing";
@@ -51,8 +53,9 @@ import { siteCityLine, siteStreetLine } from "../lib/sites";
 // already sent; **Job done** and New invoice, which make the final and typed
 // invoices as drafts; draft editing, Delete and **Send**; the pieces every
 // Send shares: the business-wide number sequence and the link with its email;
-// the owner's lists and panel, each row with its **Standing**; the staff
-// paper; and **Re-send**.
+// the owner's lists, panel and Dashboard card, each row with its
+// **Standing**; the staff paper; **Re-send**; and the two things the owner
+// does to a sent invoice afterwards: **Mark paid** (and back) and **Void**.
 
 type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
@@ -127,7 +130,8 @@ const FirstInvoiceNumber = 1001;
 
 // One fresh link to a sent invoice, and the email that carries it, scheduled
 // to run once this mutation commits. The letter is written from the invoice
-// as sent, so it names what the paper prints.
+// as sent, so it names what the paper prints, stamp included: a re-sent paid
+// or void invoice is not a demand for payment.
 export async function emailNewInvoiceLink(
   ctx: MutationCtx,
   send: { invoiceId: Id<"invoices">; token: string; senderName: string; now: number },
@@ -136,6 +140,7 @@ export async function emailNewInvoiceLink(
   const { frozen, number } = invoice ?? {};
   if (!invoice || !frozen || number === undefined)
     throw new Error("Only a sent invoice has a link to email.");
+  const stamp = invoiceStamp(invoice, await paymentFor(ctx, invoice._id));
   const linkId = await mintInvoiceLink(ctx, {
     invoiceId: invoice._id,
     token: send.token,
@@ -156,6 +161,7 @@ export async function emailNewInvoiceLink(
     siteStreet: frozen.site.street,
     firstLine: invoice.lines[0]?.description ?? "",
     amountDueCents: invoiceMoney(invoice.lines, invoice.taxRate).amountDueCents,
+    ...(stamp ? { stamp } : {}),
   });
 }
 
@@ -250,6 +256,7 @@ export const panel = query({
     if (!invoice) return null;
     const [row] = await invoiceRows(ctx, [invoice], a.today);
     const proposal = await proposalOf(ctx, invoice);
+    const payment = await paymentFor(ctx, invoice._id);
     const customer = await ctx.db.get(invoice.customerId);
     // Two sends in the same millisecond still list newest first.
     const links = (await invoiceLinksFor(ctx, invoice._id)).sort(
@@ -273,6 +280,9 @@ export const panel = query({
       // Why a draft's Send would be refused now, asked exactly as Send asks.
       sendBlockers:
         invoice.state === "draft" ? invoiceSendBlockers(invoice.lines, customerEmail) : [],
+      // The payment Mark paid recorded, and who recorded it: one the app
+      // wrote from Stripe cannot be taken back here.
+      payment: payment ? { receivedOn: payment.receivedOn, source: payment.source } : null,
       voidedAt: invoice.voidedAt ?? null,
       voidReason: invoice.voidReason ?? null,
       // Only the live link's token is handed over: it is the one the panel
@@ -315,11 +325,11 @@ export const paper = query({
     await requireOwner(ctx);
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) return null;
-    const zelle = await zelleEmail(ctx);
     if (invoice.state !== "draft") {
-      const sent = sentInvoicePaper(invoice, zelle);
+      const sent = await fixedInvoicePaperOf(ctx, invoice);
       return sent ? { ...sent, state: invoice.state } : null;
     }
+    const zelle = await zelleEmail(ctx);
     return {
       ...(await blockAsItStands(ctx, invoice)),
       state: invoice.state,
@@ -328,6 +338,7 @@ export const paper = query({
       lines: invoice.lines,
       taxRate: invoice.taxRate,
       zelleEmail: zelle,
+      stamp: null,
     };
   },
 });
@@ -486,22 +497,19 @@ export const resend = action({
   },
 });
 
-// Nothing on the invoice moves, not its lines, number or date: only where it
-// went. The old link ends as `resent`, so the email it sat in stops opening
-// anything, and the letter names the owner who re-sent it.
-//
-// The spec lets a void invoice be re-sent too, but its link only opens once
-// Void brings the paper stamped VOID (`invoiceStillOpenedBy`); until then a
-// re-send would end the customer's link and mail one that opens nothing, so
-// it is refused. Void widens this to `sent` or `void` with the stamp.
+// Nothing on the invoice moves, not its lines, number, date, payment or Void:
+// only where it went. The old link ends as `resent`, so the email it sat in
+// stops opening anything, and the letter names the owner who re-sent it. A
+// void invoice is re-sent too, whatever its standing: its link opens the
+// paper stamped VOID (`invoiceStillOpenedBy`).
 export const resendWithLink = internalMutation({
   args: { invoiceId: v.id("invoices"), token: v.string() },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) throw new Error("Invoice not found.");
-    if (invoice.state !== "sent" || !invoice.frozen)
-      throw new Error("Only a sent invoice can be re-sent.");
+    if (invoice.state === "draft" || !invoice.frozen)
+      throw new Error("Only a sent or void invoice can be re-sent.");
     const customer = await ctx.db.get(invoice.customerId);
     const sentTo = customer ? sendableEmail(customer.email) : null;
     if (sentTo === null)
@@ -526,10 +534,114 @@ export const resendWithLink = internalMutation({
   },
 });
 
+// **Mark paid** (CONTEXT.md): the owner recording that a sent invoice's money
+// arrived, and on which Pacific day, today unless they say otherwise. One
+// payment per invoice; a void one owes nothing to record. A credit is marked
+// paid too, once the owner has refunded it by hand. The paper is stamped PAID
+// with the day, and nobody is emailed.
+export const markPaid = mutation({
+  args: { invoiceId: v.id("invoices"), receivedOn: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    // Always there once `requireOwner` has passed; asked again for the type.
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Owner access required.");
+    const invoice = await ctx.db.get(a.invoiceId);
+    if (!invoice) throw new Error("Invoice not found.");
+    if (invoice.state !== "sent") throw new Error("Only a sent invoice can be marked paid.");
+    if (await paymentFor(ctx, invoice._id))
+      throw new Error("This invoice is already marked paid.");
+    const now = Date.now();
+    const today = pacificDay(now);
+    const receivedOn = a.receivedOn ?? today;
+    if (!isCalendarDay(receivedOn))
+      throw new Error("The day the money arrived has to be a day written YYYY-MM-DD.");
+    // Calendar days written this way sort as they fall.
+    if (receivedOn > today) throw new Error("The money can't have arrived after today.");
+    await ctx.db.insert("payments", {
+      invoiceId: invoice._id,
+      receivedOn,
+      source: "owner",
+      recordedBy: identity.subject,
+      recordedAt: now,
+    });
+    await ctx.db.patch(invoice._id, { updatedAt: now });
+  },
+});
+
+// Mark unpaid: the owner's payment taken back, stamp and all, and the invoice
+// reads Unpaid or Overdue again as its sent day says. A payment the app
+// recorded from Stripe is money that really moved, and is never taken back by
+// hand.
+export const markUnpaid = mutation({
+  args: { invoiceId: v.id("invoices") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const invoice = await ctx.db.get(a.invoiceId);
+    if (!invoice) throw new Error("Invoice not found.");
+    const payment = await paymentFor(ctx, invoice._id);
+    if (!payment) throw new Error("This invoice is not marked paid.");
+    if (payment.source !== "owner")
+      throw new Error("This invoice was paid online, so it can't be marked unpaid here.");
+    await ctx.db.delete(payment._id);
+    await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
+  },
+});
+
+// **Void** (CONTEXT.md): a wrong sent invoice cancelled, with an optional
+// reason the customer never sees. Refused while it is marked paid, so taking
+// money off the books is always a step of its own. It keeps its number, its
+// frozen block and its link, which now opens the paper stamped VOID; nobody
+// is emailed. A void final invoice gives Job done back (`holdsFinalInvoice`),
+// and the next final invoice does not take it off (lib/invoice-money.ts).
+// Exported as `voidInvoice`, since `void` is a word the language keeps.
+export const voidInvoice = mutation({
+  args: { invoiceId: v.id("invoices"), reason: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const invoice = await ctx.db.get(a.invoiceId);
+    if (!invoice) throw new Error("Invoice not found.");
+    if (invoice.state !== "sent") throw new Error("Only a sent invoice can be voided.");
+    if (await paymentFor(ctx, invoice._id))
+      throw new Error("This invoice is marked paid. Mark it unpaid first to void it.");
+    const now = Date.now();
+    const reason = a.reason?.trim().slice(0, VoidReasonMaxLength);
+    await ctx.db.patch(invoice._id, {
+      state: "void",
+      voidedAt: now,
+      ...(reason ? { voidReason: reason } : {}),
+      updatedAt: now,
+    });
+  },
+});
+
+// The Dashboard's Invoices card, "Owed to you": every sent invoice still
+// owed, read by index so drafts and void ones are never scanned, and paid
+// ones left out. Overdue oldest first, the longest waited on at the top, then
+// Unpaid newest sent first, as the Invoices page orders them; and what they
+// come to together. A credit still to refund is owed the other way, so it
+// takes its amount off the total.
+export const dashboard = query({
+  args: { today },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    requireDay(a.today);
+    const sent = await ctx.db
+      .query("invoices")
+      .withIndex("by_state_sent", (q) => q.eq("state", "sent"))
+      .collect();
+    const rows = await invoiceRows(ctx, sent, a.today);
+    const overdue = rows.filter((row) => row.standing === "overdue").sort(oldestSentFirst);
+    const unpaid = rows.filter((row) => row.standing === "unpaid").sort(newestSentFirst);
+    const owedCents = [...overdue, ...unpaid].reduce((sum, row) => sum + row.amountDueCents, 0);
+    return { owedCents, overdue, unpaid };
+  },
+});
+
 // Invoices as every list shows them: the row title, the customer, the amount
-// due tax included, and the standing as of `today`. Nothing records a
-// payment yet, so only an invoice with nothing due reads Paid; Mark paid is
-// what will add a recorded payment here.
+// due tax included, and the standing as of `today`, read from the invoice's
+// payment each time and never stored. Only a sent invoice can have one, so a
+// draft or void one is not asked.
 async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: string) {
   const customerNames = new Map<Id<"customers">, string>();
   const customerName = async (invoice: Doc<"invoices">) => {
@@ -545,6 +657,8 @@ async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: st
   return Promise.all(
     invoices.map(async (invoice) => {
       const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
+      const hasPayment =
+        invoice.state === "sent" && (await paymentFor(ctx, invoice._id)) !== null;
       return {
         invoiceId: invoice._id,
         customerId: invoice.customerId,
@@ -561,7 +675,7 @@ async function invoiceRows(ctx: QueryCtx, invoices: Doc<"invoices">[], today: st
         customerName: await customerName(invoice),
         amountDueCents,
         standing: invoiceStanding(
-          { state: invoice.state, sentAt: invoice.sentAt, amountDueCents, hasPayment: false },
+          { state: invoice.state, sentAt: invoice.sentAt, amountDueCents, hasPayment },
           today,
         ),
         sentAt: invoice.sentAt ?? null,
@@ -711,6 +825,7 @@ function refuseSend(blockers: readonly InvoiceSendBlocker[]) {
 }
 
 const TitleMaxLength = 200;
+const VoidReasonMaxLength = 500;
 const DescriptionMaxLength = 500;
 const LinesMax = 100;
 const LineMaxCents = 999_999_999;

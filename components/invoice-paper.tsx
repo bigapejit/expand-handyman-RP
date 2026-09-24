@@ -1,10 +1,16 @@
 import { Letterhead } from "@/components/proposal-paper";
 import { ExpandBusiness } from "@/lib/expand-business";
 import { invoiceMoney } from "@/lib/invoice-money";
-import { invoiceTaxLabel, type PaperInvoice } from "@/lib/invoice-paper";
+import {
+  invoiceTaxLabel,
+  stampDate,
+  type InvoiceStamp,
+  type PaperInvoice,
+} from "@/lib/invoice-paper";
 import { formatCentsExact } from "@/lib/money";
 import { paperSerifStack } from "@/lib/paper-fonts";
 import { paperDate } from "@/lib/proposal-paper";
+import { cn } from "@/lib/utils";
 
 // One invoice as paper: the **Invoice paper** (CONTEXT.md), as approved on the
 // prototype (#68) and settled on "Decide the invoice paper content and the
@@ -14,7 +20,10 @@ import { paperDate } from "@/lib/proposal-paper";
 // idiom, the lines before tax, then Subtotal, Sales Tax and Amount Due under
 // the proposal's double rule (Washington wants the tax stated separately, RCW
 // 82.08.050), and How to pay. No Terms: the invoice sits under the proposal as
-// signed, and the cover block already says Due: On receipt.
+// signed, and the cover block already says Due: On receipt. Once the owner has
+// marked it paid or voided it, a PAID or VOID stamp lies across the empty half
+// of the cover block with its day, and a void invoice keeps its lines with the
+// Amount Due struck through.
 //
 // Dates are read the way every date on the proposal paper is
 // (lib/proposal-paper.ts, `paperDate`), so the two papers agree on the day.
@@ -22,16 +31,17 @@ import { paperDate } from "@/lib/proposal-paper";
 export function InvoicePaper({ invoice }: { invoice: PaperInvoice }) {
   const key = invoice.number.replace(/\W/g, "").toLowerCase();
   const money = invoiceMoney(invoice.lines, invoice.taxRate);
+  const voided = invoice.stamp?.kind === "void";
 
   return (
     <article
-      className="proposal-document invoice-document"
+      className={cn("proposal-document invoice-document", voided && "ip-void")}
       data-invoice={key}
       aria-label={`Invoice ${invoice.number}`}
     >
       <InvoicePageRules pageKey={key} number={invoice.number} />
 
-      <section className="pd-page">
+      <section className="pd-page ip-page">
         <Letterhead />
 
         <CoverBlock invoice={invoice} />
@@ -66,7 +76,7 @@ export function InvoicePaper({ invoice }: { invoice: PaperInvoice }) {
               </tr>
               <tr className="pd-grand-total">
                 <th scope="row">Amount Due</th>
-                <td>{formatCentsExact(money.amountDueCents)}</td>
+                <td className="ip-amount">{formatCentsExact(money.amountDueCents)}</td>
               </tr>
             </tbody>
           </table>
@@ -82,8 +92,23 @@ export function InvoicePaper({ invoice }: { invoice: PaperInvoice }) {
             <p>Check: payable to {ExpandBusiness.letterheadName}, handed to us in person.</p>
           </div>
         </div>
+
+        {invoice.stamp ? <Stamp stamp={invoice.stamp} /> : null}
       </section>
     </article>
+  );
+}
+
+// PAID in green or VOID in red, with its day, set against the sheet in the
+// cover block's empty right half so it hides no figure.
+function Stamp({ stamp }: { stamp: InvoiceStamp }) {
+  const day = stampDate(stamp.day);
+  const word = stamp.kind === "paid" ? "Paid" : "Void";
+  return (
+    <div className={`ip-stamp ip-stamp-${stamp.kind}`} aria-label={`${word} ${day}`}>
+      {word}
+      <small>{day}</small>
+    </div>
   );
 }
 

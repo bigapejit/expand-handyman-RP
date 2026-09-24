@@ -117,6 +117,14 @@ export function newestSentFirst(
   return (y.sentAt ?? y.createdAt) - (x.sentAt ?? x.createdAt) || y.createdAt - x.createdAt;
 }
 
+// The Dashboard's Overdue list: the one waited on longest at the top.
+export function oldestSentFirst(
+  x: Pick<InvoiceOrderRow, "sentAt" | "createdAt">,
+  y: Pick<InvoiceOrderRow, "sentAt" | "createdAt">,
+): number {
+  return newestSentFirst(y, x);
+}
+
 type InvoiceOrderRow = {
   standing: Standing | null;
   sentAt: number | null;

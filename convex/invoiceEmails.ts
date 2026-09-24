@@ -10,6 +10,7 @@ import {
   sendsEmail,
   storedOutcome,
 } from "./email";
+import { stampDate } from "../lib/invoice-paper";
 import { formatCentsExact } from "../lib/money";
 import { signingPath, signingUrl } from "../lib/signing-link";
 
@@ -17,7 +18,9 @@ import { signingPath, signingUrl } from "../lib/signing-link";
 // settled on the invoices spec (#93, "Email"): plain text, from the address
 // and with the reply-to every proposal letter uses. Scheduled after the
 // mutation that sent the invoice has committed, so a Resend outage never
-// unsends it; what became of the letter is written to the link.
+// unsends it; what became of the letter is written to the link. A paid or
+// void invoice can be re-sent, and its letter then says so rather than asking
+// for money the paper says is not owed.
 
 export const invoiceLinkLetter = {
   linkId: v.id("invoiceLinks"),
@@ -33,6 +36,11 @@ export const invoiceLinkLetter = {
   // The invoice's first line, which says what it is for.
   firstLine: v.string(),
   amountDueCents: v.number(),
+  // The paper's stamp when the letter goes, for a re-sent invoice that is
+  // paid or void: the day it was paid or voided, as the stamp prints it.
+  stamp: v.optional(
+    v.object({ kind: v.union(v.literal("paid"), v.literal("void")), day: v.string() }),
+  ),
 };
 
 export const sendInvoiceLink = internalAction({
@@ -78,14 +86,21 @@ function invoiceLinkBody(letter: {
   siteStreet: string;
   firstLine: string;
   amountDueCents: number;
+  stamp?: { kind: "paid" | "void"; day: string };
   url: string;
 }): string {
+  const { stamp } = letter;
+  const standing = !stamp
+    ? "It is due on receipt."
+    : stamp.kind === "paid"
+      ? `It was paid on ${stampDate(stamp.day)}. Thank you.`
+      : `It was voided on ${stampDate(stamp.day)}, and nothing is due on it.`;
   return [
     `Hello ${letter.customerName},`,
     "",
-    `${letter.senderName} at Expand Handyman has sent you Invoice ${letter.number} for ${letter.siteStreet}: ${letter.firstLine}, ${formatCentsExact(letter.amountDueCents, "en-US")}. It is due on receipt.`,
+    `${letter.senderName} at Expand Handyman has sent you Invoice ${letter.number} for ${letter.siteStreet}: ${letter.firstLine}, ${formatCentsExact(letter.amountDueCents, "en-US")}. ${standing}`,
     "",
-    "See it and how to pay here:",
+    stamp ? "See it here:" : "See it and how to pay here:",
     letter.url,
     "",
     "This link is yours alone. Reply to this email with any questions.",

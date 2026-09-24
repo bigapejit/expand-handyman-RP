@@ -21,7 +21,47 @@ export type PaperInvoice = {
   taxRate: number;
   // The owner's Zelle setting at the moment the paper is read.
   zelleEmail: string;
+  // PAID once a payment is recorded, VOID once voided, and nothing while it
+  // is owed or still a draft.
+  stamp: InvoiceStamp | null;
 };
+
+// The stamp across the cover block's empty half, with its day: for PAID the
+// day the money arrived as Mark paid recorded it, for VOID the day it was
+// voided. Both are Pacific calendar days, `YYYY-MM-DD`
+// (lib/invoice-standing.ts, `pacificDay`).
+export type InvoiceStamp = { kind: "paid" | "void"; day: string };
+
+// Which paper this is, as the stamp makes it: what a PDF copy of it is bound
+// to, since each stamp changes the sheet.
+export type InvoicePaperState = "sent" | "paid" | "void";
+
+export function invoicePaperState(paper: Pick<PaperInvoice, "stamp">): InvoicePaperState {
+  return paper.stamp?.kind ?? "sent";
+}
+
+// A stamp's day as the paper writes days, `9/3/2026`
+// (lib/proposal-paper.ts, `paperDate`).
+export function stampDate(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return `${month}/${date}/${year}`;
+}
+
+// The sentence under the invoice link's top bar once the invoice is stamped,
+// in the words the invoices spec (#93) settled, and the tone it is said in:
+// the signed green for paid, the declined grey for void.
+export function invoiceLinkStrip(
+  stamp: InvoiceStamp | null,
+): { tone: "signed" | "declined"; body: string } | undefined {
+  if (!stamp) return undefined;
+  const day = stampDate(stamp.day);
+  return stamp.kind === "paid"
+    ? { tone: "signed", body: `Paid on ${day}. Thank you.` }
+    : {
+        tone: "declined",
+        body: `Expand Handyman voided this invoice on ${day}. Nothing is due on it.`,
+      };
+}
 
 // The top bar over the paper: which invoice, and at which site.
 export function invoicePaperTitle(paper: Pick<PaperInvoice, "number" | "site">): string {
