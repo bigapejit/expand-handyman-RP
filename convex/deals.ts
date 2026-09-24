@@ -270,10 +270,14 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const held = lead.dealId ? await ctx.db.get(lead.dealId) : null;
   if (held) return held;
   const now = Date.now();
-  const moved =
+  // The old board moved every lead of the customer on one send, so several
+  // leads can match the same proposal. It was for one job: the first deal
+  // made claims it, the rest keep their stage and no offer.
+  const matched =
     (lead.stage === "quoted" || lead.stage === "won") && lead.stageChangedAt !== undefined
       ? await proposalThatMoved(ctx, lead.customerId, lead.stageChangedAt, lead.stage === "won")
       : null;
+  const moved = matched && !(await someDealHolds(ctx, lead.customerId, matched._id)) ? matched : null;
   const dealId = await ctx.db.insert("deals", {
     customerId: lead.customerId,
     title: lead.category,
@@ -291,6 +295,19 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const deal = await ctx.db.get(dealId);
   if (!deal) throw new Error("The deal did not save.");
   return deal;
+}
+
+// Whether one of the customer's deals already reads this proposal as its own.
+async function someDealHolds(
+  ctx: QueryCtx,
+  customerId: Id<"customers">,
+  proposalId: Id<"proposals">,
+) {
+  const deals = await ctx.db
+    .query("deals")
+    .withIndex("by_customer", (q) => q.eq("customerId", customerId))
+    .collect();
+  return deals.some((deal) => deal.proposalId === proposalId);
 }
 
 // Which of a customer's proposals the old board's move stood for. That move

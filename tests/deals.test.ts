@@ -693,6 +693,34 @@ describe("dealsFromLeads", () => {
     expect(await deals()).toHaveLength(1);
   });
 
+  test("one send that moved two old leads is claimed by one deal, not both", async () => {
+    const { t, owner, customer, site, send } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const proposalId = await send(siteId);
+    const movedAt = Date.now();
+    for (const negotiationId of ["905", "906"])
+      await t.run((ctx) =>
+        ctx.db.insert("leads", {
+          customerId,
+          negotiationId,
+          thumbtackCustomerId: "c-1",
+          arrivedAt: Date.UTC(2026, 8, 20),
+          category: "Fence Repair",
+          description: "Gate sags.",
+          details: [],
+          location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+          attachments: [],
+          stage: "quoted",
+          stageChangedAt: movedAt,
+        }),
+      );
+    expect(await t.mutation(internal.migrations.dealsFromLeads, {})).toEqual({ made: 2 });
+    const rows = await owner.query(api.deals.board, {});
+    expect(rows.map((r) => r.stage)).toEqual(["quoted", "quoted"]);
+    expect(rows.filter((r) => r.proposal?.proposalId === proposalId)).toHaveLength(1);
+  });
+
   test("a lead the old board had moved to Sent out takes the proposal that moved it", async () => {
     const { t, owner, customer, site, send } = fixture();
     const customerId = await customer();
