@@ -18,6 +18,7 @@ const TABS = [
   { key: "invoices", label: "Invoices" },
   { key: "solutions", label: "Solutions" },
   { key: "documents", label: "Documents" },
+  { key: "thumbtack", label: "Thumbtack" },
   { key: "sites", label: "Sites" },
 ] as const;
 
@@ -40,9 +41,12 @@ export function CustomerHubShell({
   }
   if (customer === null) return <CustomerNotFound />;
 
-  const contact = [customer.email, displayPhone(customer.phone)]
-    .filter(Boolean)
-    .join(" · ");
+  // A number that came with a Thumbtack lead may be a relay that stops working.
+  const phone =
+    customer.phone && customer.phoneFrom === "thumbtack"
+      ? `${displayPhone(customer.phone)} · Thumbtack number`
+      : displayPhone(customer.phone);
+  const contact = [customer.email, phone].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-6">

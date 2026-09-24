@@ -5,7 +5,7 @@ Expand Handyman prepares documents for customers to review and sign.
 ## Language
 
 **Customer**:
-The person who pays for handyman work and signs its paperwork. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
+The person who pays for handyman work and signs its paperwork, added by the owner by hand or made by a Thumbtack lead arriving. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
 
 **Site**:
 One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many. Documents belong to the customer, not the site.
@@ -193,3 +193,31 @@ _Avoid_: Proposal PDF, proposal document, attachment
 **Render pass**:
 The short-lived key the PDF renderer opens a proposal or invoice paper with, instead of a signing or invoice link. Each one is made for a single PDF copy, of one proposal in one state or one invoice in one paper state (sent, paid or void), stops working within minutes, and is deleted when the render ends. Reading the paper through it is never a view and is never logged.
 _Avoid_: Paper token, report token
+
+**Lead**:
+A request for work that arrived from Thumbtack: what the customer asked for and where, the category, Thumbtack's estimate and what the lead cost, kept under the customer it made or matched. A customer may have several leads; each has its own chat and its own stage. Nothing else in the app is a lead: a customer the owner adds by hand has none.
+_Avoid_: Negotiation (Thumbtack's API name), opportunity, enquiry, job
+
+**Thumbtack number**:
+The phone number Thumbtack sends with a lead, saved as the customer's phone and marked as Thumbtack's, because it may be a relay number that stops working. The mark drops the moment the owner saves a different number.
+_Avoid_: Proxy number, masked number
+
+**Stage**:
+Where a lead stands with the owner: New (the lead has arrived and the two sides have not yet both written), Talking (the customer has answered the owner), Booked (the visit is on the owner's calendar), Estimating (the visit is done and the owner is working out the estimate), Sent out (a proposal has been sent), Won or Lost. Thumbtack never says which, so the owner moves it, and the app moves it for them when it can: to Talking when the customer writes after the owner has, to Sent out when a proposal for that customer is sent, to Won when one is approved. The owner's message alone moves nothing, and Booked, Estimating and Lost are only ever set by hand. Won and Lost are final and leave the board.
+_Avoid_: Status (Thumbtack's own, which the app cannot read), hire status, column (where a stage is shown)
+
+**Thumbtack board**:
+The staff page listing every open lead by stage, newest first, with a mark on each lead whose customer has written since the owner last opened it. Won and Lost leads are listed under Closed.
+_Avoid_: Leads page, pipeline, CRM
+
+**Thumbtack chat**:
+Every message Thumbtack has delivered on one lead, the customer's and the owner's, shown read-only under the lead with when it was sent and any attachments. The app never sends a message.
+_Avoid_: Thread, conversation (as the record's name), inbox
+
+**Send message on Thumbtack**:
+The one button on a lead's chat: it opens that lead's conversation on thumbtack.com in a new tab, where the owner replies. Nothing is sent by the app.
+_Avoid_: Reply, send (as an app action)
+
+**Unread**:
+A lead whose customer has written since the owner last opened it in the app. Cleared by opening the lead; nothing that happens on Thumbtack clears it.
+_Avoid_: New message flag, notification

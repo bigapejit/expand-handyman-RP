@@ -12,7 +12,8 @@ import { proposalActivity, type ProposalOutcome } from "../lib/proposals";
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
 
 // The Customers list and every customer picker. Duplicate email and phone
-// warnings are worked out in the dialog against this same list.
+// warnings are worked out in the dialog against this same list. Each row keeps
+// its **Thumbtack number** mark (`phoneFrom`).
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -87,12 +88,18 @@ export const insert = internalMutation({
 });
 
 // Same fields and rules as add. Issued documents keep the name they were
-// issued with, so only drafts follow an edit.
+// issued with, so only drafts follow an edit. A different phone is the owner's
+// own number, so the **Thumbtack number** mark goes with the old one.
 export const update = mutation({
   args: { customerId: v.id("customers"), ...contact },
   handler: async (ctx, { customerId, ...a }) => {
     await requireOwner(ctx);
-    if (!(await ctx.db.get(customerId))) throw new Error("Customer not found.");
-    await ctx.db.patch(customerId, parseCustomer(a));
+    const stored = await ctx.db.get(customerId);
+    if (!stored) throw new Error("Customer not found.");
+    const customer = parseCustomer(a);
+    await ctx.db.patch(customerId, {
+      ...customer,
+      ...(customer.phone === stored.phone ? {} : { phoneFrom: undefined }),
+    });
   },
 });
