@@ -1075,7 +1075,7 @@ describe("A Returned payment", () => {
       [
         "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
         "",
-        "Another bank payment of $299.48 accepted Sept 2 was on its way when this one came back, so the customer (Maria Delgado, maria@example.com) was not asked to pay again here. It has since come back too, and its own letters went.",
+        "Another bank payment of $299.48 accepted Sept 2 was on its way when this one came back, so the customer (Maria Delgado, maria@example.com) was not asked to pay again. It has since come back too, with letters of its own.",
         "",
         "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
       ].join("\n"),
