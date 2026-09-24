@@ -296,6 +296,7 @@ describe("The invoice link", () => {
         lines: [{ description: "Deposit (50%) for Fix gate", cents: 27_500 }],
         taxRate: 0.089,
         zelleEmail: "pay@expandhandyman.com",
+        stamp: null,
       },
     });
 

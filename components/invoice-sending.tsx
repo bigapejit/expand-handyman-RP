@@ -28,9 +28,9 @@ export type PanelInvoice = NonNullable<FunctionReturnType<typeof api.invoices.pa
 
 // The invoice panel's sending block, copied from the proposal's
 // (proposal-sending.tsx): a draft's **Send**, with every reason it would be
-// refused listed before it is pressed; once sent, the live **Invoice link** to
-// copy, what became of its email, **Re-send**, and every link the invoice has
-// had. The link is always there to copy, and said out loud when the email did
+// refused listed before it is pressed; once sent, and once void too, the live
+// **Invoice link** to copy, what became of its email, **Re-send**, and every
+// link the invoice has had. The link is always there to copy, and said out loud when the email did
 // not go, because then the owner is the only way it reaches the customer.
 export function InvoiceSending({
   invoice,
@@ -191,9 +191,9 @@ function SentLink({ invoice }: { invoice: PanelInvoice }) {
         </div>
       ) : null}
 
-      {/* A void invoice's link opens nothing until Void brings the stamped
-          paper, so it is not re-sent (invoices.resendWithLink). */}
-      {invoice.state === "sent" ? (
+      {/* A void invoice is re-sent too: its link opens the paper stamped
+          VOID (invoices.resendWithLink). */}
+      {invoice.state !== "draft" ? (
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
@@ -204,7 +204,7 @@ function SentLink({ invoice }: { invoice: PanelInvoice }) {
           </Button>
         </div>
       ) : null}
-      {invoice.state === "sent" && invoice.customerEmail === null ? (
+      {invoice.state !== "draft" && invoice.customerEmail === null ? (
         <p className="text-xs text-slate-500">
           The customer has no email address now. Add one to re-send.
         </p>

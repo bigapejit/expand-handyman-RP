@@ -3,6 +3,11 @@
  * table and Grand Total block it is drawn with. As approved on the prototype
  * (#68, prototype/invoice-paper). */
 
+/* The stamp is placed against the sheet. */
+.ip-page {
+  position: relative;
+}
+
 .ip-facts {
   margin-top: 4pt;
 }
@@ -37,4 +42,45 @@
 .ip-pay .pd-scope p {
   text-align: left;
   margin-bottom: 2pt;
+}
+
+/* A voided invoice asks for nothing. */
+.ip-void .ip-amount {
+  text-decoration: line-through;
+  color: #555;
+}
+
+/* ── The stamp ────────────────────────────────────────────────────────── */
+/* In the empty right half of the cover block, so it hides no figure. */
+.ip-stamp {
+  position: absolute;
+  top: 2.3in;
+  right: 0.75in;
+  transform: rotate(-12deg);
+  padding: 6pt 18pt 8pt;
+  border: 3.5pt solid #15803d;
+  border-radius: 6pt;
+  color: #15803d;
+  font: bold 36pt/1 Tinos, "Times New Roman", Times, serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  opacity: 0.78;
+  pointer-events: none;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.ip-stamp small {
+  display: block;
+  margin-top: 3pt;
+  font-size: 11pt;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.ip-stamp-void {
+  color: #b91c1c;
+  border-color: #b91c1c;
 }

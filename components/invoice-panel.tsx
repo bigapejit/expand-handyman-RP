@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Eye, Trash2 } from "lucide-react";
+import { Ban, Eye, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { HubLoading } from "@/components/customer-hub-shell";
@@ -11,6 +11,7 @@ import {
   InvoiceLines,
   type InvoiceDraftPatch,
 } from "@/components/invoice-lines";
+import { InvoicePayment } from "@/components/invoice-payment";
 import { InvoiceSending, type PanelInvoice } from "@/components/invoice-sending";
 import { SidePanel, useSidePanel } from "@/components/side-panel";
 import {
@@ -24,6 +25,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { usePacificToday } from "@/hooks/use-pacific-today";
 import { InvoicePanelParam, invoicePaperHref } from "@/lib/invoices";
@@ -81,20 +84,25 @@ function OpenInvoice({
 }
 
 // Everything about one invoice: its header, its lines and money, the sending
-// block, and a footer. A draft's lines are open for writing, with Send in the
-// sending block and Delete in the footer; once sent, the lines are read only.
-// Mark paid under the sending block, and Download and Void in the footer, are
-// the next ticket's.
+// block, its payment, and a footer. A draft's lines are open for writing, with
+// Send in the sending block and Delete in the footer; once sent, the lines are
+// read only, Mark paid or Mark unpaid sits under the sending block, and Void
+// joins the footer while nothing is recorded as paid.
 function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: () => void }) {
   const update = useMutation(api.invoices.update);
   const remove = useMutation(api.invoices.remove);
+  const voidInvoice = useMutation(api.invoices.voidInvoice);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingVoid, setConfirmingVoid] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
   // A refusal belongs where the edit was made: the list's own error line is
   // behind the panel.
   const [refusal, setRefusal] = useState("");
   // An amount typed in the draft that cannot be read yet (InvoiceDraftLines).
   const [unreadable, setUnreadable] = useState(false);
   const isDraft = invoice.state === "draft";
+  // Void is refused while a payment stands: marking it unpaid comes first.
+  const voidable = invoice.state === "sent" && invoice.payment === null;
 
   const save = async (patch: InvoiceDraftPatch): Promise<boolean> => {
     try {
@@ -135,6 +143,8 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
 
         <InvoiceSending invoice={invoice} amountUnreadable={isDraft && unreadable} />
 
+        <InvoicePayment invoice={invoice} />
+
         <div className="flex flex-wrap items-center gap-1 border-t pt-4">
           <Button
             variant="outline"
@@ -146,6 +156,11 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
             <Eye data-icon="inline-start" aria-hidden /> View paper
           </Button>
           <span className="flex-1" />
+          {voidable ? (
+            <Button variant="outline" onClick={() => setConfirmingVoid(true)}>
+              <Ban data-icon="inline-start" aria-hidden /> Void
+            </Button>
+          ) : null}
           {isDraft ? (
             <Button variant="destructive" size="lg" onClick={() => setConfirmingDelete(true)}>
               <Trash2 data-icon="inline-start" aria-hidden /> Delete
@@ -153,6 +168,49 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
           ) : null}
         </div>
       </div>
+
+      <AlertDialog open={confirmingVoid} onOpenChange={setConfirmingVoid}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Void {invoice.title}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It keeps its number and its link, which then shows the paper stamped VOID with
+              nothing due. Nobody is emailed, and it can&rsquo;t be undone.
+              {invoice.kind === "final"
+                ? " Job done comes back on the proposal, to raise the final invoice again."
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="void-reason">Reason (optional, the customer never sees it)</Label>
+            <Textarea
+              id="void-reason"
+              rows={2}
+              maxLength={500}
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                setConfirmingVoid(false);
+                try {
+                  await voidInvoice({ invoiceId: invoice.invoiceId, reason: voidReason });
+                  setVoidReason("");
+                  setRefusal("");
+                } catch (err) {
+                  setRefusal(errorMessage(err));
+                }
+              }}
+            >
+              Void invoice
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>
