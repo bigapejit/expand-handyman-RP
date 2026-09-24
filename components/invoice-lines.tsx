@@ -69,12 +69,23 @@ export function InvoiceLines({ invoice }: { invoice: PanelInvoice }) {
 export function InvoiceDraftLines({
   invoice,
   onSave,
+  onUnreadable,
 }: {
   invoice: PanelInvoice;
   onSave: (patch: InvoiceDraftPatch) => Promise<boolean>;
+  // Told whether an amount in the table cannot be read, and so cannot be
+  // stored: until it can, the invoice still holds the amount it replaced, and
+  // Send must wait rather than send that.
+  onUnreadable: (unreadable: boolean) => void;
 }) {
   const [title, setTitle] = useState(invoice.typedTitle ?? "");
-  const [drafts, setDrafts] = useState<InvoiceLineDraft[]>(() => lineDraftsFrom(invoice.lines));
+  const [drafts, setDraftRows] = useState<InvoiceLineDraft[]>(() =>
+    lineDraftsFrom(invoice.lines),
+  );
+  const setDrafts = (rows: InvoiceLineDraft[]) => {
+    setDraftRows(rows);
+    onUnreadable(linesToStore(rows) === null);
+  };
   const nextKey = useRef(0);
   // The row just added, whose description takes the cursor.
   const [added, setAdded] = useState<string | null>(null);
@@ -89,7 +100,7 @@ export function InvoiceDraftLines({
   };
 
   const editRow = (index: number, patch: Partial<InvoiceLineDraft>) => {
-    setDrafts((rows) => rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+    setDrafts(drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)));
   };
 
   const replace = (next: InvoiceLineDraft[]) => {
@@ -101,7 +112,7 @@ export function InvoiceDraftLines({
     nextKey.current += 1;
     const key = `new-${nextKey.current}`;
     setAdded(key);
-    setDrafts((rows) => [...rows, { key, description: "", amount: "" }]);
+    setDrafts([...drafts, { key, description: "", amount: "" }]);
   };
 
   // A refused title puts the field back to what the invoice is still called.

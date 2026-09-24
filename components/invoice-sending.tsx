@@ -32,12 +32,20 @@ export type PanelInvoice = NonNullable<FunctionReturnType<typeof api.invoices.pa
 // copy, what became of its email, **Re-send**, and every link the invoice has
 // had. The link is always there to copy, and said out loud when the email did
 // not go, because then the owner is the only way it reaches the customer.
-export function InvoiceSending({ invoice }: { invoice: PanelInvoice }) {
+export function InvoiceSending({
+  invoice,
+  amountUnreadable = false,
+}: {
+  invoice: PanelInvoice;
+  // An amount in the draft's table that cannot be read, and so is not stored:
+  // sending now would send the amount it replaced.
+  amountUnreadable?: boolean;
+}) {
   if (invoice.state === "draft")
     return (
       <div className="space-y-2">
         <FieldHeading>Send</FieldHeading>
-        <SendDraft invoice={invoice} />
+        <SendDraft invoice={invoice} amountUnreadable={amountUnreadable} />
       </div>
     );
   return (
@@ -49,12 +57,22 @@ export function InvoiceSending({ invoice }: { invoice: PanelInvoice }) {
   );
 }
 
-function SendDraft({ invoice }: { invoice: PanelInvoice }) {
+function SendDraft({
+  invoice,
+  amountUnreadable,
+}: {
+  invoice: PanelInvoice;
+  amountUnreadable: boolean;
+}) {
   const send = useAction(api.invoices.send);
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [refusal, setRefusal] = useState("");
-  const blocked = invoice.sendBlockers.length > 0;
+  const reasons = [
+    ...(amountUnreadable ? [UnreadableAmount] : []),
+    ...invoice.sendBlockers.map(invoiceSendBlockerMessage),
+  ];
+  const blocked = reasons.length > 0;
 
   const sendNow = async () => {
     setConfirming(false);
@@ -78,8 +96,8 @@ function SendDraft({ invoice }: { invoice: PanelInvoice }) {
       ) : null}
       {blocked ? (
         <ul className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {invoice.sendBlockers.map((blocker) => (
-            <li key={blocker}>{invoiceSendBlockerMessage(blocker)}</li>
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
           ))}
         </ul>
       ) : (
@@ -111,6 +129,8 @@ function SendDraft({ invoice }: { invoice: PanelInvoice }) {
     </>
   );
 }
+
+const UnreadableAmount = "An amount on this invoice isn't a figure yet.";
 
 function SentLink({ invoice }: { invoice: PanelInvoice }) {
   const resend = useAction(api.invoices.resend);

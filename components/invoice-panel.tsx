@@ -92,6 +92,8 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
   // A refusal belongs where the edit was made: the list's own error line is
   // behind the panel.
   const [refusal, setRefusal] = useState("");
+  // An amount typed in the draft that cannot be read yet (InvoiceDraftLines).
+  const [unreadable, setUnreadable] = useState(false);
   const isDraft = invoice.state === "draft";
 
   const save = async (patch: InvoiceDraftPatch): Promise<boolean> => {
@@ -126,12 +128,12 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
         ) : null}
 
         {isDraft ? (
-          <InvoiceDraftLines invoice={invoice} onSave={save} />
+          <InvoiceDraftLines invoice={invoice} onSave={save} onUnreadable={setUnreadable} />
         ) : (
           <InvoiceLines invoice={invoice} />
         )}
 
-        <InvoiceSending invoice={invoice} />
+        <InvoiceSending invoice={invoice} amountUnreadable={isDraft && unreadable} />
 
         <div className="flex flex-wrap items-center gap-1 border-t pt-4">
           <Button
