@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 // and a tab row, each tab its own route so it can be bookmarked and Back works.
 const TABS = [
   { key: "proposals", label: "Proposals" },
+  { key: "invoices", label: "Invoices" },
   { key: "solutions", label: "Solutions" },
   { key: "documents", label: "Documents" },
   { key: "sites", label: "Sites" },

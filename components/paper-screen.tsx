@@ -176,7 +176,7 @@ export function PaperTop({
   );
 }
 
-function Strip({ strip }: { strip?: PaperStrip }) {
+export function Strip({ strip }: { strip?: PaperStrip }) {
   return strip ? <div className={`paper-strip paper-strip-${strip.tone}`}>{strip.body}</div> : null;
 }
 

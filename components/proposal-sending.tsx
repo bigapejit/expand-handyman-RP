@@ -29,6 +29,8 @@ import {
   endedReasonLabel,
   linkEmailLabel,
   signingPath,
+  type LinkEmail,
+  type SigningLinkEndedReason,
 } from "@/lib/signing-link";
 import { cn, dateTime, errorMessage } from "@/lib/utils";
 
@@ -352,9 +354,20 @@ function Decision({ proposal }: { proposal: Proposal }) {
   );
 }
 
-// Every link the proposal has had, newest first: where it went and when,
-// whether its email did, and why it ended.
-function LinkHistory({ links }: { links: Proposal["links"] }) {
+// Every link a proposal or an invoice has had, newest first: where it went
+// and when, whether its email did, and why it ended. The invoice panel lists
+// its invoice links with it (invoice-sending.tsx).
+export function LinkHistory({
+  links,
+}: {
+  links: {
+    linkId: string;
+    sentTo: string;
+    sentAt: number;
+    email: LinkEmail | null;
+    endedReason: SigningLinkEndedReason | null;
+  }[];
+}) {
   return (
     <details className="group text-sm" open={links.length > 1 || undefined}>
       <summary className="cursor-pointer text-xs font-medium text-slate-500">
