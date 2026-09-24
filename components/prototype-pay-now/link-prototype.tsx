@@ -20,6 +20,7 @@ import {
   payChoices,
   Readings,
   shortDay,
+  ZelleQrUrl,
   ZelleTag,
   type PayChoice,
   type Reading,
@@ -421,6 +422,19 @@ function ThreeWaysSheet({
               </ol>
               <p className="pn-card-text">
                 We mark the invoice paid when the money lands, usually the same day.
+              </p>
+              {/* The address inside the bank's QR code. Tapped, it opens Zelle's
+                  find-your-bank page; a few big banks then pass the tag into
+                  their app, most only say "scan this in your banking app", and
+                  the amount never comes along (#116). Here so the owner can
+                  judge whether it earns a place. */}
+              <p className="pn-card-text">
+                <a className="paper-btn" href={ZelleQrUrl} target="_blank" rel="noreferrer">
+                  Try opening it in your bank&rsquo;s app
+                </a>{" "}
+                <span className="pn-choice-note">
+                  Works with some banks; the steps above always do.
+                </span>
               </p>
             </>
           ) : (

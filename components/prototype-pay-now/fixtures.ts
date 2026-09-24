@@ -16,6 +16,11 @@ export const TaxRate = 0.089;
 // Handyman LLC.", so the setting carries the words that complete it.
 export const ZelleTag = "expandhandyman";
 export const ZelleEmail = `the Zelle® tag ${ZelleTag} from your banking app`;
+// What the bank's QR code encodes: Zelle's find-your-bank page with the tag
+// and name as base64 JSON. Decoded from the owner's U.S. Bank code (#116).
+export const ZelleQrUrl =
+  "https://enroll.zellepay.com/qr-codes?data=" +
+  btoa(JSON.stringify({ token: ZelleTag, name: "EXPAND", action: "PAYMENT" }));
 
 // ── The ways to pay online, as the map settled them on 2026-09-23 ────────
 // Bank is always offered; card only when Amount Due is $1,000 or less. No
