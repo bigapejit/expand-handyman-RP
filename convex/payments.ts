@@ -18,7 +18,9 @@ export function paymentFor(
 
 // What the invoice's paper is stamped with: VOID from the day it was voided,
 // or PAID from the day its money arrived. Void is refused while a payment
-// stands, so the two never meet; VOID wins if they somehow did.
+// stands, so the two never meet; VOID wins if they somehow did. Void always
+// writes `voidedAt`; the last change stands in only for a row written some
+// other way, so the stamp still has a day.
 export function invoiceStamp(
   invoice: Pick<Doc<"invoices">, "state" | "voidedAt" | "updatedAt">,
   payment: Pick<Doc<"payments">, "receivedOn"> | null,

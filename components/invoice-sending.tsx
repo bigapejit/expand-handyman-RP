@@ -30,8 +30,9 @@ export type PanelInvoice = NonNullable<FunctionReturnType<typeof api.invoices.pa
 // (proposal-sending.tsx): a draft's **Send**, with every reason it would be
 // refused listed before it is pressed; once sent, and once void too, the live
 // **Invoice link** to copy, what became of its email, **Re-send**, and every
-// link the invoice has had. The link is always there to copy, and said out loud when the email did
-// not go, because then the owner is the only way it reaches the customer.
+// link the invoice has had. The link is always there to copy, and said out
+// loud when the email did not go, because then the owner is the only way it
+// reaches the customer.
 export function InvoiceSending({
   invoice,
   amountUnreadable = false,

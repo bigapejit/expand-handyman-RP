@@ -75,8 +75,8 @@ export async function invoiceStillOpenedBy(
 
 // A sent or void invoice as its paper, read wholly from what Send fixed and
 // stamped from its payment or its Void, with the Zelle address as the
-// settings hold it now.
-export async function sentInvoicePaperOf(
+// settings hold it now. A draft has no fixed paper, and gets none here.
+export async function fixedInvoicePaperOf(
   ctx: QueryCtx,
   invoice: Doc<"invoices">,
 ): Promise<PaperInvoice | null> {
@@ -84,10 +84,10 @@ export async function sentInvoicePaperOf(
     zelleEmail(ctx),
     paymentFor(ctx, invoice._id),
   ]);
-  return sentInvoicePaper(invoice, zelle, payment);
+  return fixedInvoicePaper(invoice, zelle, payment);
 }
 
-export function sentInvoicePaper(
+export function fixedInvoicePaper(
   invoice: Doc<"invoices">,
   zelle: string,
   payment: Pick<Doc<"payments">, "receivedOn"> | null,
@@ -110,13 +110,14 @@ export function sentInvoicePaper(
 }
 
 // What the customer's invoice link shows: the paper, stamped once paid or
-// void, or nothing once the link opens nothing. A query, and the page reports no open: nothing is logged.
+// void, or nothing once the link opens nothing. A query, and the page reports
+// no open: nothing is logged.
 export const page = query({
   args: { token: v.string() },
   handler: async (ctx, a): Promise<{ paper: PaperInvoice } | null> => {
     const opened = await invoiceStillOpenedBy(ctx, a.token);
     if (!opened) return null;
-    const paper = await sentInvoicePaperOf(ctx, opened.invoice);
+    const paper = await fixedInvoicePaperOf(ctx, opened.invoice);
     return paper ? { paper } : null;
   },
 });

@@ -16,7 +16,7 @@ import {
   endInvoiceLinks,
   invoiceLinksFor,
   mintInvoiceLink,
-  sentInvoicePaperOf,
+  fixedInvoicePaperOf,
 } from "./invoiceLinks";
 import { paymentFor } from "./payments";
 import { invoiceLine } from "./schema";
@@ -41,6 +41,7 @@ import {
   invoiceSendBlockers,
   matchesInvoiceFilter,
   newestSentFirst,
+  oldestSentFirst,
   type InvoiceSendBlocker,
 } from "../lib/invoices";
 import { proposalDisplayName } from "../lib/proposal-pricing";
@@ -322,7 +323,7 @@ export const paper = query({
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) return null;
     if (invoice.state !== "draft") {
-      const sent = await sentInvoicePaperOf(ctx, invoice);
+      const sent = await fixedInvoicePaperOf(ctx, invoice);
       return sent ? { ...sent, state: invoice.state } : null;
     }
     const zelle = await zelleEmail(ctx);
@@ -539,7 +540,9 @@ export const markPaid = mutation({
   args: { invoiceId: v.id("invoices"), receivedOn: v.optional(v.string()) },
   handler: async (ctx, a) => {
     await requireOwner(ctx);
+    // Always there once `requireOwner` has passed; asked again for the type.
     const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Owner access required.");
     const invoice = await ctx.db.get(a.invoiceId);
     if (!invoice) throw new Error("Invoice not found.");
     if (invoice.state !== "sent") throw new Error("Only a sent invoice can be marked paid.");
@@ -556,7 +559,7 @@ export const markPaid = mutation({
       invoiceId: invoice._id,
       receivedOn,
       source: "owner",
-      recordedBy: identity?.subject ?? "owner",
+      recordedBy: identity.subject,
       recordedAt: now,
     });
     await ctx.db.patch(invoice._id, { updatedAt: now });
@@ -625,9 +628,7 @@ export const dashboard = query({
       .withIndex("by_state_sent", (q) => q.eq("state", "sent"))
       .collect();
     const rows = await invoiceRows(ctx, sent, a.today);
-    const overdue = rows
-      .filter((row) => row.standing === "overdue")
-      .sort((x, y) => newestSentFirst(y, x));
+    const overdue = rows.filter((row) => row.standing === "overdue").sort(oldestSentFirst);
     const unpaid = rows.filter((row) => row.standing === "unpaid").sort(newestSentFirst);
     const owedCents = [...overdue, ...unpaid].reduce((sum, row) => sum + row.amountDueCents, 0);
     return { owedCents, overdue, unpaid };
