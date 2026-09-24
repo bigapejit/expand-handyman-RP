@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   depositLine,
+  finalInvoiceLines,
   invoiceMoney,
   invoiceNumberLabel,
   invoiceTaxRate,
@@ -119,5 +120,94 @@ describe("The deposit invoice's one line", () => {
 describe("The invoice number", () => {
   it("reads INV- and the count", () => {
     expect(invoiceNumberLabel(1001)).toBe("INV-1001");
+  });
+});
+
+describe("The final invoice's prefilled lines", () => {
+  // $4,000 before tax, as Send froze it.
+  const proposal = { name: "Kitchen faucet and hallway repair", subtotalCents: 400_000 };
+  const deposit = {
+    kind: "deposit" as const,
+    state: "sent" as const,
+    number: 1001,
+    lines: [{ description: "Deposit (50%) for Kitchen faucet and hallway repair", cents: 200_000 }],
+  };
+
+  it("takes the deposit invoice off the proposal's price, naming it by its number", () => {
+    expect(finalInvoiceLines(proposal, [deposit])).toEqual([
+      { description: "Kitchen faucet and hallway repair", cents: 400_000 },
+      { description: "Less deposit invoiced (INV-1001)", cents: -200_000 },
+    ]);
+  });
+
+  it("takes off every invoice sent on it, in number order, each at its subtotal", () => {
+    const midway = {
+      kind: "typed" as const,
+      state: "sent" as const,
+      number: 1003,
+      lines: [
+        { description: "Framing midway", cents: 90_000 },
+        { description: "Credit for returned lumber", cents: -10_000 },
+      ],
+    };
+    // Listed out of order, as a query might hand them over.
+    expect(finalInvoiceLines(proposal, [midway, deposit])).toEqual([
+      { description: "Kitchen faucet and hallway repair", cents: 400_000 },
+      { description: "Less deposit invoiced (INV-1001)", cents: -200_000 },
+      { description: "Less invoiced (INV-1003)", cents: -80_000 },
+    ]);
+  });
+
+  it("skips void invoices and drafts, which billed nothing", () => {
+    const voided = { ...deposit, state: "void" as const, number: 1002 };
+    const draft = {
+      kind: "typed" as const,
+      state: "draft" as const,
+      lines: [{ description: "Extra", cents: 5_000 }],
+    };
+    expect(finalInvoiceLines(proposal, [voided, draft, { ...deposit, number: 1004 }])).toEqual([
+      { description: "Kitchen faucet and hallway repair", cents: 400_000 },
+      { description: "Less deposit invoiced (INV-1004)", cents: -200_000 },
+    ]);
+  });
+
+  it("bills a tax-free proposal's balance with no tax on top", () => {
+    const lines = finalInvoiceLines({ name: "Fix gate", subtotalCents: 55_000 }, [
+      {
+        kind: "deposit",
+        state: "sent",
+        number: 1001,
+        lines: [{ description: "Deposit (30%) for Fix gate", cents: 16_500 }],
+      },
+    ]);
+    expect(lines).toEqual([
+      { description: "Fix gate", cents: 55_000 },
+      { description: "Less deposit invoiced (INV-1001)", cents: -16_500 },
+    ]);
+    expect(invoiceMoney(lines, 0)).toEqual({
+      subtotalCents: 38_500,
+      taxCents: 0,
+      amountDueCents: 38_500,
+    });
+  });
+
+  it("is the proposal's whole price when nothing was sent before it", () => {
+    expect(finalInvoiceLines(proposal, [])).toEqual([
+      { description: "Kitchen faucet and hallway repair", cents: 400_000 },
+    ]);
+  });
+
+  it("can come to nothing, or to a credit when more was billed than the price", () => {
+    const whole = { ...deposit, lines: [{ description: "Deposit (100%)", cents: 400_000 }] };
+    const extra = {
+      kind: "typed" as const,
+      state: "sent" as const,
+      number: 1002,
+      lines: [{ description: "Extra", cents: 20_000 }],
+    };
+    expect(invoiceMoney(finalInvoiceLines(proposal, [whole]), 0.087).amountDueCents).toBe(0);
+    expect(invoiceMoney(finalInvoiceLines(proposal, [whole, extra]), 0.087).amountDueCents).toBe(
+      -21_740,
+    );
   });
 });

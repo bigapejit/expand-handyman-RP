@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
+  mutation,
   query,
   type MutationCtx,
   type QueryCtx,
@@ -17,23 +18,29 @@ import {
   mintInvoiceLink,
   sentInvoicePaper,
 } from "./invoiceLinks";
+import { invoiceLine } from "./schema";
 import { zelleEmail } from "./settings";
 import { mintLinkToken } from "./signingLinks";
 import { sendableEmail } from "../lib/customer";
 import { Unknown } from "../lib/expand-business";
 import {
   depositLine,
+  finalInvoiceLines,
   invoiceMoney,
   invoiceNumberLabel,
   invoiceTaxRate,
+  type InvoiceLine,
 } from "../lib/invoice-money";
 import type { PaperInvoice } from "../lib/invoice-paper";
 import { invoiceStanding, isCalendarDay } from "../lib/invoice-standing";
 import {
   compareInvoiceRows,
   invoiceRowTitle,
+  invoiceSendBlockerMessage,
+  invoiceSendBlockers,
   matchesInvoiceFilter,
   newestSentFirst,
+  type InvoiceSendBlocker,
 } from "../lib/invoices";
 import { proposalDisplayName } from "../lib/proposal-pricing";
 import { signingUrl } from "../lib/signing-link";
@@ -41,9 +48,11 @@ import { siteCityLine, siteStreetLine } from "../lib/sites";
 
 // Invoices (CONTEXT.md, **Invoice**): requests for payment that belong to one
 // approved proposal. This holds the **Deposit invoice**, which Approve makes
-// already sent; the pieces every Send shares: the business-wide number
-// sequence and the link with its email; the owner's lists and panel, each row
-// with its **Standing**; the staff paper; and **Re-send**.
+// already sent; **Job done** and New invoice, which make the final and typed
+// invoices as drafts; draft editing, Delete and **Send**; the pieces every
+// Send shares: the business-wide number sequence and the link with its email;
+// the owner's lists and panel, each row with its **Standing**; the staff
+// paper; and **Re-send**.
 
 type FrozenProposal = NonNullable<Doc<"proposals">["frozen"]>;
 
@@ -247,8 +256,12 @@ export const panel = query({
       (x, y) => y.sentAt - x.sentAt || y._creationTime - x._creationTime,
     );
     const live = links.find((link) => link.endedAt === undefined);
+    const customerEmail = customer ? sendableEmail(customer.email) : null;
     return {
       ...row,
+      // A typed invoice's title as stored, for its field; the row title above
+      // is what everything else calls the invoice.
+      invoiceTitle: invoice.title ?? null,
       proposalCode: proposal.code,
       proposalName: proposal.name,
       lines: invoice.lines,
@@ -256,7 +269,10 @@ export const panel = query({
       money: invoiceMoney(invoice.lines, invoice.taxRate),
       // Where Send or Re-send would go now, or null when the customer has no
       // address to send to.
-      customerEmail: customer ? sendableEmail(customer.email) : null,
+      customerEmail,
+      // Why a draft's Send would be refused now, asked exactly as Send asks.
+      sendBlockers:
+        invoice.state === "draft" ? invoiceSendBlockers(invoice.lines, customerEmail) : [],
       voidedAt: invoice.voidedAt ?? null,
       voidReason: invoice.voidReason ?? null,
       // Only the live link's token is handed over: it is the one the panel
@@ -304,25 +320,153 @@ export const paper = query({
       const sent = sentInvoicePaper(invoice, zelle);
       return sent ? { ...sent, state: invoice.state } : null;
     }
-    const [site, customer, proposal] = await Promise.all([
-      ctx.db.get(invoice.siteId),
-      ctx.db.get(invoice.customerId),
-      proposalOf(ctx, invoice),
-    ]);
     return {
+      ...(await blockAsItStands(ctx, invoice)),
       state: invoice.state,
       number: "Draft",
       sentAt: null,
-      customerName: customer?.name ?? Unknown,
-      site: site
-        ? { street: siteStreetLine(site), city: siteCityLine(site) }
-        : { street: Unknown, city: "" },
-      proposalCode: proposal.code,
-      proposalName: proposal.name,
       lines: invoice.lines,
       taxRate: invoice.taxRate,
       zelleEmail: zelle,
     };
+  },
+});
+
+// **Job done** (CONTEXT.md), before it is pressed: the lines the final
+// invoice would start with and what they come to, so the button can ask first
+// when that is nothing or a credit. Null wherever Job done is not offered: on
+// a proposal that is not approved, and while its final invoice is a draft or
+// sent. A void one does not count, so voiding it brings Job done back.
+export const finalPrefill = query({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposal = await ctx.db.get(a.proposalId);
+    if (!proposal || proposal.state !== "approved" || !proposal.frozen) return null;
+    const invoices = await invoicesOnProposal(ctx, proposal._id);
+    if (holdsFinalInvoice(invoices)) return null;
+    const lines = prefilledFinalLines(proposal, proposal.frozen, invoices);
+    return { lines, money: invoiceMoney(lines, invoiceTaxRate(proposal.frozen.tax)) };
+  },
+});
+
+// Job done: the final invoice raised as a draft, prefilled with the proposal
+// at its price before tax less every invoice already sent on it. The proposal
+// does not change state. Returns the draft, for the panel to open.
+export const jobDone = mutation({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a): Promise<Id<"invoices">> => {
+    await requireOwner(ctx);
+    const { proposal, frozen } = await requireApproved(ctx, a.proposalId);
+    const invoices = await invoicesOnProposal(ctx, proposal._id);
+    if (holdsFinalInvoice(invoices))
+      throw new Error("This proposal already has its final invoice.");
+    return insertDraft(ctx, proposal, frozen, {
+      kind: "final",
+      lines: prefilledFinalLines(proposal, frozen, invoices),
+    });
+  },
+});
+
+// New invoice: an empty **typed invoice** on an approved proposal, for the
+// owner to title and write. Any number of them. Returns the draft.
+export const createTyped = mutation({
+  args: { proposalId: v.id("proposals") },
+  handler: async (ctx, a): Promise<Id<"invoices">> => {
+    await requireOwner(ctx);
+    const { proposal, frozen } = await requireApproved(ctx, a.proposalId);
+    return insertDraft(ctx, proposal, frozen, { kind: "typed", lines: [] });
+  },
+});
+
+// One edit of one **Draft invoice**: a typed invoice's title, and the lines,
+// stored whole each time, so adding, editing, removing and reordering are all
+// the same edit. A line with no description is kept (Send names it). Only a
+// draft: Send fixes the lines for good.
+export const update = mutation({
+  args: {
+    invoiceId: v.id("invoices"),
+    title: v.optional(v.string()),
+    lines: v.optional(v.array(invoiceLine)),
+  },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const invoice = await requireDraft(ctx, a.invoiceId, "edited");
+    const patch: Partial<Doc<"invoices">> = {};
+    if (a.title !== undefined) {
+      if (invoice.kind !== "typed")
+        throw new Error("Only a typed invoice has a title; the others are named by their kind.");
+      // Patching a field to undefined is what removes it: an emptied title
+      // puts the invoice back to being called an Invoice.
+      patch.title = a.title.trim().slice(0, TitleMaxLength) || undefined;
+    }
+    if (a.lines !== undefined) patch.lines = storedLines(a.lines);
+    await ctx.db.patch(invoice._id, { ...patch, updatedAt: Date.now() });
+  },
+});
+
+// A draft is disposable: nobody has seen it and it has no number, so deleting
+// it leaves nothing behind.
+export const remove = mutation({
+  args: { invoiceId: v.id("invoices") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const invoice = await requireDraft(ctx, a.invoiceId, "deleted");
+    await ctx.db.delete(invoice._id);
+  },
+});
+
+// **Send** (CONTEXT.md, **Send (an invoice)**): a draft emailed to the
+// customer as a private link. An action only so the token comes from real
+// randomness, as a proposal's Send does; everything else lands in one
+// mutation, so the number, the frozen block, the link and the email go
+// together or not at all.
+export const send = action({
+  args: { invoiceId: v.id("invoices") },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    await ctx.runMutation(internal.invoices.sendWithLink, {
+      invoiceId: a.invoiceId,
+      token: mintLinkToken(),
+    });
+  },
+});
+
+// Takes the next number from the sequence in this same mutation, so two sends
+// at once never share one; fixes the customer, the site and the proposal as
+// the draft's staff paper showed them, and the address it goes to; mints the
+// link and schedules its email, which names the owner who sent it. The email
+// is scheduled, never awaited: a Resend outage leaves the invoice sent, with
+// its link to copy.
+export const sendWithLink = internalMutation({
+  args: { invoiceId: v.id("invoices"), token: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const invoice = await requireDraft(ctx, a.invoiceId, "sent");
+    const customer = await ctx.db.get(invoice.customerId);
+    const sentTo = customer ? sendableEmail(customer.email) : null;
+    // Asked again here, whatever the panel said, because a stale panel is
+    // exactly how a blank line would otherwise reach a customer.
+    refuseSend(invoiceSendBlockers(invoice.lines, sentTo));
+    // Refused above; this only tells the type checker so.
+    if (sentTo === null) return;
+    if (!(await ctx.db.get(invoice.siteId))) throw new Error("Site not found.");
+
+    const identity = await ctx.auth.getUserIdentity();
+    const now = Date.now();
+    await ctx.db.patch(invoice._id, {
+      state: "sent",
+      number: await nextInvoiceNumber(ctx),
+      sentAt: now,
+      frozen: { ...(await blockAsItStands(ctx, invoice)), sentTo },
+      updatedAt: now,
+    });
+    await emailNewInvoiceLink(ctx, {
+      invoiceId: invoice._id,
+      token: a.token,
+      senderName: identity?.name ?? "",
+      now,
+    });
   },
 });
 
@@ -442,3 +586,128 @@ async function proposalOf(ctx: QueryCtx, invoice: Doc<"invoices">) {
     ),
   };
 }
+
+// What a draft would freeze if it were sent now: the customer and the site as
+// they are, and the proposal as signed. The draft's staff paper prints exactly
+// this, so what the owner checked is what Send fixes.
+async function blockAsItStands(ctx: QueryCtx, invoice: Doc<"invoices">) {
+  const [site, customer, proposal] = await Promise.all([
+    ctx.db.get(invoice.siteId),
+    ctx.db.get(invoice.customerId),
+    proposalOf(ctx, invoice),
+  ]);
+  return {
+    customerName: customer?.name ?? Unknown,
+    site: site
+      ? { street: siteStreetLine(site), city: siteCityLine(site) }
+      : { street: Unknown, city: "" },
+    proposalCode: proposal.code,
+    proposalName: proposal.name,
+  };
+}
+
+function invoicesOnProposal(ctx: QueryCtx, proposalId: Id<"proposals">) {
+  return ctx.db
+    .query("invoices")
+    .withIndex("by_proposal", (q) => q.eq("proposalId", proposalId))
+    .collect();
+}
+
+// One final invoice at a time: a draft or a sent one holds the place, and a
+// void one gives it back.
+function holdsFinalInvoice(invoices: readonly Doc<"invoices">[]): boolean {
+  return invoices.some((invoice) => invoice.kind === "final" && invoice.state !== "void");
+}
+
+// The final invoice's lines as Job done starts them (lib/invoice-money.ts),
+// the proposal named as the signed copy reads it.
+function prefilledFinalLines(
+  proposal: Doc<"proposals">,
+  frozen: FrozenProposal,
+  invoices: readonly Doc<"invoices">[],
+): InvoiceLine[] {
+  return finalInvoiceLines(
+    {
+      name: proposalDisplayName(
+        proposal.name,
+        frozen.solutions.map((solution) => solution.title),
+      ),
+      subtotalCents: frozen.subtotalCents,
+    },
+    invoices,
+  );
+}
+
+// Only an approved proposal is invoiced: every invoice sits under Terms the
+// customer signed.
+async function requireApproved(ctx: MutationCtx, proposalId: Id<"proposals">) {
+  const proposal = await ctx.db.get(proposalId);
+  if (!proposal) throw new Error("Proposal not found.");
+  if (proposal.state !== "approved" || !proposal.frozen)
+    throw new Error("Only an approved proposal can be invoiced.");
+  return { proposal, frozen: proposal.frozen };
+}
+
+// A draft final or typed invoice, copying the site and the customer from the
+// proposal so the lists read by index, and the rate from its frozen tax.
+async function insertDraft(
+  ctx: MutationCtx,
+  proposal: Doc<"proposals">,
+  frozen: FrozenProposal,
+  draft: { kind: "final" | "typed"; lines: InvoiceLine[] },
+): Promise<Id<"invoices">> {
+  const site = await ctx.db.get(proposal.siteId);
+  if (!site) throw new Error("Site not found.");
+  const now = Date.now();
+  return ctx.db.insert("invoices", {
+    proposalId: proposal._id,
+    siteId: site._id,
+    customerId: site.customerId,
+    kind: draft.kind,
+    state: "draft",
+    lines: draft.lines,
+    taxRate: invoiceTaxRate(frozen.tax),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+// Send fixes a draft for good, so once an invoice has left Draft nothing may
+// still change it or take it away.
+async function requireDraft(ctx: MutationCtx, invoiceId: Id<"invoices">, act: string) {
+  const invoice = await ctx.db.get(invoiceId);
+  if (!invoice) throw new Error("Invoice not found.");
+  if (invoice.state !== "draft") throw new Error(`Only a draft invoice can be ${act}.`);
+  return invoice;
+}
+
+// Lines as stored: whole cents of either sign, descriptions trimmed and cut at
+// a length nothing legitimate reaches, and no more of them than any bill has.
+function storedLines(lines: readonly InvoiceLine[]): InvoiceLine[] {
+  if (lines.length > LinesMax) throw new Error(`An invoice holds at most ${LinesMax} lines.`);
+  return lines.map((line) => {
+    if (!Number.isSafeInteger(line.cents) || Math.abs(line.cents) > LineMaxCents)
+      throw new Error("A line's amount is whole cents, under $10 million either way.");
+    return {
+      description: line.description.trim().slice(0, DescriptionMaxLength),
+      cents: line.cents,
+    };
+  });
+}
+
+// Every reason Send is refused, in one sentence, so fixing one thing is never
+// followed by being told the next. The code names the first, for a caller
+// that wants to branch.
+function refuseSend(blockers: readonly InvoiceSendBlocker[]) {
+  if (blockers.length === 0) return;
+  throw new ConvexError({
+    code: blockers[0],
+    blockers: [...blockers],
+    message: blockers.map(invoiceSendBlockerMessage).join(" "),
+  });
+}
+
+const TitleMaxLength = 200;
+const DescriptionMaxLength = 500;
+const LinesMax = 100;
+const LineMaxCents = 999_999_999;

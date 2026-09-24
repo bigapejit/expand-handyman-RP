@@ -63,6 +63,37 @@ export function depositLine(offer: {
   };
 }
 
+// The **Final invoice**'s lines as Job done starts it: the proposal's display
+// name at its frozen price before tax, then one line taking off each invoice
+// already sent on the proposal, in number order, at minus that invoice's own
+// subtotal, so the customer can follow the arithmetic and tax is charged once,
+// on what is left. Void invoices and drafts billed nothing and are not taken
+// off. Whatever the owner adds follows these.
+export function finalInvoiceLines(
+  proposal: { name: string; subtotalCents: number },
+  invoices: readonly {
+    kind: "deposit" | "final" | "typed";
+    state: "draft" | "sent" | "void";
+    number?: number | null;
+    lines: readonly InvoiceLine[];
+  }[],
+): InvoiceLine[] {
+  const sent = invoices
+    .flatMap(({ kind, state, number, lines }) =>
+      state === "sent" && typeof number === "number" ? [{ kind, number, lines }] : [],
+    )
+    .sort((x, y) => x.number - y.number);
+  return [
+    { description: proposal.name, cents: proposal.subtotalCents },
+    ...sent.map(({ kind, number, lines }) => ({
+      description: `${kind === "deposit" ? "Less deposit invoiced" : "Less invoiced"} (${invoiceNumberLabel(number)})`,
+      // Subtracted from 0 rather than negated, so an invoice for nothing
+      // takes off 0 and not -0.
+      cents: 0 - invoiceMoney(lines, 0).subtotalCents,
+    })),
+  ];
+}
+
 // The **Invoice number** as it is printed and spoken: `INV-1001`.
 export function invoiceNumberLabel(number: number): string {
   return `INV-${number}`;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  amountField,
   compareInvoiceRows,
   invoiceBadge,
   invoiceBadgeLabel,
@@ -8,9 +9,15 @@ import {
   invoicePanelHref,
   invoicePaperHref,
   invoiceRowTitle,
+  invoiceSendBlockerMessage,
+  invoiceSendBlockers,
   invoiceSentLabel,
+  lineDraftsFrom,
+  linesToStore,
   matchesInvoiceFilter,
   matchesInvoiceSearch,
+  readAmountField,
+  sameInvoiceLines,
   type InvoiceState,
 } from "./invoices";
 
@@ -140,5 +147,83 @@ describe("When a row says it went out", () => {
     // 8:30pm Pacific on 23 September, already the 24th in UTC.
     expect(invoiceSentLabel(Date.UTC(2026, 8, 24, 3, 30), "en-US")).toBe("Sent Sep 23, 2026");
     expect(invoiceSentLabel(null, "en-US")).toBe("Not sent yet");
+  });
+});
+
+describe("Why an invoice cannot be sent yet", () => {
+  const line = { description: "Fix gate", cents: 55_000 };
+
+  it("is nothing for a draft with written lines and a customer with an email", () => {
+    expect(invoiceSendBlockers([line], "maria@example.com")).toEqual([]);
+  });
+
+  it("names every reason at once, in the order they read", () => {
+    expect(invoiceSendBlockers([], null)).toEqual(["no_lines", "no_email"]);
+    expect(invoiceSendBlockers([line, { description: "  ", cents: 0 }], null)).toEqual([
+      "blank_line",
+      "no_email",
+    ]);
+  });
+
+  it("says each in a sentence", () => {
+    expect(invoiceSendBlockerMessage("no_lines")).toBe("This invoice has no lines.");
+    expect(invoiceSendBlockerMessage("blank_line")).toBe(
+      "A line on this invoice has no description.",
+    );
+    expect(invoiceSendBlockerMessage("no_email")).toBe(
+      "The customer has no email address to send it to.",
+    );
+  });
+});
+
+describe("A draft's lines as the panel edits them", () => {
+  it("shows each amount as plain dollars to type into, and nothing for $0", () => {
+    expect(
+      lineDraftsFrom([
+        { description: "Fix gate", cents: 123_456 },
+        { description: "Less deposit invoiced (INV-1001)", cents: -8_000 },
+        { description: "", cents: 0 },
+      ]),
+    ).toEqual([
+      { key: "stored-0", description: "Fix gate", amount: "1234.56" },
+      { key: "stored-1", description: "Less deposit invoiced (INV-1001)", amount: "-80.00" },
+      { key: "stored-2", description: "", amount: "" },
+    ]);
+    expect(amountField(5)).toBe("0.05");
+  });
+
+  it("reads an amount typed with the punctuation people type around money", () => {
+    expect(readAmountField("$1,250.50")).toBe(125_050);
+    expect(readAmountField(" 80 ")).toBe(8_000);
+    expect(readAmountField("-80")).toBe(-8_000);
+    expect(readAmountField("-$80.25")).toBe(-8_025);
+    expect(readAmountField("\u221280")).toBe(-8_000);
+    expect(readAmountField("")).toBe(0);
+  });
+
+  it("reads nothing from what is not an amount yet", () => {
+    expect(readAmountField("-")).toBeNull();
+    expect(readAmountField("abc")).toBeNull();
+    expect(readAmountField("1.2.3")).toBeNull();
+  });
+
+  it("stores the table whole, descriptions trimmed, or nothing while an amount is unreadable", () => {
+    expect(
+      linesToStore([
+        { key: "a", description: " Fix gate ", amount: "550" },
+        { key: "b", description: "", amount: "" },
+      ]),
+    ).toEqual([
+      { description: "Fix gate", cents: 55_000 },
+      { description: "", cents: 0 },
+    ]);
+    expect(linesToStore([{ key: "a", description: "Fix gate", amount: "five" }])).toBeNull();
+  });
+
+  it("knows when the table says what the invoice already holds", () => {
+    const stored = [{ description: "Fix gate", cents: 55_000 }];
+    expect(sameInvoiceLines(stored, [{ description: "Fix gate", cents: 55_000 }])).toBe(true);
+    expect(sameInvoiceLines(stored, [{ description: "Fix gate", cents: 55_001 }])).toBe(false);
+    expect(sameInvoiceLines(stored, [])).toBe(false);
   });
 });
