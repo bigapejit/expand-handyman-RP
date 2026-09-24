@@ -78,7 +78,10 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
 
 // The proposal out on a deal: the latest one sent from its site since the
 // deal began, so a repeat customer's old job at the same site is not read as
-// this one's. Drafts are the owner's own and say nothing yet. Null when none.
+// this one's. An approved one wins over anything sent after it: a site may
+// have two offers out at once, and the one the customer signed is the deal's
+// whichever went out last. Drafts are the owner's own and say nothing yet.
+// Null when none.
 async function proposalOf(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
   const proposals = await ctx.db
     .query("proposals")
@@ -87,7 +90,12 @@ async function proposalOf(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
   let latest: (Doc<"proposals"> & { state: "sent" | "approved" | "declined" }) | null = null;
   for (const p of proposals) {
     if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
-    if (!latest || (p.sentAt ?? 0) > (latest.sentAt ?? 0)) latest = { ...p, state: p.state };
+    const better = !latest
+      ? true
+      : (p.state === "approved") !== (latest.state === "approved")
+        ? p.state === "approved"
+        : (p.sentAt ?? 0) > (latest.sentAt ?? 0);
+    if (better) latest = { ...p, state: p.state };
   }
   if (!latest?.frozen) return null;
   // **Opened**: only a Sent one's current link can be, and only by the customer.
@@ -273,6 +281,13 @@ export async function advanceForSite(
   sentAt: number,
 ) {
   const move = event === "sent" ? stageOnProposalSent : stageOnProposalApproved;
+  // A lead from before deals that the migration has not reached gets its
+  // deal now, carrying the stage it had, so the move is not lost on it.
+  const leads = await ctx.db
+    .query("leads")
+    .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+    .collect();
+  for (const lead of leads) if (!lead.dealId) await dealForLead(ctx, lead);
   const deals = await ctx.db
     .query("deals")
     .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))

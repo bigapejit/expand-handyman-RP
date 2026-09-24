@@ -416,6 +416,53 @@ describe("board", () => {
     expect((await row(dealId))?.proposal).toMatchObject({ state: "sent", sentAt: first + 10 * 86_400_000 });
   });
 
+  test("the approved proposal is the deal's, even with a newer one still out", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const first = await send(siteId);
+    vi.advanceTimersByTime(60_000);
+    await send(siteId);
+    await approve(siteId, first);
+    expect(await row(dealId)).toMatchObject({
+      stage: "won",
+      proposal: { proposalId: first, code: "1300FRANKLIN-P1", state: "approved" },
+    });
+  });
+
+  test("a lead from before deals is moved too, getting its deal on the way", async () => {
+    const { t, owner, customer, site, send, deals } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const leadId = await t.run((ctx) =>
+      ctx.db.insert("leads", {
+        customerId,
+        negotiationId: "901",
+        thumbtackCustomerId: "c-1",
+        arrivedAt: Date.UTC(2026, 8, 20),
+        category: "Fence Repair",
+        description: "Gate sags.",
+        details: [],
+        location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+        attachments: [],
+        stage: "booked",
+        stageChangedAt: Date.UTC(2026, 8, 21),
+      }),
+    );
+    await send(siteId);
+    const [deal] = await deals();
+    expect(deal).toMatchObject({ leadId, stage: "quoted" });
+    expect(deal.siteId).toBe(siteId);
+    expect((await t.run((ctx) => ctx.db.get(leadId)))?.dealId).toBe(deal._id);
+    expect((await owner.query(api.deals.board, {}))[0]?.proposal?.state).toBe("sent");
+  });
+
   test("approving a proposal leaves a deal that began after it was sent alone", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
