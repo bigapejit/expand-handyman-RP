@@ -506,7 +506,8 @@ async function recordOnItsWay(ctx: MutationCtx, payment: StripePaymentFacts) {
 // minted before either completed (two tabs) can both be on their way; while
 // the other still is, the invoice reads Payment on its way and the link has
 // no Pay button, so the customer is not asked to pay again and only the
-// owner is told.
+// owner is told. The letters go after this commits, so the action asks all
+// of this again before it writes to the customer.
 async function recordReturned(
   ctx: MutationCtx,
   payment: StripePaymentFacts,
@@ -527,6 +528,7 @@ async function recordReturned(
   if (other) await ctx.db.patch(returnedId, { customerEmailed: false });
   await ctx.scheduler.runAfter(0, internal.stripeEmails.sendReturnedPayment, {
     paymentIntentId: payment.paymentIntentId,
+    invoiceId: invoice._id,
     number: invoiceNumberLabel(invoice.number),
     amountCents: payment.amountCents,
     customerName: invoice.frozen.customerName,

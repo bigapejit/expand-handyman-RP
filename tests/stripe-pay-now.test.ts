@@ -1024,6 +1024,68 @@ describe("A Returned payment", () => {
     });
   });
 
+  // The letters go in an action scheduled once the return has committed, so
+  // anything may land on the invoice in between. The action asks again, and
+  // an invoice no longer payable keeps the customer out of it.
+  const unaskedAfter = async (
+    f: ReturnType<typeof fixture>,
+    meanwhile: (invoiceId: Id<"invoices">) => Promise<unknown>,
+  ) => {
+    const { invoiceId } = await returnedFor(f);
+    await meanwhile(invoiceId);
+    await f.deliver();
+    expect(f.letters("returned_payment_customer")).toEqual([]);
+    expect((await f.stripeRows()).find((row) => row.status === "returned")).toMatchObject({
+      customerEmailed: false,
+    });
+    const owner = f.letters("returned_payment_owner");
+    expect(owner).toHaveLength(1);
+    return owner[0].body.text;
+  };
+
+  test("voided before the letters went, asks the customer nothing and tells the owner why", async () => {
+    const f = fixture();
+    const text = await unaskedAfter(f, (invoiceId) =>
+      f.owner.mutation(api.invoices.voidInvoice, { invoiceId }),
+    );
+    expect(text).toBe(
+      [
+        "Bank payment on INV-1001 for $299.48 was returned: insufficient funds.",
+        "",
+        "The invoice was voided meanwhile, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+        "",
+        "See it in Stripe: https://dashboard.stripe.com/test/payments/pi_test_1",
+      ].join("\n"),
+    );
+  });
+
+  test("marked paid before the letters went, asks the customer nothing and tells the owner why", async () => {
+    const f = fixture();
+    const text = await unaskedAfter(f, (invoiceId) =>
+      f.owner.mutation(api.invoices.markPaid, { invoiceId }),
+    );
+    expect(text).toContain(
+      "Another payment landed meanwhile, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+    );
+  });
+
+  test("with another bank payment accepted before the letters went, asks the customer nothing and tells the owner why", async () => {
+    const f = fixture();
+    // A second tab's session, minted before the first completed, completing
+    // just after the first came back.
+    const text = await unaskedAfter(f, (invoiceId) =>
+      f.apply(
+        f.event(
+          "checkout.session.completed",
+          f.bankSession(invoiceId, { id: "cs_test_2", payment_intent: "pi_test_2" }),
+        ),
+      ),
+    );
+    expect(text).toContain(
+      "Another bank payment of $299.48 accepted Sept 12 is still on its way, so the customer (Maria Delgado, maria@example.com) was not asked to pay again.",
+    );
+  });
+
   test("sends the customer to the invoice's live link after a re-send", async () => {
     const f = fixture();
     const { invoiceId } = await f.approved();
