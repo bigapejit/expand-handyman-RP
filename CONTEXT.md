@@ -18,7 +18,14 @@ A short code built from the site's street number and street name, skipping a dir
 A private link that gives a customer access to a proposal without creating an account. A proposal gets a fresh one each time it is sent or re-sent, and the one before stops working. Once the customer approves or declines, the link still shows what they decided but can no longer be used to act.
 
 **Owner**:
-The Expand Handyman staff member who prices the work, sends proposals and invoices, and signs in to the staff app.
+The Expand Handyman staff member who prices the work and sends proposals and invoices, and whose accounts the deployment pins, so they can never be removed from the Staff list.
+
+**Staff member**:
+Anyone on the Staff list, which is who can sign in to the staff app. Every staff member can do everything in it, including inviting and removing others; there are no roles. Someone removed is locked out on their next request.
+_Avoid_: User, admin, team member
+
+**Invite**:
+An email from Clerk with a link to create an account, sent when a staff member adds someone's email to the Staff list. Only invited emails can create an account. The invited person waits under Waiting to sign up until they first sign in.
 
 **View**:
 A customer opening a proposal through its signing link and seeing it, including reopening it after answering. Only customers view; an owner opening the same link is a preview, not a view.

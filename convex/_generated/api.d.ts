@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
+import type * as clerk from "../clerk.js";
 import type * as customers from "../customers.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
@@ -18,6 +19,7 @@ import type * as invoiceLinks from "../invoiceLinks.js";
 import type * as invoices from "../invoices.js";
 import type * as leads from "../leads.js";
 import type * as migrations from "../migrations.js";
+import type * as offers from "../offers.js";
 import type * as payments from "../payments.js";
 import type * as pdfCopies from "../pdfCopies.js";
 import type * as pdfCopyFiles from "../pdfCopyFiles.js";
@@ -31,6 +33,7 @@ import type * as settings from "../settings.js";
 import type * as signingLinks from "../signingLinks.js";
 import type * as sites from "../sites.js";
 import type * as solutions from "../solutions.js";
+import type * as staff from "../staff.js";
 import type * as stripeEmails from "../stripeEmails.js";
 import type * as stripePayments from "../stripePayments.js";
 
@@ -43,6 +46,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   catalog: typeof catalog;
+  clerk: typeof clerk;
   customers: typeof customers;
   email: typeof email;
   http: typeof http;
@@ -51,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   invoices: typeof invoices;
   leads: typeof leads;
   migrations: typeof migrations;
+  offers: typeof offers;
   payments: typeof payments;
   pdfCopies: typeof pdfCopies;
   pdfCopyFiles: typeof pdfCopyFiles;
@@ -64,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   signingLinks: typeof signingLinks;
   sites: typeof sites;
   solutions: typeof solutions;
+  staff: typeof staff;
   stripeEmails: typeof stripeEmails;
   stripePayments: typeof stripePayments;
 }>;

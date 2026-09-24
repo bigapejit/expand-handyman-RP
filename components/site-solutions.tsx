@@ -558,7 +558,7 @@ function LineItemRow({
           onChange={(event) => {
             if (isLineItemUnit(event.target.value)) onPickUnit(event.target.value);
           }}
-          className="h-8 w-full rounded-lg border border-input bg-white px-2 text-sm text-slate-900"
+          className="h-8 w-full rounded-lg border border-input bg-white px-2 text-sm text-slate-900 max-md:h-10"
         >
           {LineItemUnits.map((unit) => (
             <option key={unit} value={unit}>
@@ -638,7 +638,10 @@ function MaterialAllowanceRow({
           No markup
         </span>
       </div>
-      <div className="relative col-span-2 sm:col-span-3 sm:ml-auto sm:w-40">
+      {/* Expand: one column on a phone, as Qty is above it, so its amount and
+          its remove button share the row rather than the button sitting
+          alone on a third. */}
+      <div className="relative sm:col-span-3 sm:ml-auto sm:w-40">
         <span
           aria-hidden
           className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-slate-400"

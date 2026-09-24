@@ -10,13 +10,11 @@ import {
 } from "./_generated/server";
 import { isOwner } from "./auth";
 import { invoiceLinkForToken, invoiceLinksFor } from "./invoiceLinks";
+import { sentPaper } from "./offers";
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { emailOutcome } from "./schema";
 import { invoiceMoney } from "../lib/invoice-money";
-import { proposalDisplayName } from "../lib/proposal-pricing";
 import { noticeToCustomerApplies } from "../lib/proposal-signing";
-import type { PaperProposal } from "../lib/proposal-paper";
-import { offeredLineItems } from "../lib/solution-pricing";
 
 // A proposal's **Signing link** (CONTEXT.md), ported from FRSG's
 // convex/signingLinks.ts for one recipient: minted by each Send and Re-send,
@@ -133,75 +131,6 @@ export async function firstCustomerView(ctx: QueryCtx, token: string): Promise<n
     .withIndex("by_token_viewer", (q) => q.eq("token", token).eq("viewer", "customer"))
     .first();
   return view?.openedAt ?? null;
-}
-
-// A proposal past Draft as its paper, read wholly from what Send froze.
-export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
-  const frozen = proposal.frozen;
-  if (proposal.state === "draft" || !frozen || proposal.sentAt === undefined) return null;
-  return {
-    proposalId: proposal._id,
-    number: proposal.number,
-    code: frozen.code,
-    name: proposalDisplayName(
-      proposal.name,
-      frozen.solutions.map((solution) => solution.title),
-    ),
-    state: proposal.state,
-    recommended: proposal.recommended,
-    sentAt: proposal.sentAt,
-    estimator: frozen.estimator,
-    customerName: frozen.customerName,
-    site: { street: frozen.site.street, city: frozen.site.city },
-    solutions: frozen.solutions.map((solution) => ({
-      solutionId: solution.solutionId,
-      title: solution.title,
-      scopeOfWork: solution.scopeOfWork,
-      lineItems: offeredLineItems(solution.lineItems),
-      materialAllowanceCents: solution.materialAllowanceCents,
-    })),
-    ...(frozen.notes === undefined ? {} : { notes: frozen.notes }),
-    terms: frozen.terms,
-    tax: frozen.tax,
-    subtotalCents: frozen.subtotalCents,
-    taxCents: frozen.taxCents,
-    totalCents: frozen.totalCents,
-    depositPercent: frozen.depositPercent,
-    ...(frozen.depositCents === undefined ? {} : { depositCents: frozen.depositCents }),
-    ...decision(proposal),
-  };
-}
-
-// What the paper prints of the customer's answer: the signature and its
-// certificate once approved, the day of a decline once declined.
-function decision(proposal: Doc<"proposals">): Pick<PaperProposal, "signature" | "declinedAt"> {
-  const signature = proposal.signature;
-  if (proposal.state === "approved" && signature)
-    return {
-      signature: {
-        signerName: signature.signerName,
-        signedAt: signature.signedAt,
-        ...(signature.firstOpenedAt === undefined ? {} : { firstOpenedAt: signature.firstOpenedAt }),
-        ...(signature.userAgent === undefined ? {} : { userAgent: signature.userAgent }),
-        consentWording: signature.consentWording,
-        consentWordingVersion: signature.consentWordingVersion,
-        noticeShown: signature.noticeShown,
-        ...(signature.noticeTicked &&
-        signature.noticeWording !== undefined &&
-        signature.noticeWordingVersion !== undefined
-          ? {
-              notice: {
-                wording: signature.noticeWording,
-                version: signature.noticeWordingVersion,
-              },
-            }
-          : {}),
-        fingerprint: signature.sealed.fingerprint,
-      },
-    };
-  if (proposal.state === "declined" && proposal.declinedAt !== undefined)
-    return { declinedAt: proposal.declinedAt };
-  return {};
 }
 
 // What the `/sign/<token>` page is looking at. Proposals and invoices share

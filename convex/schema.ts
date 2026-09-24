@@ -517,6 +517,25 @@ export default defineSchema({
     name: v.literal("invoice"),
     last: v.number(),
   }).index("by_name", ["name"]),
+  // A **Staff member** (CONTEXT.md): one email let into the console, from the
+  // moment it is invited. The email, lower-cased, is the one key. The Clerk
+  // ids are what Resend invite and Remove undo on Clerk; `clerkUserId` is set
+  // on first sign-in, which is what moves the row from invited to Has access.
+  // The owner's pinned accounts get a row the same way, with no inviter.
+  staff: defineTable({
+    email: v.string(),
+    invitedAt: v.number(),
+    // The inviter's email; empty on a row a first sign-in made.
+    invitedBy: v.string(),
+    clerkInvitationId: v.optional(v.string()),
+    clerkAllowlistId: v.optional(v.string()),
+    clerkUserId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    firstSeenAt: v.optional(v.number()),
+    lastSeenAt: v.optional(v.number()),
+  })
+    .index("by_email", ["email"])
+    .index("by_clerkUserId", ["clerkUserId"]),
   // The business's few settings the owner edits in the app, in one row. Read
   // at render time, so a change reaches every paper without a deploy.
   settings: defineTable({
