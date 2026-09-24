@@ -136,7 +136,9 @@ describe("The panel's words", () => {
   });
 
   it("tells the owner a bank payment is on its way, and that the invoice reads Paid once it confirms", () => {
-    expect(ownerOnItsWay({ amountCents: 285_437, acceptedOn: "2026-09-23" })).toEqual({
+    expect(
+      ownerOnItsWay({ amountCents: 285_437, acceptedOn: "2026-09-23" }, { paid: false, void: false }),
+    ).toEqual({
       head: "Payment on its way.",
       body: "A bank payment of $2,854.37 was accepted Sept 23 through Stripe. Banks take up to 4 business days to confirm it, and the invoice reads Paid once they do.",
       unowed: null,

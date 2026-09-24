@@ -135,7 +135,7 @@ export const PaidTwice = "Paid twice. Refund one in Stripe.";
 // Stripe can send it back.
 export function ownerOnItsWay(
   onItsWay: { amountCents: number; acceptedOn: string },
-  invoice: { paid: boolean; void: boolean } = { paid: false, void: false },
+  invoice: { paid: boolean; void: boolean },
 ): { head: string; body: string; unowed: string | null } {
   const amount = formatCentsExact(onItsWay.amountCents);
   const accepted = `A bank payment of ${amount} was accepted ${shortDay(onItsWay.acceptedOn)} through Stripe.`;
