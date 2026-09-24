@@ -100,13 +100,15 @@ Dev and preview deployments stay without them and answer "This deployment does n
 Before the first production render, prove the paper against a Vercel preview whose Convex deployment has a sent proposal. Mint a pass on the deployment the preview reads (add `--prod` or `--preview-name <name>` to `npx convex run` if that isn't dev) and run the check within five minutes, using the production values of the two variables locally. If the preview is behind Vercel Deployment Protection, Cloudflare's browser stops at its login: append `?x-vercel-protection-bypass=<secret>` to the page URL.
 
 ```
-npx convex run pdfCopies:mintRenderPass '{"proposalId":"<id>","token":"<43 URL-safe characters>"}'
+npx convex run pdfCopies:mintRenderPass '{"paper":{"proposalId":"<id>"},"token":"<43 URL-safe characters>"}'
 CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> check.pdf <code>
 ```
 
+`"paper":{"invoiceId":"<id>"}` mints a pass for a sent, paid or void invoice's paper instead, footed with its invoice number.
+
 It prints the sheet count, the words on each sheet (an empty last sheet is a fault) and the embedded fonts, which should be Tinos and, on a signed copy, Homemade Apple. `python -m pip install pypdf` enables that read-out.
 
-This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers render passes (single use, expiry, bound to one state, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.
+This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers both papers, a proposal and an invoice, running the rules they share over each: render passes (single use, expiry, bound to one sheet, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.
 
 ## Pay now through Stripe
 

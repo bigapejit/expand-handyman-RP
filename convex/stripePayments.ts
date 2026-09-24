@@ -13,7 +13,7 @@ import {
 import { appOrigin } from "./email";
 import { invoiceLinkForToken, invoiceStillOpenedBy } from "./invoiceLinks";
 import { paymentFor, paymentOnItsWayFor } from "./payments";
-import { discardInvoicePdfCopy } from "./pdfCopyFiles";
+import { discardPdfCopy } from "./pdfCopyFiles";
 import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
 import { pacificDay } from "../lib/invoice-standing";
 import {
@@ -667,7 +667,7 @@ function rowFields(payment: StripePaymentFacts) {
 // reads VOID whatever Stripe wrote, and keeps its copy.
 async function paperChanged(ctx: MutationCtx, invoice: Doc<"invoices">) {
   if (invoice.state !== "sent") return;
-  await discardInvoicePdfCopy(ctx, invoice);
+  await discardPdfCopy(ctx, invoice);
   await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
 }
 

@@ -26,7 +26,7 @@ import {
   paymentsFor,
   stripeNoteFor,
 } from "./payments";
-import { discardInvoicePdfCopy } from "./pdfCopyFiles";
+import { discardPdfCopy } from "./pdfCopyFiles";
 import { invoiceLine } from "./schema";
 import { zelleTag } from "./settings";
 import { mintLinkToken } from "./signingLinks";
@@ -571,7 +571,7 @@ export const resendWithLink = internalMutation({
     const identity = await ctx.auth.getUserIdentity();
     const now = Date.now();
     await endInvoiceLinks(ctx, invoice._id, now);
-    await discardInvoicePdfCopy(ctx, invoice);
+    await discardPdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, {
       frozen: { ...invoice.frozen, sentTo },
       updatedAt: now,
@@ -619,7 +619,7 @@ export const markPaid = mutation({
       recordedBy: identity.subject,
       recordedAt: now,
     });
-    await discardInvoicePdfCopy(ctx, invoice);
+    await discardPdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, { updatedAt: now });
   },
 });
@@ -641,7 +641,7 @@ export const markUnpaid = mutation({
     if (!payment)
       throw new Error("This invoice was paid online, so it can't be marked unpaid here.");
     await ctx.db.delete(payment._id);
-    await discardInvoicePdfCopy(ctx, invoice);
+    await discardPdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, { updatedAt: Date.now() });
   },
 });
@@ -670,7 +670,7 @@ export const voidInvoice = mutation({
     if (await paymentOnItsWayFor(ctx, invoice._id)) throw new Error(OnItsWayRefusal);
     const now = Date.now();
     const reason = a.reason?.trim().slice(0, VoidReasonMaxLength);
-    await discardInvoicePdfCopy(ctx, invoice);
+    await discardPdfCopy(ctx, invoice);
     await ctx.db.patch(invoice._id, {
       state: "void",
       voidedAt: now,
