@@ -15,6 +15,7 @@ import { requireOwner } from "./auth";
 import { appOrigin } from "./email";
 import { makeDepositInvoice } from "./invoices";
 import { discardPdfCopy } from "./pdfCopyFiles";
+import { sentPaper } from "./offers";
 import { lookUpSiteTax } from "./salesTax";
 import { advanceForCustomer } from "./leads";
 import { emailOutcome } from "./schema";
@@ -27,7 +28,6 @@ import {
   liveLinkForToken,
   mintLinkToken,
   mintSigningLink,
-  sentPaper,
   signingLinksForProposal,
   type LiveSigningLink,
 } from "./signingLinks";
