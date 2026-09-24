@@ -97,7 +97,7 @@ export function ThumbtackBoard({
         ) : (
           <>
             {/* A phone scrolls the columns sideways; a wide screen shows all five. */}
-            <div className="no-scrollbar -mx-8 flex snap-x snap-mandatory gap-3 overflow-x-auto px-8 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
+            <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:-mx-8 md:px-8 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
               {OPEN_STAGES.map((stage) => {
                 const inColumn = leads.filter((lead) => lead.stage === stage);
                 const receiving = dragging !== null && dragging.stage !== stage;

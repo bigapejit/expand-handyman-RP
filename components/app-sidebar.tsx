@@ -1,25 +1,11 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
-import { useConvexAuth, useQuery } from "convex/react";
-import {
-  FileSignature,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  MapPin,
-  ReceiptText,
-  ShieldCheck,
-  Users,
-} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Component, useState, type ReactNode } from "react";
 
+import { AccountMenu } from "@/components/account-menu";
 import { Brand } from "@/components/brand";
-import { Monogram } from "@/components/monogram";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { isNavActive, navigation, Quiet, useUnreadLeads } from "@/components/nav-items";
 import {
   Sidebar,
   SidebarContent,
@@ -33,18 +19,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { api } from "@/convex/_generated/api";
-
-const navigation = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  // Straight after the Dashboard: the Site is the page the owner works from.
-  { title: "Sites", href: "/sites", icon: MapPin },
-  { title: "Customers", href: "/customers", icon: Users },
-  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
-  { title: "Proposals", href: "/proposals", icon: FileSignature },
-  { title: "Invoices", href: "/invoices", icon: ReceiptText },
-  { title: "Staff", href: "/staff", icon: ShieldCheck },
-] as const;
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -62,11 +36,9 @@ export function AppSidebar() {
               {navigation.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
-                    isActive={
-                      item.href === "/"
-                        ? pathname === "/"
-                        : pathname.startsWith(item.href)
-                    }
+                    // The phone's sheet is tapped, not clicked.
+                    className="h-10 md:h-8"
+                    isActive={isNavActive(pathname, item.href)}
                     render={
                       <Link
                         href={item.href}
@@ -90,20 +62,16 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <AccountCard />
+        <AccountMenu variant="card" />
       </SidebarFooter>
     </Sidebar>
   );
 }
 
-// Unread Thumbtack leads on the nav item. The sidebar renders outside the
-// owner gate and `unreadCount` throws for anyone but the owner, so it asks only
-// once Convex knows the owner is signed in (the gate's own query, shared), and
-// shows nothing until it hears back or while there are none.
+// Unread Thumbtack leads on the nav item, nothing until they are known or
+// while there are none.
 function UnreadBadge() {
-  const auth = useConvexAuth();
-  const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");
-  const unread = useQuery(api.leads.unreadCount, access?.owner ? {} : "skip");
+  const unread = useUnreadLeads();
   if (!unread) return null;
   return (
     <SidebarMenuBadge
@@ -112,67 +80,5 @@ function UnreadBadge() {
     >
       {unread}
     </SidebarMenuBadge>
-  );
-}
-
-// A badge is never worth the page: if its query fails (a deployment behind
-// the app, say), the badge goes and the shell stays.
-class Quiet extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
-// FRSG's sidebar card, keeping only the account door: the owner's initials and
-// name, with Sign out and Clerk's profile modal behind them.
-function AccountCard() {
-  const { user } = useUser();
-  const clerk = useClerk();
-  const { isMobile, setOpenMobile } = useSidebar();
-  const [open, setOpen] = useState(false);
-  const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Owner";
-
-  // On a phone the sidebar is a sheet, and Clerk's modal would open behind it.
-  function openAccount() {
-    setOpen(false);
-    if (isMobile) setOpenMobile(false);
-    clerk.openUserProfile();
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left hover:bg-sidebar-accent"
-          />
-        }
-      >
-        <Monogram name={name} size="md" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium leading-tight">{name}</span>
-          <span className="block truncate text-[11px] leading-tight text-slate-500">Staff</span>
-        </span>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="start" sideOffset={8} className="w-60 gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full"
-          onClick={() => void clerk.signOut({ redirectUrl: "/sign-in" })}
-        >
-          <LogOut data-icon="inline-start" aria-hidden />
-          Sign out
-        </Button>
-        <Button size="sm" variant="outline" className="w-full" onClick={openAccount}>
-          Manage account
-        </Button>
-      </PopoverContent>
-    </Popover>
   );
 }

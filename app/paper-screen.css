@@ -382,8 +382,9 @@
     gap: 6px;
   }
 
+  /* Narrow to fit beside the title, but tall enough for a thumb. */
   .paper-top .paper-btn {
-    padding: 6px 9px;
+    padding: 10px 9px;
     font-size: 13px;
   }
 
@@ -404,6 +405,19 @@
 
   .paper-bar-row > .paper-bar-sum {
     flex-basis: 100%;
+  }
+
+  /* Decline and Sign are what a customer came to tap: thumb-sized here. */
+  .paper-bar .paper-btn {
+    padding: 11px 16px;
+  }
+
+  /* 16px, or a phone zooms the page in on the name field and leaves it
+     there. */
+  .paper-form input[type="text"],
+  .paper-form textarea {
+    padding: 10px 12px;
+    font-size: 16px;
   }
 
   /* The sheet may take up to four-fifths of the screen; the paper keeps the
