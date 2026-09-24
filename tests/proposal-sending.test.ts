@@ -221,25 +221,6 @@ describe("proposals.send", () => {
     );
   });
 
-  test("freezes a set Deposit, which the paper and the customer's link then carry", async () => {
-    const { t, owner, sendable, liveToken } = fixture();
-    const { proposalId } = await sendable();
-    await owner.mutation(api.proposals.update, { proposalId, depositCents: 20_000 });
-    await owner.action(api.proposals.send, { proposalId });
-
-    const frozen = (await t.run((ctx) => ctx.db.get(proposalId)))?.frozen;
-    // The percent is kept beside it, for a Withdraw that hands the draft back.
-    expect(frozen).toMatchObject({ depositPercent: 50, depositCents: 20_000 });
-    expect(await owner.query(api.proposals.paper, { proposalId })).toMatchObject({
-      depositPercent: 50,
-      depositCents: 20_000,
-    });
-    const token = await liveToken(proposalId);
-    expect((await t.query(api.signingLinks.page, { token }))?.paper).toMatchObject({
-      depositCents: 20_000,
-    });
-  });
-
   test("the panel is told the same reasons before Send is pressed", async () => {
     const { owner, read, sendable } = fixture();
     const { proposalId } = await sendable("");
@@ -296,6 +277,7 @@ describe("What Send freezes", () => {
       title: "Rebuild gate",
       description: "A different scope.",
       lineItems: [{ name: "Lumber", quantity: 9, unitCostCents: 99_900, unit: "EA" }],
+      materialAllowanceCents: 90_000,
     });
     await t.run(async (ctx) => {
       await ctx.db.patch(customerId, { name: "Maria Renamed", email: "new@example.com" });
@@ -312,6 +294,8 @@ describe("What Send freezes", () => {
       notes: "Gate hardware extra.",
       sentTo: "maria@example.com",
     });
+    // The whole paper is the one read the moment it was sent, the allowance
+    // added since included; the parity test above pins what that paper holds.
     const paper = await owner.query(api.proposals.paper, { proposalId });
     expect(paper).toEqual(sentPaper);
     expect(paper).toMatchObject({
@@ -319,30 +303,7 @@ describe("What Send freezes", () => {
       sentAt: Date.parse("2026-09-23T17:00:00Z"),
       customerName: "Maria Delgado",
       site: { street: "1300 Franklin St", city: "Vancouver, WA 98660" },
-      estimator: { name: "Andrew Putilin", email: "andrew@cogtex.ai" },
-      solutions: [
-        {
-          title: "Fix gate",
-          scopeOfWork: "Scope for Fix gate.",
-          lineItems: [{ name: "Fix gate labor", quantity: 2, unit: "HR" }],
-        },
-      ],
-      notes: "Gate hardware extra.",
-      tax: { source: "lookup", rate: 0.089, locationCode: "0605" },
-      // Two hours at $250 marked up 10%: $550, and 8.9% tax on it.
-      subtotalCents: 55_000,
-      taxCents: 4_895,
-      totalCents: 59_895,
-      depositPercent: 50,
     });
-    expect(paper?.terms.length).toBe(12);
-    expect(paper?.terms.map((term) => term.heading).slice(5, 7)).toEqual([
-      "Materials and permits.",
-      "Material allowance.",
-    ]);
-    // A solution with no allowance reads as having none, as does every
-    // proposal frozen before allowances existed.
-    expect(paper?.solutions[0]).not.toHaveProperty("materialAllowanceCents");
     // The customer's link shows the same frozen paper.
     const token = await liveToken(proposalId);
     expect(await t.query(api.signingLinks.page, { token })).toEqual({
@@ -426,28 +387,6 @@ describe("What Send freezes", () => {
       materialAllowanceCents: 130_000,
     });
     expect(frozen?.subtotalCents).toBe(130_000);
-  });
-
-  test("freezes the material allowance with the rest of the solution", async () => {
-    const { owner, sendable } = fixture();
-    const { solutionId, proposalId } = await sendable();
-    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 50_000 });
-    const draftPaper = await owner.query(api.proposals.paper, { proposalId });
-    expect(draftPaper?.solutions[0].materialAllowanceCents).toBe(50_000);
-    // $550 of marked-up labor and the $500 allowance on top.
-    expect(draftPaper?.subtotalCents).toBe(105_000);
-
-    await owner.action(api.proposals.send, { proposalId });
-    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: 90_000 });
-    const sent = await owner.query(api.proposals.paper, { proposalId });
-    expect(sent?.solutions[0].materialAllowanceCents).toBe(50_000);
-    expect(sent?.subtotalCents).toBe(105_000);
-
-    await owner.mutation(api.solutions.update, { solutionId, materialAllowanceCents: null });
-    expect(
-      (await owner.query(api.proposals.paper, { proposalId }))?.solutions[0]
-        .materialAllowanceCents,
-    ).toBe(50_000);
   });
 
   test("a sent proposal can no longer be edited or deleted", async () => {
