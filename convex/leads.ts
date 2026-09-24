@@ -7,7 +7,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireOwner } from "./auth";
-import { dealForLead, moveDeal } from "./deals";
+import { dealForLead, letGo, moveDeal } from "./deals";
 import { normalizePhone } from "../lib/customer";
 import { isOpen, stageOnCustomerReply } from "../lib/pipeline";
 import {
@@ -110,7 +110,7 @@ async function receiveLead(ctx: MutationCtx, body: unknown): Promise<Received> {
       await ctx.db.patch(deal._id, {
         customerId: matched,
         siteId: undefined,
-        proposalId: undefined,
+        ...letGo(deal),
         stage,
         ...(stage === deal.stage ? {} : { stageChangedAt: now }),
         updatedAt: now,

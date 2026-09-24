@@ -224,6 +224,10 @@ export default defineSchema({
     // The proposal that last moved the deal, by being sent or approved: the
     // offer the card and panel read. Absent on a deal no proposal has moved.
     proposalId: v.optional(v.id("proposals")),
+    // Proposals the deal once held and let go of, on moving to another site
+    // or being repointed to another customer. Kept so an approval of one of
+    // them is never given to another job for want of a holder.
+    letGoProposalIds: v.optional(v.array(v.id("proposals"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

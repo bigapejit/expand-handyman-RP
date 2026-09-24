@@ -196,7 +196,7 @@ export const setSite = mutation({
     const moved = (siteId ?? undefined) !== deal.siteId;
     await ctx.db.patch(deal._id, {
       siteId: siteId ?? undefined,
-      ...(moved ? { proposalId: undefined } : {}),
+      ...(moved ? letGo(deal) : {}),
       updatedAt: Date.now(),
     });
   },
@@ -295,6 +295,17 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const deal = await ctx.db.get(dealId);
   if (!deal) throw new Error("The deal did not save.");
   return deal;
+}
+
+// The patch that takes a deal's proposal off it while remembering it was
+// this deal's: an approval of a let-go proposal then belongs to no one else.
+export function letGo(deal: Doc<"deals">) {
+  return {
+    proposalId: undefined,
+    ...(deal.proposalId
+      ? { letGoProposalIds: [...(deal.letGoProposalIds ?? []), deal.proposalId] }
+      : {}),
+  };
 }
 
 // Whether one of the customer's deals already reads this proposal as its own.
@@ -405,14 +416,17 @@ export async function advanceForSite(
   // deal the owner had already closed keeps its stage, and no other job at
   // the site is won on its behalf.
   const holders = deals.filter(holding);
+  // An offer some deal held and let go of (moved to another site, repointed
+  // to another customer) was that job's: its approval is nobody else's.
+  const letGoOf = deals.some((deal) => deal.letGoProposalIds?.includes(proposal._id));
   let targets =
-    event === "approved" && holders.length > 0
+    event === "approved" && (holders.length > 0 || letGoOf)
       ? holders
       : event === "sent"
         ? candidates.filter(free)
         : candidates.filter(holding);
-  if (targets.length === 0 && event === "approved") targets = candidates.filter(free);
-  if (targets.length === 0) targets = candidates.filter(outOnAnother);
+  if (targets.length === 0 && event === "approved" && !letGoOf) targets = candidates.filter(free);
+  if (targets.length === 0 && !(event === "approved" && letGoOf)) targets = candidates.filter(outOnAnother);
   // One offer is for one job. With more than one deal it could be for, the
   // one the owner touched last is the one being quoted; the others wait for
   // their own. A deal already holding this offer is always the one.

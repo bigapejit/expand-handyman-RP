@@ -543,6 +543,31 @@ describe("board", () => {
     expect((await row(second))?.stage).toBe("new");
   });
 
+  test("an approval of an offer a deal let go of does not win another job at the site", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const here = await site(customerId, "1300 Franklin St");
+    const there = await site(customerId, "88 Main St");
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    const p1 = await send(here);
+    expect((await row(a))?.proposal?.proposalId).toBe(p1);
+    await owner.mutation(api.deals.setSite, { dealId: a, siteId: there });
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId: here,
+    });
+    await approve(here, p1);
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+    expect(await row(a)).toMatchObject({ stage: "quoted", proposal: null });
+  });
+
   test("an approval for a deal closed by hand does not win another job at the site", async () => {
     const { owner, customer, site, send, approve, row } = fixture();
     const customerId = await customer();
