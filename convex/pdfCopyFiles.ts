@@ -23,16 +23,22 @@ export function currentPdfCopyOf(proposal: Doc<"proposals">): PdfCopy | null {
   return copy.state === pdfCopyStateFor(proposal.state) ? copy : null;
 }
 
-// Every move out of Sent lets the offer's file go: Withdraw, Re-send and
-// Decline take the offer back, and Approve turns it into a contract whose
-// signed copy is a different paper. The bytes are deleted and the row forgets
-// them, so a later Download renders the paper as it now stands, and no
-// proposal pins a file nobody will hand out. The caller's own patch follows;
-// this only lets go of the file.
-export async function discardPdfCopy(ctx: MutationCtx, proposal: Doc<"proposals">): Promise<void> {
-  if (!proposal.pdfCopy) return;
-  await ctx.storage.delete(proposal.pdfCopy.storageId);
-  await ctx.db.patch(proposal._id, { pdfCopy: undefined });
+// Every move off the sheet a file was made of lets the file go. For a
+// proposal that is every move out of Sent: Withdraw, **Re-send** and Decline
+// take the offer back, and **Approve** turns it into a contract whose signed
+// copy is a different paper. For an invoice it is Mark paid, Mark unpaid and
+// Void, each of which changes the stamp, and a **Re-send**, which is a
+// proposal's re-send over again. The bytes are deleted and the row forgets
+// them, so a later Download renders the paper as it now stands, and no row
+// pins a file nobody will hand out. The caller's own patch follows; this only
+// lets go of the file.
+export async function discardPdfCopy(
+  ctx: MutationCtx,
+  paper: Doc<"proposals"> | Doc<"invoices">,
+): Promise<void> {
+  if (!paper.pdfCopy) return;
+  await ctx.storage.delete(paper.pdfCopy.storageId);
+  await ctx.db.patch(paper._id, { pdfCopy: undefined });
 }
 
 export type InvoicePdfCopy = NonNullable<Doc<"invoices">["pdfCopy"]>;
@@ -58,14 +64,3 @@ export async function currentInvoicePdfCopyOf(
   return copy.paperState === (await invoicePaperStateOf(ctx, invoice)) ? copy : null;
 }
 
-// Mark paid, Mark unpaid, Void and Re-send each let an invoice's file go, as
-// `discardPdfCopy` does a proposal's: the stamp changes the sheet, and a
-// re-send is a proposal's re-send over again. The caller's own patch follows.
-export async function discardInvoicePdfCopy(
-  ctx: MutationCtx,
-  invoice: Doc<"invoices">,
-): Promise<void> {
-  if (!invoice.pdfCopy) return;
-  await ctx.storage.delete(invoice.pdfCopy.storageId);
-  await ctx.db.patch(invoice._id, { pdfCopy: undefined });
-}
