@@ -347,6 +347,8 @@ describe("What Send freezes", () => {
     expect(await t.query(api.signingLinks.page, { token })).toEqual({
       paper: { ...sentPaper, unpricedSolutions: undefined },
       noticeRequired: false,
+      // Nothing to pay before the customer signs.
+      deposit: null,
     });
   });
 

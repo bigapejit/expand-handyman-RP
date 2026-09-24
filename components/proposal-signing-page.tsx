@@ -70,7 +70,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
 
   if (page === undefined) return <PaperLoading />;
   if (page === null) return <LinkNotLive what="proposal" />;
-  const { paper, noticeRequired } = page;
+  const { paper, noticeRequired, deposit } = page;
 
   // One of the two acts, run against the server. The form closes only when the
   // server has committed; a refusal stays on the form, in its words. What the
@@ -115,6 +115,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
         <ProposalSignBar
           paper={paper}
           noticeRequired={noticeRequired}
+          deposit={deposit}
           open={open}
           busy={busy}
           error={error}

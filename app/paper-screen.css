@@ -375,6 +375,112 @@
   gap: 8px;
 }
 
+/* ── The pay bar ──────────────────────────────────────────────────────────
+   **Pay now** on an invoice link (components/pay-bar.tsx), sketch D of the
+   prototype/pay-now branch: one Pay button in the bar, rising into the **Pay
+   sheet** of four ways, each a row that reads the way, a line about it and
+   the amount; Zelle and check turn the sheet into numbered steps. It lives in
+   the sign bar's own classes and adds only these. */
+.paper-pay-choices {
+  display: grid;
+  gap: 8px;
+}
+
+.paper-pay-choice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name amount"
+    "note amount";
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c9c9c9;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paper-pay-choice:hover:not(:disabled) {
+  border-color: #111;
+}
+
+.paper-pay-choice-name {
+  grid-area: name;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.paper-pay-choice-note {
+  grid-area: note;
+  font-size: 12.5px;
+  color: #555;
+}
+
+.paper-pay-choice-amount {
+  grid-area: amount;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The sentences under the rows and under the steps. */
+.paper-pay-text {
+  margin: 0;
+  font-size: 13px;
+  color: #555;
+}
+
+.paper-pay-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+/* Copy tag, small enough to sit in the step's own line. */
+.paper-pay-steps .paper-btn {
+  margin-left: 6px;
+  padding: 3px 9px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+/* The Zelle tag, set apart as something to type or paste exactly. */
+.paper-pay-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #f1f1f1;
+}
+
+/* "Try opening it in your bank's app" and why it may not: a link that looks
+   like the bar's outline button, with its caveat beside it. */
+.paper-pay-try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+a.paper-btn {
+  text-decoration: none;
+}
+
+/* A quiet aside in the bar's row, like "or pay later, from the email" beside
+   the deposit button, which a phone has no room for. */
+.paper-bar-aside {
+  font-size: 13px;
+  color: #555;
+}
+
 /* ── Phones ───────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .paper-top-row {
@@ -410,6 +516,10 @@
      rest, so the customer can still see what they are signing. */
   .paper-bar-sheet {
     max-height: 80dvh;
+  }
+
+  .paper-bar-row > .paper-bar-aside {
+    display: none;
   }
 }
 
