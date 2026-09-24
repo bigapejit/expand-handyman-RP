@@ -488,6 +488,8 @@ describe("Pay now refused", () => {
       lines: [{ description: "Credit", cents: -5_000 }],
     });
     expect((await refusal(pay(credit.token, "bank"))).code).toBe("nothing_due");
+    // Nothing is owed, so the link shows no bar at all.
+    expect(await page(credit.token)).toMatchObject({ payable: false, ways: [] });
 
     const draft = await sentInvoice(proposalId, {
       state: "draft",
@@ -620,6 +622,7 @@ describe("A card payment Stripe completed", () => {
     expect((await list("paid")).map((row) => row.invoiceId)).toEqual([invoiceId]);
     expect(await page(token)).toMatchObject({
       paper: { stamp: { kind: "paid", day: "2026-09-03" } },
+      payable: false,
       ways: [],
       stripe: null,
     });
@@ -674,6 +677,7 @@ describe("A card payment Stripe completed", () => {
     // Stripe recorded on it.
     expect(await page(token)).toMatchObject({
       paper: { stamp: { kind: "void", day: "2026-09-02" } },
+      payable: false,
       ways: [],
       stripe: null,
     });
@@ -742,6 +746,7 @@ describe("A bank payment Stripe accepted", () => {
     expect(card.owedCents).toBe(29_948);
     expect(await page(token)).toMatchObject({
       paper: { stamp: null },
+      payable: false,
       ways: [],
       stripe: { kind: "on_its_way", amountCents: 29_948, acceptedOn: "2026-09-01" },
     });

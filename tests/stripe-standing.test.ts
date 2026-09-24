@@ -456,6 +456,7 @@ describe("A Stripe payment on a void invoice", () => {
     const page = await t.query(api.invoiceLinks.page, { token });
     expect(page).toMatchObject({
       paper: { stamp: { kind: "void", day: "2026-09-02" } },
+      payable: false,
       ways: [],
       stripe: null,
     });

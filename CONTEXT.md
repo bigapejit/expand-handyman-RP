@@ -135,7 +135,7 @@ The standing of a sent invoice whose bank payment Stripe has accepted but not ye
 _Avoid_: Pending, processing, awaiting payment
 
 **Returned payment**:
-A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and the Pay button is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason and whether the customer's email went. While another bank payment of theirs is still on its way, only the owner is told. The invoice keeps the note until it is paid, on its way again or void.
+A bank payment Stripe accepted that the customer's bank then refused, days later, for a reason such as insufficient funds or a closed account. Payment on its way ends, the invoice reads Unpaid or Overdue again from the day it was sent, and the Pay button is back on the link with a line saying the payment was returned. Stripe emails nobody about it, so the app does: the customer is asked to pay again, and the owner is told with the bank's reason and whether the customer's email went. While another bank payment of theirs is still on its way, the invoice stays on its way and only the owner is told. The invoice keeps the note until it is paid, on its way again or void.
 _Avoid_: Failed payment (Stripe's word; the money was accepted, then sent back), bounced payment, declined (a card word)
 
 **Invoice paper**:

@@ -142,7 +142,7 @@ export function ownerOnItsWay(onItsWay: { amountCents: number; acceptedOn: strin
 // grey note reads it until the invoice is paid, on its way again or void. The
 // reason is the bank's or Stripe's own words, shown only to the owner.
 // `customerEmailed` is whether a return's letter to the customer went: null
-// until its scheduled send has run, and absent on a refund or a dispute,
+// until its scheduled send has run, and null too on a refund or a dispute,
 // which write to nobody.
 export type StripeNote = {
   kind: "returned" | "refunded" | "dispute_lost";
