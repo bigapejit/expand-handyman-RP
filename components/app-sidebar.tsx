@@ -1,7 +1,14 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
-import { FileSignature, FileText, LayoutDashboard, LogOut, Users } from "lucide-react";
+import {
+  FileSignature,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  ReceiptText,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -27,6 +34,7 @@ const navigation = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Customers", href: "/customers", icon: Users },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
+  { title: "Invoices", href: "/invoices", icon: ReceiptText },
   { title: "Documents", href: "/documents", icon: FileText },
 ] as const;
 

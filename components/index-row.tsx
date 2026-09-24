@@ -2,6 +2,8 @@ import { ChevronRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/utils";
+
 // One row of a console index — Sites, Customers, a Customer's own Sites —
 // and the empty state that stands in for the list. A title, a line under
 // it, and the single hint someone scanning the list would act on, in the same
@@ -11,6 +13,7 @@ export function IndexRow({
   title,
   subtitle,
   hint,
+  struck = false,
 }: {
   href: string;
   title: string;
@@ -18,6 +21,8 @@ export function IndexRow({
   // A node rather than a string: the Customers index's hint is a Deal's Stage
   // chip and its next-up line (issue #320), which no string carries.
   hint: ReactNode;
+  // A row still listed but no longer standing, as a void invoice is.
+  struck?: boolean;
 }) {
   return (
     <li>
@@ -26,7 +31,14 @@ export function IndexRow({
         className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-slate-50"
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-slate-900">{title}</p>
+          <p
+            className={cn(
+              "truncate font-medium text-slate-900",
+              struck && "text-slate-500 line-through",
+            )}
+          >
+            {title}
+          </p>
           <p className="truncate text-sm text-slate-500">{subtitle}</p>
           {/* Expand: a phone keeps the hint as a third line rather than
               losing it, since it is the one thing the row says to act on. */}

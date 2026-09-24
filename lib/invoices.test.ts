@@ -8,6 +8,7 @@ import {
   invoicePanelHref,
   invoicePaperHref,
   invoiceRowTitle,
+  invoiceSentLabel,
   matchesInvoiceFilter,
   matchesInvoiceSearch,
 } from "./invoices";
@@ -130,5 +131,13 @@ describe("Searching invoices", () => {
     expect(matchesInvoiceSearch(found, "FRAMING")).toBe(true);
     expect(matchesInvoiceSearch(found, "  ")).toBe(true);
     expect(matchesInvoiceSearch(found, "roof")).toBe(false);
+  });
+});
+
+describe("When a row says it went out", () => {
+  it("dates it in Pacific time, and says so when it has not", () => {
+    // 8:30pm Pacific on 23 September, already the 24th in UTC.
+    expect(invoiceSentLabel(Date.UTC(2026, 8, 24, 3, 30), "en-US")).toBe("Sent Sep 23, 2026");
+    expect(invoiceSentLabel(null, "en-US")).toBe("Not sent yet");
   });
 });

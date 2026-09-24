@@ -15,9 +15,11 @@ import {
 import { useState } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import { InvoicePanelHost } from "@/components/invoice-panel";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
 import { pdfDownloadLabel, usePdfDownload } from "@/components/pdf-download";
 import { OpenedChip, ProposalStateChip } from "@/components/proposal-chips";
+import { ProposalInvoices } from "@/components/proposal-invoices";
 import { ProposalSending } from "@/components/proposal-sending";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
 import {
@@ -35,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { InvoicePanelParam } from "@/lib/invoices";
 import { formatCents } from "@/lib/money";
 import { pdfCopyStateFor } from "@/lib/pdf-copy";
 import {
@@ -75,6 +78,9 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
   // the Department of Revenue, and the new draft carries it from the start.
   const create = useAction(api.proposals.create);
   const { openId, open, close } = useSidePanel(ProposalPanelParam);
+  // An invoice opened from an approved proposal's panel takes the panel's
+  // place, and closing it brings the proposal back.
+  const invoicePanel = useSidePanel(InvoicePanelParam);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
 
@@ -135,15 +141,17 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
           ))}
         </ol>
       )}
-      {tab && openProposal ? (
+      {tab && openProposal && invoicePanel.openId === null ? (
         <ProposalPanel
           key={openProposal.proposalId}
           tab={tab}
           proposal={openProposal}
           onOpen={open}
+          onOpenInvoice={invoicePanel.open}
           onClose={close}
         />
       ) : null}
+      <InvoicePanelHost customerId={customerId} />
     </HubSection>
   );
 }
@@ -198,11 +206,13 @@ function ProposalPanel({
   tab,
   proposal,
   onOpen,
+  onOpenInvoice,
   onClose,
 }: {
   tab: ProposalsTab;
   proposal: Proposal;
   onOpen: (proposalId: string) => void;
+  onOpenInvoice: (invoiceId: string) => void;
   onClose: () => void;
 }) {
   const update = useMutation(api.proposals.update);
@@ -359,6 +369,10 @@ function ProposalPanel({
         />
 
         <ProposalSending proposal={proposal} customerEmail={tab.customerEmail} />
+
+        {proposal.state === "approved" ? (
+          <ProposalInvoices proposalId={proposal.proposalId} onOpen={onOpenInvoice} />
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-1 border-t pt-4">
           <Button

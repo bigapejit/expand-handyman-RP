@@ -137,3 +137,17 @@ export function matchesInvoiceSearch(
   const query = search.trim().toLowerCase();
   return `${invoice.customerName} ${invoice.title}`.toLowerCase().includes(query);
 }
+
+// When an invoice went out, under its row: the day, in Pacific time as its
+// paper dates it. A draft has not gone anywhere yet. The locale is for tests to
+// pin.
+export function invoiceSentLabel(sentAt: number | null, locale?: string): string {
+  if (sentAt === null) return "Not sent yet";
+  const day = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Los_Angeles",
+  }).format(sentAt);
+  return `Sent ${day}`;
+}
