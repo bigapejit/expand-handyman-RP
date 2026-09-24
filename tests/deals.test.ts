@@ -568,6 +568,24 @@ describe("board", () => {
     expect(await row(a)).toMatchObject({ stage: "quoted", proposal: null });
   });
 
+  test("an approval of an offer stays off a deal whose site was cleared", async () => {
+    const { owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const p1 = await send(siteId);
+    expect((await row(dealId))?.proposal?.proposalId).toBe(p1);
+    // Change site, with no new site picked yet.
+    await owner.mutation(api.deals.setSite, { dealId, siteId: null });
+    await approve(siteId, p1);
+    expect(await row(dealId)).toMatchObject({ stage: "quoted", site: null, proposal: null });
+  });
+
   test("an approval of an offer whose deal went to another customer moves nothing here", async () => {
     const { t, owner, customer, site, send, approve, row } = fixture();
     const standIn = await customer("Unnamed");

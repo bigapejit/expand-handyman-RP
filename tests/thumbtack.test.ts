@@ -265,6 +265,21 @@ describe("a lead event", () => {
     expect(moved?.stage).toBe("new");
   });
 
+  test("a repointed placeholder at Sent out with no proposal left goes back to New too", async () => {
+    const { t, receive, leads, deals } = fixture();
+    await receive(leadEvent("700", { customerID: "c-9", phone: "555-000-9999" }));
+    await receive(messageEvent("m-1", "Business", "2026-09-23T16:00:00Z", "777"));
+    const standIn = (await deals()).find((d) => d.title === "Thumbtack message");
+    if (!standIn) throw new Error("No stand-in deal.");
+    // A proposal from the stand-in's site had moved the deal to Sent out, and
+    // Change site then let go of the site and the proposal, keeping the stage.
+    await t.run((ctx) => ctx.db.patch(standIn._id, { stage: "quoted" }));
+    expect(await receive(leadEvent("777", { customerID: "c-9", phone: "555-000-9999" }))).toBe("lead");
+    expect(await leads()).toHaveLength(2);
+    const moved = (await deals()).find((d) => d._id === standIn._id);
+    expect(moved?.stage).toBe("new");
+  });
+
   test("arriving twice is a duplicate with one lead", async () => {
     const { receive, leads, deals, customers, events } = fixture();
     await receive(leadEvent());

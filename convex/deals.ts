@@ -398,14 +398,12 @@ export async function advanceForSite(
   // recorded). Its approval is that deal's alone. If the deal is still this
   // customer's at this site, open or not, it takes it: a deal closed by hand
   // keeps its stage, and one reading a newer offer since reads the signed
-  // one. If the deal has left, to another site or another customer, the
-  // offer was for a job that is no longer here, and nothing moves. A
-  // re-send is the same offer, so it moves its own deal too.
+  // one. If the deal has left, to another site, to no site, or to another
+  // customer, the offer was for a job that is no longer here, and nothing
+  // moves. A re-send is the same offer, so it moves its own deal too.
   const its = proposal.dealId ? await ctx.db.get(proposal.dealId) : null;
   const own = [...(its ? [its] : []), ...deals.filter((d) => holding(d) && d._id !== its?._id)];
-  const here = own.filter(
-    (d) => d.customerId === site.customerId && (!d.siteId || d.siteId === site._id),
-  );
+  const here = own.filter((d) => d.customerId === site.customerId && d.siteId === site._id);
   let targets: Doc<"deals">[];
   if (own.length > 0) {
     targets = event === "approved" ? here : here.filter((d) => isOpen(d.stage));
