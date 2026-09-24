@@ -9,12 +9,14 @@ import {
   Download,
   Eye,
   GripVertical,
+  Plus,
   Star,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import type { HubScope } from "@/components/hub-scope";
 import { InvoicePanelHost } from "@/components/invoice-panel";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
 import { pdfDownloadLabel, usePdfDownload } from "@/components/pdf-download";
@@ -62,18 +64,23 @@ import {
 } from "@/lib/proposals";
 import { cn, errorMessage } from "@/lib/utils";
 
-type ProposalsTab = FunctionReturnType<typeof api.proposals.forCustomer>;
+type ProposalsTab = FunctionReturnType<typeof api.proposals.forSite>;
 type Proposal = ProposalsTab["proposals"][number];
 type OfferedSolution = ProposalsTab["solutions"][number];
 type ProposalPatch = Omit<FunctionArgs<typeof api.proposals.update>, "proposalId">;
 
-// The customer page's landing tab, ported from FRSG's site-proposals.tsx one
-// level up: every proposal across the customer's sites, each tagged with its
-// site. Opening a row slides the panel in over the list and puts the proposal
-// in the URL, exactly as the Solutions tab does.
-export function CustomerProposals({ customerId }: { customerId: string }) {
-  const id = customerId as Id<"customers">;
-  const tab = useQuery(api.proposals.forCustomer, { customerId: id });
+// The Proposals tab, ported from FRSG's site-proposals.tsx: the site page's
+// landing tab, and on the customer page every proposal across the customer's
+// sites, each tagged with its site. Opening a row slides the panel in over the
+// list and puts the proposal in the URL, exactly as the Solutions tab does.
+export function CustomerProposals({ scope }: { scope: HubScope }) {
+  const { siteId, customerId } = scope;
+  const atSite = useQuery(api.proposals.forSite, siteId ? { siteId } : "skip");
+  const acrossSites = useQuery(
+    api.proposals.forCustomer,
+    customerId ? { customerId } : "skip",
+  );
+  const tab = siteId ? atSite : acrossSites;
   // An action rather than a mutation: a Washington site's tax rate comes from
   // the Department of Revenue, and the new draft carries it from the start.
   const create = useAction(api.proposals.create);
@@ -106,16 +113,22 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
       title="Proposals"
       description={
         count
-          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for this customer's sites.`
-          : "Offers for this customer's sites, each assembled from solutions."
+          ? `${count === 1 ? "1 proposal" : `${count} proposals`}: the offers made for ${siteId ? "this site" : "this customer's sites"}.`
+          : `Offers for ${siteId ? "this site" : "this customer's sites"}, each assembled from solutions.`
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New proposal"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        siteId ? (
+          <Button variant="outline" size="lg" disabled={adding} onClick={() => void add(siteId)}>
+            <Plus data-icon="inline-start" aria-hidden /> New proposal
+          </Button>
+        ) : customerId ? (
+          <NewForSite
+            customerId={customerId}
+            label="New proposal"
+            disabled={adding}
+            onPick={(picked) => void add(picked)}
+          />
+        ) : null
       }
     >
       {error ? (
@@ -136,13 +149,14 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
             <ProposalRow
               key={proposal.proposalId}
               proposal={proposal}
+              tagSite={!siteId}
               open={() => open(proposal.proposalId)}
             />
           ))}
         </ol>
       )}
       <InvoicePanelHost
-        customerId={customerId}
+        scope={scope}
         otherwise={
           tab && openProposal ? (
             <ProposalPanel
@@ -160,7 +174,16 @@ export function CustomerProposals({ customerId }: { customerId: string }) {
   );
 }
 
-function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void }) {
+// On the site page every row is at the same site, so the tag is left off.
+function ProposalRow({
+  proposal,
+  tagSite,
+  open,
+}: {
+  proposal: Proposal;
+  tagSite: boolean;
+  open: () => void;
+}) {
   const solutions = proposal.solutions.length;
   return (
     <li className="border-b last:border-b-0">
@@ -179,8 +202,12 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
             {proposal.recommended ? <RecommendedMark /> : null}
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={proposal.siteName} />
-            <span aria-hidden>·</span>
+            {tagSite ? (
+              <>
+                <SiteTag name={proposal.siteName} />
+                <span aria-hidden>·</span>
+              </>
+            ) : null}
             <span className="truncate">
               {solutions === 1 ? "1 solution" : `${solutions} solutions`}
             </span>

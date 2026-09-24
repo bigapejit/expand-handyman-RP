@@ -41,8 +41,8 @@ describe("How an invoice is named on a row", () => {
 });
 
 describe("Where an invoice opens", () => {
-  it("opens its panel on its customer's Invoices tab", () => {
-    expect(invoicePanelHref("c1", "i9")).toBe("/customers/c1/invoices?invoice=i9");
+  it("opens its panel on its site's Invoices tab", () => {
+    expect(invoicePanelHref("s1", "i9")).toBe("/sites/s1/invoices?invoice=i9");
   });
 
   it("opens the staff paper on a page of its own", () => {

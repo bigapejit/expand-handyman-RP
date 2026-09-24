@@ -8,6 +8,7 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
+  MapPin,
   ReceiptText,
   Users,
 } from "lucide-react";
@@ -36,6 +37,8 @@ import { api } from "@/convex/_generated/api";
 
 const navigation = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  // Straight after the Dashboard: the Site is the page the owner works from.
+  { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Customers", href: "/customers", icon: Users },
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },

@@ -5,6 +5,7 @@ import { Ban, Download, Eye, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { HubLoading } from "@/components/customer-hub-shell";
+import type { HubScope } from "@/components/hub-scope";
 import { InvoiceChip } from "@/components/invoice-chips";
 import {
   InvoiceDraftLines,
@@ -37,13 +38,14 @@ import { errorMessage } from "@/lib/utils";
 // `?invoice=<id>` (lib/side-panel.ts) so a reload, a copied link and Back all
 // mean the same thing. The Invoices tab opens it over its list, and the
 // Proposals tab over an approved proposal's panel, which comes back when this
-// one closes. A link naming no invoice, or another customer's, just shows the
-// tab, and whatever panel the tab had open (`otherwise`).
+// one closes. A link naming no invoice, or one from another site (or on the
+// customer page, another customer), just shows the tab, and whatever panel
+// the tab had open (`otherwise`).
 export function InvoicePanelHost({
-  customerId,
+  scope,
   otherwise = null,
 }: {
-  customerId: string;
+  scope: HubScope;
   otherwise?: ReactNode;
 }) {
   const { openId, close } = useSidePanel(InvoicePanelParam);
@@ -52,7 +54,7 @@ export function InvoicePanelHost({
     <OpenInvoice
       key={openId}
       invoiceId={openId}
-      customerId={customerId}
+      scope={scope}
       otherwise={otherwise}
       onClose={close}
     />
@@ -61,12 +63,12 @@ export function InvoicePanelHost({
 
 function OpenInvoice({
   invoiceId,
-  customerId,
+  scope,
   otherwise,
   onClose,
 }: {
   invoiceId: string;
-  customerId: string;
+  scope: HubScope;
   otherwise: ReactNode;
   onClose: () => void;
 }) {
@@ -80,7 +82,11 @@ function OpenInvoice({
       </SidePanel>
     );
   }
-  if (invoice === null || invoice.customerId !== customerId) return otherwise;
+  if (invoice === null) return otherwise;
+  const here = scope.siteId
+    ? invoice.siteId === scope.siteId
+    : invoice.customerId === scope.customerId;
+  if (!here) return otherwise;
   return <InvoicePanel invoice={invoice} onClose={onClose} />;
 }
 

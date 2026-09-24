@@ -3,15 +3,16 @@ import { Suspense } from "react";
 import { CustomerSolutions } from "@/components/customer-solutions";
 import type { Id } from "@/convex/_generated/dataModel";
 
+// The site layout shows this page only once the id names a site.
 export default async function Page({
   params,
 }: {
-  params: Promise<{ customerId: string }>;
+  params: Promise<{ siteId: string }>;
 }) {
-  const { customerId } = await params;
+  const { siteId } = await params;
   return (
     <Suspense>
-      <CustomerSolutions scope={{ customerId: customerId as Id<"customers"> }} />
+      <CustomerSolutions scope={{ siteId: siteId as Id<"sites"> }} />
     </Suspense>
   );
 }

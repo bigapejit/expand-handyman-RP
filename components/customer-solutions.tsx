@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/customer-hub-shell";
+import type { HubScope } from "@/components/hub-scope";
 import { NewForSite, SiteTag } from "@/components/new-for-site";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
 import {
@@ -53,18 +54,24 @@ import {
 } from "@/lib/solutions";
 import { cn, errorMessage } from "@/lib/utils";
 
-type Solution = FunctionReturnType<typeof api.solutions.forCustomer>[number];
+type Solution = FunctionReturnType<typeof api.solutions.forSite>[number];
 type CatalogSuggestion = FunctionReturnType<typeof api.catalog.suggestions>[number];
 type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId">;
 
-// The customer's Solutions tab, ported from FRSG's site-solutions.tsx one level
-// up: every solution across the customer's sites, each tagged with its site.
-// Opening a row slides the panel in over the list and puts the solution in the
-// URL, so a reload or a copied link reopens it. Every edit lands as the field
-// is left; nothing here is customer-visible until a proposal is sent.
-export function CustomerSolutions({ customerId }: { customerId: string }) {
-  const id = customerId as Id<"customers">;
-  const solutions = useQuery(api.solutions.forCustomer, { customerId: id });
+// The Solutions tab, ported from FRSG's site-solutions.tsx: one site's
+// solutions on the site page, and on the customer page every solution across
+// the customer's sites, each tagged with its site. Opening a row slides the
+// panel in over the list and puts the solution in the URL, so a reload or a
+// copied link reopens it. Every edit lands as the field is left; nothing here
+// is customer-visible until a proposal is sent.
+export function CustomerSolutions({ scope }: { scope: HubScope }) {
+  const { siteId, customerId } = scope;
+  const atSite = useQuery(api.solutions.forSite, siteId ? { siteId } : "skip");
+  const acrossSites = useQuery(
+    api.solutions.forCustomer,
+    customerId ? { customerId } : "skip",
+  );
+  const solutions = siteId ? atSite : acrossSites;
   const create = useMutation(api.solutions.create);
   const { openId, open, close } = useSidePanel("solution");
   const [adding, setAdding] = useState(false);
@@ -94,12 +101,18 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
           : "The priced pieces of work proposals are assembled from."
       }
       action={
-        <NewForSite
-          customerId={id}
-          label="New solution"
-          disabled={adding}
-          onPick={(siteId) => void add(siteId)}
-        />
+        siteId ? (
+          <Button variant="outline" size="lg" disabled={adding} onClick={() => void add(siteId)}>
+            <Plus data-icon="inline-start" aria-hidden /> New solution
+          </Button>
+        ) : customerId ? (
+          <NewForSite
+            customerId={customerId}
+            label="New solution"
+            disabled={adding}
+            onPick={(picked) => void add(picked)}
+          />
+        ) : null
       }
     >
       {error ? (
@@ -117,6 +130,7 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
             <SolutionRow
               key={solution._id}
               solution={solution}
+              tagSite={!siteId}
               open={() => open(solution._id)}
             />
           ))}
@@ -129,7 +143,16 @@ export function CustomerSolutions({ customerId }: { customerId: string }) {
   );
 }
 
-function SolutionRow({ solution, open }: { solution: Solution; open: () => void }) {
+// On the site page every row is at the same site, so the tag is left off.
+function SolutionRow({
+  solution,
+  tagSite,
+  open,
+}: {
+  solution: Solution;
+  tagSite: boolean;
+  open: () => void;
+}) {
   return (
     <li className="border-b last:border-b-0">
       <button
@@ -140,8 +163,12 @@ function SolutionRow({ solution, open }: { solution: Solution; open: () => void 
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-slate-900">{solution.title}</span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-            <SiteTag name={solution.siteName} />
-            <span aria-hidden>·</span>
+            {tagSite ? (
+              <>
+                <SiteTag name={solution.siteName} />
+                <span aria-hidden>·</span>
+              </>
+            ) : null}
             <span className="truncate">
               {solutionDetailLabel(solution.lineItems.length, solution.materialAllowanceCents)}
             </span>

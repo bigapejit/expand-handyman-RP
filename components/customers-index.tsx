@@ -83,7 +83,10 @@ export function CustomersIndex() {
       {adding ? (
         <CustomerDialog
           onClose={() => setAdding(false)}
-          onSaved={(id) => router.push(`/customers/${id}`)}
+          // A first site is where the work is; without one, the customer.
+          onSaved={({ customerId, siteId }) =>
+            router.push(siteId ? `/sites/${siteId}` : `/customers/${customerId}`)
+          }
         />
       ) : null}
     </div>

@@ -24,7 +24,7 @@ type InvoiceRows = FunctionReturnType<typeof api.invoices.list>;
 
 // Every invoice across every customer, as FRSG's flat indexes are: landing on
 // what is still owed, overdue first. Read-only, with no New invoice: a row
-// opens the invoice's panel on its customer's Invoices tab, and every invoice
+// opens the invoice's panel on its site's Invoices tab, and every invoice
 // starts from its proposal. Search reads the customer, the number and the
 // title.
 export function InvoicesIndex() {
@@ -80,7 +80,7 @@ export function InvoicesIndex() {
           {shown.map((invoice) => (
             <IndexRow
               key={invoice.invoiceId}
-              href={invoicePanelHref(invoice.customerId, invoice.invoiceId)}
+              href={invoicePanelHref(invoice.siteId, invoice.invoiceId)}
               title={invoice.title}
               subtitle={invoice.customerName}
               struck={invoice.state === "void"}

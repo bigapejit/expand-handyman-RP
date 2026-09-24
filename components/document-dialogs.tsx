@@ -52,7 +52,11 @@ export function UploadPdfDialog({
           </DialogDescription>
         </DialogHeader>
         {adding ? (
-          <CustomerForm busy={busy} setBusy={setBusy} onSaved={setCustomerId} />
+          <CustomerForm
+            busy={busy}
+            setBusy={setBusy}
+            onSaved={(saved) => setCustomerId(saved.customerId)}
+          />
         ) : (
           <UploadForm
             customers={customers ?? []}

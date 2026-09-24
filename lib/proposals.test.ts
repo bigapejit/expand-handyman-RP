@@ -36,8 +36,8 @@ describe("The Proposal ID", () => {
 });
 
 describe("Where a Proposal row points", () => {
-  it("opens the panel on the customer's Proposals tab", () => {
-    expect(proposalPanelHref("c1", "p1")).toBe("/customers/c1/proposals?proposal=p1");
+  it("opens the panel on its site's Proposals tab", () => {
+    expect(proposalPanelHref("s1", "p1")).toBe("/sites/s1/proposals?proposal=p1");
   });
 });
 

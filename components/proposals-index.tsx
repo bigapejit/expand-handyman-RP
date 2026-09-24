@@ -23,8 +23,8 @@ const filters: { value: Filter; label: string }[] = [
 ];
 
 // Every proposal across every customer, newest first, as FRSG's flat index.
-// Read-only: a row opens the proposal on its customer's Proposals tab, where it
-// is worked. Search reads the customer, the Proposal ID and the title.
+// Read-only: a row opens the proposal on its site's Proposals tab, where it is
+// worked. Search reads the customer, the Proposal ID and the title.
 export function ProposalsIndex() {
   const proposals = useQuery(api.proposals.list);
   const [search, setSearch] = useState("");
@@ -67,14 +67,14 @@ export function ProposalsIndex() {
         >
           {proposals?.length
             ? "Try a different search or state."
-            : "Start one from a customer's Proposals tab."}
+            : "Start one from a site's Proposals tab."}
         </IndexEmptyState>
       ) : (
         <ul className="divide-y overflow-hidden rounded-2xl border bg-white">
           {shown.map((p) => (
             <IndexRow
               key={p.proposalId}
-              href={proposalPanelHref(p.customerId, p.proposalId)}
+              href={proposalPanelHref(p.siteId, p.proposalId)}
               title={`${p.code} · ${p.title}`}
               subtitle={p.customerName}
               hint={

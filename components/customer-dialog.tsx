@@ -38,6 +38,10 @@ import { errorMessage } from "@/lib/utils";
 
 type Customer = Pick<Doc<"customers">, "_id" | "name" | "email" | "phone">;
 
+// Who was saved, and the first site added with them, if one was: the owner
+// lands on that site's page, where the work is.
+export type SavedCustomer = { customerId: Id<"customers">; siteId: Id<"sites"> | null };
+
 // One dialog for Add customer on the Customers list and Edit on the customer
 // page: the same fields and the same validation, so corrections work the way
 // entry does.
@@ -49,7 +53,7 @@ export function CustomerDialog({
   /** Edit this customer; without one the dialog adds a new customer. */
   customer?: Customer;
   onClose: () => void;
-  onSaved?: (id: Id<"customers">) => void;
+  onSaved?: (saved: SavedCustomer) => void;
 }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -72,7 +76,7 @@ export function CustomerDialog({
           customer={customer}
           busy={busy}
           setBusy={setBusy}
-          onSaved={(id) => (onSaved ?? onClose)(id)}
+          onSaved={(saved) => (onSaved ?? onClose)(saved)}
         />
       </DialogContent>
     </Dialog>
@@ -88,7 +92,7 @@ export function CustomerForm({
   customer?: Customer;
   busy: boolean;
   setBusy: (busy: boolean) => void;
-  onSaved: (id: Id<"customers">) => void;
+  onSaved: (saved: SavedCustomer) => void;
 }) {
   const add = useAction(api.customers.add);
   const update = useMutation(api.customers.update);
@@ -125,20 +129,20 @@ export function CustomerForm({
         setFieldErrors({});
         setBusy(true);
         try {
-          let id: Id<"customers">;
+          let saved: SavedCustomer;
           if (customer) {
             await update({ customerId: customer._id, ...parsed.data });
-            id = customer._id;
+            saved = { customerId: customer._id, siteId: null };
           } else {
-            ({ customerId: id } = await add({
+            saved = await add({
               ...parsed.data,
               firstSite: firstSite
                 ? { placeId: firstSite.placeId, sessionToken }
                 : undefined,
-            }));
+            });
           }
           setBusy(false);
-          onSaved(id);
+          onSaved(saved);
         } catch (err) {
           setError(errorMessage(err));
           setSessionToken(newLookupSession());
