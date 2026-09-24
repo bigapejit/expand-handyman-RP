@@ -13,16 +13,21 @@
 // `--preview-name <name>`, or neither for dev), then run the check within its
 // five minutes:
 //
-//   npx convex run pdfCopies:mintRenderPass //     '{"proposalId":"<id>","token":"<43 random URL-safe characters>"}'
-//   CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… //     npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> [out.pdf] [<Proposal ID>]
+//   npx convex run pdfCopies:mintRenderPass \
+//     '{"paper":{"proposalId":"<id>"},"token":"<43 random URL-safe characters>"}'
+//   CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… \
+//     npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> [out.pdf] [<Proposal ID>]
+//
+// `{"invoiceId":"<id>"}` in place of the proposal mints a pass for a sent,
+// paid or void invoice's paper instead.
 //
 // `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
 // makes a token. The two variables are the ones production Convex carries
-// (docs/deployment.md). The third argument is the Proposal ID the renderer
-// foots the sheets with, which `mintRenderPass` prints as `code`. A preview
-// behind Vercel Deployment Protection turns Cloudflare's browser away at its
-// login; add `?x-vercel-protection-bypass=<secret>` to the page URL, which the
-// request keeps.
+// (docs/deployment.md). The third argument is the Proposal ID, or the invoice
+// number, the renderer foots the sheets with, which `mintRenderPass` prints as
+// `code`. A preview behind Vercel Deployment Protection turns Cloudflare's
+// browser away at its login; add `?x-vercel-protection-bypass=<secret>` to the
+// page URL, which the request keeps.
 
 import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";

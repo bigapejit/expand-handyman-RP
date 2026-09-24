@@ -98,7 +98,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
       // The PDF copy, while this link opens the paper: the offer, or the
       // signed copy once approved. A declined proposal has none. The owner
       // previewing through the link gets the same button.
-      download={{ token }}
+      download={{ signingToken: token }}
       pending={
         paper.state === "sent"
           ? {

@@ -108,6 +108,32 @@ export const frozenInvoice = v.object({
 // (lib/invoice-paper.ts, `invoicePaperState`): what a PDF copy of it, and the
 // render pass that prints one, are bound to.
 export const invoicePaperState = v.union(v.literal("sent"), v.literal("paid"), v.literal("void"));
+
+// A proposal's sheet: one state, under the **Signing link** it went out on or
+// was signed through. The link is what tells an offer from the one sent after
+// it was withdrawn, where the state alone would call both Sent.
+const proposalSheetFields = {
+  proposalId: v.id("proposals"),
+  state: v.union(v.literal("sent"), v.literal("approved")),
+  linkId: v.id("signingLinks"),
+};
+
+// An invoice's sheet: one **Paper state**, and the day on a PAID or VOID
+// stamp. Marked unpaid and then paid on another day, the paper is paid again
+// but not the sheet a render was begun for.
+const invoiceSheetFields = {
+  invoiceId: v.id("invoices"),
+  paperState: invoicePaperState,
+  stampDay: v.optional(v.string()),
+};
+
+// Which sheet a **Render pass** prints and a **PDF copy** is kept against: a
+// proposal in one state under the signing link it went out on, or an invoice
+// in one paper state on the day its stamp names. A pass carries one, and a
+// file that lands is kept only while its paper still stands on the same one
+// (convex/pdfCopyFiles.ts, `sameSheet`).
+export const pdfSheet = v.union(v.object(proposalSheetFields), v.object(invoiceSheetFields));
+
 export const signingLinkEndedReason = v.union(
   v.literal("approved"),
   v.literal("declined"),
@@ -476,29 +502,15 @@ export default defineSchema({
   }),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
   // paper with, at `/paper/<token>`. One per render, expiring within minutes
-  // and deleted when the render ends, and naming one of two papers: a
-  // proposal in the state being rendered, under the signing link it went out
-  // under; or an invoice in the paper state being rendered, with the day on
-  // its stamp. Reading the paper through one never touches any log.
+  // and deleted when the render ends, and naming the one sheet it prints
+  // (`pdfSheet`): a proposal in the state being rendered, under the signing
+  // link it went out under; or an invoice in the paper state being rendered,
+  // with the day on its stamp. Reading the paper through one never touches
+  // any log.
   renderPasses: defineTable(
     v.union(
-      v.object({
-        token: v.string(),
-        proposalId: v.id("proposals"),
-        state: v.union(v.literal("sent"), v.literal("approved")),
-        linkId: v.id("signingLinks"),
-        expiresAt: v.number(),
-      }),
-      v.object({
-        token: v.string(),
-        invoiceId: v.id("invoices"),
-        paperState: invoicePaperState,
-        // The day on a PAID or VOID stamp: marked unpaid and then paid on
-        // another day, the paper is paid again but not the sheet this pass
-        // was made for.
-        stampDay: v.optional(v.string()),
-        expiresAt: v.number(),
-      }),
+      v.object({ token: v.string(), ...proposalSheetFields, expiresAt: v.number() }),
+      v.object({ token: v.string(), ...invoiceSheetFields, expiresAt: v.number() }),
     ),
   ).index("by_token", ["token"]),
   // The view log (ADR 0001): every open of a proposal's signing link.
