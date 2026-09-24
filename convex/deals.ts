@@ -58,7 +58,7 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
     phoneFrom: customer?.phoneFrom,
     email: customer?.email ?? "",
     site: site ? { siteId: site._id, name: site.name, line: siteAddressLine(site) } : null,
-    proposal: await proposalOf(ctx, deal, site),
+    proposal: await proposalOf(ctx, deal),
     lead: lead
       ? {
           negotiationId: lead.negotiationId,
@@ -78,21 +78,16 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
 
 type SentProposal = Doc<"proposals"> & { state: "sent" | "approved" | "declined" };
 
-// The proposal out on a deal. A deal remembers the proposal that last moved
-// it (`proposalId`, written when one is sent or approved), so two jobs at
-// one site, or two offers out at once, each read their own. An open deal
-// that never recorded one, from before this was kept, falls back to the
-// latest offer sent from its site since the deal began; a deal closed by
-// hand with none recorded shows none, since any offer at the site after
-// that is another job's. Drafts are the owner's own and say nothing yet.
-// Null when none.
-async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">, site: Doc<"sites"> | null) {
-  let latest: SentProposal | null = null;
+// The proposal out on a deal: the one that last moved it (`proposalId`,
+// written when a proposal is sent or approved, and by the migration for a
+// lead the old board had moved). Nothing is guessed from the site: two jobs
+// at one site, two offers out at once, a deal moved to another site or
+// closed by hand each read exactly what moved them, or nothing. Null when
+// none, or when what moved it has since gone back to a draft.
+async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">) {
   const held = deal.proposalId ? await ctx.db.get(deal.proposalId) : null;
-  if (held && held.state !== "draft" && held.frozen) latest = { ...held, state: held.state };
-  else if (site && isOpen(deal.stage))
-    latest = await latestSentFrom(ctx, site._id, deal.createdAt);
-  if (!latest?.frozen) return null;
+  if (!held || held.state === "draft" || !held.frozen) return null;
+  const latest: SentProposal = { ...held, state: held.state };
   // **Opened**: only a Sent one's current link can be, and only by the customer.
   const live =
     latest.state === "sent"
@@ -100,29 +95,14 @@ async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">, site: Doc<"sites"> 
       : undefined;
   return {
     proposalId: latest._id,
-    code: latest.frozen.code,
-    totalCents: latest.frozen.totalCents,
+    code: held.frozen.code,
+    totalCents: held.frozen.totalCents,
     state: latest.state,
     // A Re-send keeps the offer's date and mints a new link, so the link's
     // send is when the customer last heard: "Sent N days ago" counts from it.
     sentAt: live?.sentAt ?? latest.sentAt ?? latest.updatedAt,
     opened: live ? await customerViewedLink(ctx, live.token) : false,
   };
-}
-
-// The latest offer sent from a site since `since`, for a deal that never
-// recorded which proposal moved it.
-async function latestSentFrom(ctx: QueryCtx, siteId: Id<"sites">, since: number) {
-  const proposals = await ctx.db
-    .query("proposals")
-    .withIndex("by_site", (q) => q.eq("siteId", siteId))
-    .collect();
-  let latest: SentProposal | null = null;
-  for (const p of proposals) {
-    if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
-    if (!latest || (p.sentAt ?? 0) > (latest.sentAt ?? 0)) latest = { ...p, state: p.state };
-  }
-  return latest;
 }
 
 // The New deal dialog: a deal in New for a customer already on file, or for
@@ -260,11 +240,17 @@ export async function moveDeal(ctx: MutationCtx, deal: Doc<"deals">, stage: Stag
 
 // A lead's **Deal**, made as the lead arrives (or, for a lead from before
 // deals, the first time something needs it): source Thumbtack, the category as
-// its job, in New, under the lead's customer.
+// its job, in New, under the lead's customer. A lead the old board had moved
+// to Sent out or Won was moved by a proposal to its customer, so the deal
+// takes that proposal, and its site, as its own.
 export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const held = lead.dealId ? await ctx.db.get(lead.dealId) : null;
   if (held) return held;
   const now = Date.now();
+  const moved =
+    lead.stage === "quoted" || lead.stage === "won"
+      ? await proposalThatMoved(ctx, lead.customerId, lead.arrivedAt, lead.stage === "won")
+      : null;
   const dealId = await ctx.db.insert("deals", {
     customerId: lead.customerId,
     title: lead.category,
@@ -274,6 +260,7 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
     stageChangedAt: lead.stageChangedAt ?? now,
     notes: "",
     leadId: lead._id,
+    ...(moved ? { siteId: moved.siteId, proposalId: moved._id } : {}),
     createdAt: lead.arrivedAt,
     updatedAt: now,
   });
@@ -281,6 +268,38 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const deal = await ctx.db.get(dealId);
   if (!deal) throw new Error("The deal did not save.");
   return deal;
+}
+
+// Which of a customer's proposals the old board's move stood for: the
+// latest sent from any of their sites since the lead arrived, or, for a lead
+// at Won, the approved one. Null when none is found.
+async function proposalThatMoved(
+  ctx: QueryCtx,
+  customerId: Id<"customers">,
+  since: number,
+  won: boolean,
+) {
+  const sites = await ctx.db
+    .query("sites")
+    .withIndex("by_customer", (q) => q.eq("customerId", customerId))
+    .collect();
+  let pick: SentProposal | null = null;
+  for (const site of sites) {
+    const proposals = await ctx.db
+      .query("proposals")
+      .withIndex("by_site", (q) => q.eq("siteId", site._id))
+      .collect();
+    for (const p of proposals) {
+      if (p.state === "draft" || !p.frozen || (p.sentAt ?? 0) < since) continue;
+      const better = !pick
+        ? true
+        : won && (p.state === "approved") !== (pick.state === "approved")
+          ? p.state === "approved"
+          : (p.sentAt ?? 0) > (pick.sentAt ?? 0);
+      if (better) pick = { ...p, state: p.state };
+    }
+  }
+  return pick;
 }
 
 // The app moving deals when a proposal from `site` is sent or approved
