@@ -34,10 +34,11 @@ export function InvoiceRow({
         )}
       >
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
+          {/* On a phone the chip drops under a long title. */}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={cn(
-                "truncate font-medium text-slate-900",
+                "max-w-full truncate font-medium text-slate-900",
                 voided && "text-slate-500 line-through",
               )}
             >

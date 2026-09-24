@@ -60,6 +60,8 @@ export function AppSidebar() {
               {navigation.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
+                    // The phone's sheet is tapped, not clicked.
+                    className="h-10 md:h-8"
                     isActive={
                       item.href === "/"
                         ? pathname === "/"

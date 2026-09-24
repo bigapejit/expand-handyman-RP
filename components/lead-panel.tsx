@@ -90,7 +90,12 @@ export function LeadPanel({
         <div className="space-y-2 text-sm text-slate-700">
           {lead.phone ? (
             <FactRow icon={Phone}>
-              <a href={`tel:${lead.phone}`} className="font-medium text-slate-900 hover:underline">
+              {/* On a phone this is the call button, so the padding
+                  gives a thumb room without moving the line. */}
+              <a
+                href={`tel:${lead.phone}`}
+                className="font-medium text-slate-900 hover:underline max-md:py-2.5"
+              >
                 {displayPhone(lead.phone)}
               </a>
               {lead.phoneFrom === "thumbtack" ? (
@@ -131,7 +136,7 @@ export function LeadPanel({
         <div className="border-t pt-4">
           <Link
             href={`/customers/${lead.customerId}`}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline max-md:-my-2.5 max-md:py-2.5"
           >
             <UserRound aria-hidden className="size-4" /> Open customer
           </Link>

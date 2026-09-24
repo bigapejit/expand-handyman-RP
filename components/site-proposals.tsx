@@ -167,8 +167,10 @@ function ProposalRow({ proposal, open }: { proposal: Proposal; open: () => void 
         className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-slate-50"
       >
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-medium text-slate-900">
+          {/* The chips drop under the title on a phone rather than
+              squeezing it down to its code. */}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="max-w-full truncate font-medium text-slate-900">
               <span className="text-slate-500">{proposal.code}</span> · {proposal.title}
             </span>
             <ProposalStateChip state={proposal.state} />
@@ -518,13 +520,19 @@ function SolutionPicker({
                 over === index && carrying !== index && "bg-slate-50",
               )}
             >
-              <GripVertical aria-hidden className="size-4 shrink-0 cursor-grab text-slate-300" />
+              {/* A phone reorders with the arrows; a finger cannot
+                  drag the grip, so it goes, and the tick grows to a size a
+                  thumb can hit. */}
+              <GripVertical
+                aria-hidden
+                className="size-4 shrink-0 cursor-grab text-slate-300 max-md:hidden"
+              />
               <input
                 type="checkbox"
                 checked
                 aria-label={`Remove ${solution.title} from this proposal`}
                 onChange={() => onToggle(solution.solutionId)}
-                className="size-4 shrink-0 accent-slate-900"
+                className="size-4 shrink-0 accent-slate-900 max-md:size-5"
               />
               <span className="min-w-0 flex-1 truncate text-slate-900">{solution.title}</span>
               <span
@@ -569,14 +577,18 @@ function SolutionPicker({
                 key={solution.solutionId}
                 className="flex items-center gap-2 bg-white px-3 py-2 text-sm"
               >
-                <input
-                  type="checkbox"
-                  checked={false}
-                  aria-label={`Add ${solution.title} to this proposal`}
-                  onChange={() => onToggle(solution.solutionId)}
-                  className="ml-6 size-4 shrink-0 accent-slate-900"
-                />
-                <span className="min-w-0 flex-1 truncate text-slate-700">{solution.title}</span>
+                {/* The title is part of the tick's target, so a phone can add a
+                    solution by tapping its name. */}
+                <label className="flex min-w-0 flex-1 items-center gap-2 max-md:py-1">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    aria-label={`Add ${solution.title} to this proposal`}
+                    onChange={() => onToggle(solution.solutionId)}
+                    className="ml-6 size-4 shrink-0 accent-slate-900 max-md:ml-0 max-md:size-5"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{solution.title}</span>
+                </label>
                 <span
                   className={cn(
                     "shrink-0 tabular-nums",
@@ -716,7 +728,9 @@ function MoneyBlock({
     <div className="space-y-2">
       <FieldHeading>Money</FieldHeading>
       <dl className="space-y-2 rounded-xl border px-3 py-3 text-sm">
-        <div className="flex items-start justify-between gap-4">
+        {/* On a phone the field and its figure drop under the label
+            and its toggle, rather than squeezing the toggle onto two lines. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <dt className="min-w-0 text-slate-900">
             <span>{labels.deposit}</span>
             {editable ? (
@@ -728,7 +742,7 @@ function MoneyBlock({
                     aria-pressed={kind === option}
                     onClick={() => switchTo(option)}
                     className={cn(
-                      "rounded px-1.5 py-0.5",
+                      "rounded px-1.5 py-0.5 whitespace-nowrap max-md:px-2.5 max-md:py-1.5",
                       kind === option
                         ? "bg-slate-900 text-white"
                         : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
@@ -740,7 +754,7 @@ function MoneyBlock({
               </span>
             ) : null}
           </dt>
-          <dd className="flex shrink-0 items-center gap-2">
+          <dd className="ml-auto flex shrink-0 items-center gap-2">
             {editable && kind === "percent" ? (
               <>
                 <Input

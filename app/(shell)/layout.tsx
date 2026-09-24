@@ -22,11 +22,14 @@ export default async function ShellLayout({
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger />
+          {/* A thumb-sized target on a phone, where it is the only way to
+              the other pages; the desktop's stays compact. */}
+          <SidebarTrigger className="-ml-2 max-md:size-10 md:ml-0" />
           <Separator orientation="vertical" className="mr-1 h-4" />
           <span className="text-sm text-muted-foreground">Staff console</span>
         </header>
-        <div className="flex flex-1 flex-col gap-6 p-8">
+        {/* A phone's 412px cannot spare 32px a side. */}
+        <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">
           <OwnerGate>{children}</OwnerGate>
         </div>
       </SidebarInset>
