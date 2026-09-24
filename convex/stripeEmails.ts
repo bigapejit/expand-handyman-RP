@@ -35,27 +35,7 @@ export const sendReturnedPayment = internalAction({
   handler: async (_ctx, a) => {
     const amount = formatCentsExact(a.amountCents, "en-US");
     const url = a.token ? signingUrl(appOrigin(), a.token) : null;
-    // A deployment that sends mail but names no origin has no link to give
-    // the customer, so asks the owner to tell them instead. One that sends no
-    // mail writes both letters to the log, with the link's path.
-    const customerEmailed = url !== null || !sendsEmail();
-
-    if (customerEmailed) {
-      const customer = await sendEmail({
-        to: a.to,
-        subject: `Your payment for Invoice ${a.number} did not go through`,
-        text: customerLetter({ ...a, amount, url: url ?? (a.token ? signingPath(a.token) : "") }),
-        replyTo: emailReplyTo(),
-        idempotencyKey: `returned-payment/${a.paymentIntentId}/customer`,
-        tags: { letter: "returned_payment_customer" },
-      });
-      if (customer.outcome === "fault")
-        console.error(`Returned payment letter to ${a.to} was not sent (${customer.fault}).`);
-    } else {
-      console.error(
-        `Returned payment letter to ${a.to} not sent: no app origin is configured (APP_ORIGIN).`,
-      );
-    }
+    const customerEmailed = await sendCustomerLetter(a, amount, url);
 
     const owner = await sendEmail({
       to: ExpandBusiness.email,
@@ -73,6 +53,37 @@ export const sendReturnedPayment = internalAction({
       console.error(`Returned payment letter to the owner was not sent (${owner.fault}).`);
   },
 });
+
+// The customer's letter, and whether the owner's may say it went. The owner's
+// letter is the only word that the customer believes they have paid, and
+// nothing retries this action, so it says "has been emailed" only when the
+// customer's letter really went: a deployment that sends mail but names no
+// origin has no link to give, and a send that faults never arrived. One that
+// sends no mail at all writes both letters to the log, with the link's path,
+// and that counts as sent.
+async function sendCustomerLetter(
+  a: { paymentIntentId: string; number: string; customerName: string; to: string; token?: string },
+  amount: string,
+  url: string | null,
+): Promise<boolean> {
+  if (url === null && sendsEmail()) {
+    console.error(
+      `Returned payment letter to ${a.to} not sent: no app origin is configured (APP_ORIGIN).`,
+    );
+    return false;
+  }
+  const customer = await sendEmail({
+    to: a.to,
+    subject: `Your payment for Invoice ${a.number} did not go through`,
+    text: customerLetter({ ...a, amount, url: url ?? (a.token ? signingPath(a.token) : "") }),
+    replyTo: emailReplyTo(),
+    idempotencyKey: `returned-payment/${a.paymentIntentId}/customer`,
+    tags: { letter: "returned_payment_customer" },
+  });
+  if (customer.outcome !== "fault") return true;
+  console.error(`Returned payment letter to ${a.to} was not sent (${customer.fault}).`);
+  return false;
+}
 
 // No reason: that is between the bank and the owner. Only that it did not go
 // through and how to pay again.
@@ -110,7 +121,7 @@ function ownerLetter(letter: {
     "",
     letter.customerEmailed
       ? `The customer (${letter.customerName}, ${letter.to}) has been emailed to pay again.`
-      : `The customer (${letter.customerName}, ${letter.to}) could not be emailed, because this deployment has no APP_ORIGIN. Ask them to pay again.`,
+      : `The customer (${letter.customerName}, ${letter.to}) could not be emailed. Ask them to pay again.`,
     "",
     `See it in Stripe: ${letter.stripeUrl}`,
   ].join("\n");

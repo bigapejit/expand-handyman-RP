@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CardLimitNote,
   CardUpToCents,
   customerOnItsWay,
   customerReturned,
@@ -26,6 +27,10 @@ describe("The ways to pay through Stripe", () => {
   it("offers only the bank a cent over $1,000.00", () => {
     expect(waysToPay(100_001)).toEqual(["bank"]);
     expect(waysToPay(285_437)).toEqual(["bank"]);
+  });
+
+  it("says why the card is missing in words that name the same limit", () => {
+    expect(CardLimitNote).toBe("Card is for invoices up to $1,000.");
   });
 });
 

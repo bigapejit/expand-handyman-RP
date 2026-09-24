@@ -8,8 +8,10 @@ import { api } from "@/convex/_generated/api";
 import { ExpandBusiness } from "@/lib/expand-business";
 import { formatCentsExact } from "@/lib/money";
 import {
+  CardLimitNote,
   customerOnItsWay,
   customerReturned,
+  NoFeeNote,
   zelleQrUrl,
   type PayMethod,
 } from "@/lib/pay-now";
@@ -223,7 +225,7 @@ function PaySheet({
             </p>
           ) : null}
           <p className="paper-pay-text">
-            No fee on any of them.{card ? "" : " Card is for invoices up to $1,000."}
+            {card ? NoFeeNote : `${NoFeeNote} ${CardLimitNote}`}
           </p>
         </>
       )}

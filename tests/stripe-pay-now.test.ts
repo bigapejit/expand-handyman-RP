@@ -856,6 +856,38 @@ describe("A Returned payment", () => {
     expect(resendCalls).toHaveLength(2);
   });
 
+  test("tells the owner to ask the customer to pay again when the customer's letter did not go", async () => {
+    const f = fixture();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubbed = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) =>
+      String(input).startsWith("https://api.resend.com/") &&
+      String(init?.body).includes("returned_payment_customer")
+        ? new Response("Resend is down", { status: 500 })
+        : stubbed(input, init),
+    );
+    await returnedFor(f);
+    await f.deliver();
+
+    expect(f.letters("returned_payment_customer")).toEqual([]);
+    expect(f.letters("returned_payment_owner")[0].body.text).toContain(
+      "The customer (Maria Delgado, maria@example.com) could not be emailed. Ask them to pay again.",
+    );
+  });
+
+  test("tells the owner the same when the deployment has no origin to link the customer to", async () => {
+    const f = fixture();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("APP_ORIGIN", "");
+    await returnedFor(f);
+    await f.deliver();
+
+    expect(f.letters("returned_payment_customer")).toEqual([]);
+    expect(f.letters("returned_payment_owner")[0].body.text).toContain(
+      "The customer (Maria Delgado, maria@example.com) could not be emailed. Ask them to pay again.",
+    );
+  });
+
   test("delivered twice, or told again under another event, writes one return and two letters", async () => {
     const f = fixture();
     const { failed } = await returnedFor(f);

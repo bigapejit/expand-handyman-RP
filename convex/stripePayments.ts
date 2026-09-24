@@ -15,7 +15,7 @@ import { invoiceLinkForToken, invoiceLinksFor, invoiceStillOpenedBy } from "./in
 import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { discardInvoicePdfCopy } from "./pdfCopyFiles";
 import { invoiceMoney, invoiceNumberLabel } from "../lib/invoice-money";
-import { stripeEventDay, waysToPay, type PayMethod } from "../lib/pay-now";
+import { CardLimitNote, stripeEventDay, waysToPay, type PayMethod } from "../lib/pay-now";
 import { signingUrl } from "../lib/signing-link";
 import {
   prunedStripeEvent,
@@ -182,7 +182,7 @@ export const checkoutFor = internalQuery({
     if (await paymentOnItsWayFor(ctx, invoice._id))
       return refusal("on_its_way", "A bank payment for this invoice is already on its way.");
     if (!waysToPay(amountDueCents).includes(a.method))
-      return refusal("card_limit", "Card is for invoices up to $1,000.");
+      return refusal("card_limit", CardLimitNote);
     return {
       invoiceId: invoice._id,
       number: invoiceNumberLabel(invoice.number),

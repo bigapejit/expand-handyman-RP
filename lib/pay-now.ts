@@ -1,12 +1,14 @@
 import { pacificDay } from "./invoice-standing";
-import { formatCentsExact } from "./money";
+import { formatCents, formatCentsExact } from "./money";
 
 // **Pay now** (CONTEXT.md) as rules and words: which ways to pay the Pay
 // sheet offers, the **Zelle tag** and the address Zelle's own page opens
-// for it, where a Stripe payment lives in Stripe's dashboard, and every
-// sentence the panel and the invoice link's bar say about a payment, in the
-// words spec #121 settled. Pure, so the server, the pages and the tests read
-// the one wording.
+// for it, where a Stripe payment lives in Stripe's dashboard, the notes under
+// the Pay sheet's rows, and every sentence the panel and the invoice link's
+// bar say about a payment, in the words spec #121 settled. Pure, so the
+// server, the pages and the tests read the one wording. The Zelle and check
+// steps are instructions rather than words about a payment, and stay with the
+// sheet that shows them (components/pay-bar.tsx).
 
 // How Stripe moved the money: from a checking account or on a card.
 export type PayMethod = "bank" | "card";
@@ -23,6 +25,15 @@ export const CardUpToCents = 100_000;
 export function waysToPay(amountDueCents: number): PayMethod[] {
   return amountDueCents <= CardUpToCents ? ["bank", "card"] : ["bank"];
 }
+
+// Under the Pay sheet's rows, whichever ways it lists: the price on the paper
+// is the price, however it is paid.
+export const NoFeeNote = "No fee on any of them.";
+
+// Why the Pay sheet has no card row, and the refusal when a card is asked for
+// anyway: the sheet and the server say the one sentence, and it names the
+// limit the rule above keeps, so the two never disagree.
+export const CardLimitNote = `Card is for invoices up to ${formatCents(CardUpToCents, "en-US")}.`;
 
 // Zelle's own rule for a tag: 6 to 40 characters, letters, digits and
 // hyphens, and case does not matter.
