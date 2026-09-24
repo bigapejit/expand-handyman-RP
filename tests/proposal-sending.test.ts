@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import schema from "../convex/schema";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { offerOf } from "../convex/offers";
 import { Unknown, WashingtonNoticeToCustomer } from "../lib/expand-business";
 
 const modules = import.meta.glob("../convex/**/*.ts");
@@ -370,6 +371,7 @@ describe("What Send freezes", () => {
       depositCents: 20_000,
     });
     const draft = await owner.query(api.proposals.paper, { proposalId });
+    const offer = await owner.run(async (ctx) => offerOf(ctx, (await ctx.db.get(proposalId))!));
     // A solution with no allowance reads as having none, as does every
     // proposal frozen before allowances existed.
     expect(draft?.solutions[0]).not.toHaveProperty("materialAllowanceCents");
@@ -382,6 +384,8 @@ describe("What Send freezes", () => {
     await owner.action(api.proposals.send, { proposalId });
 
     const frozen = (await t.run((ctx) => ctx.db.get(proposalId)))?.frozen;
+    // Send stores the draft's offer and the address it went to, nothing more.
+    expect(frozen).toEqual({ ...offer, sentTo: "maria@example.com" });
     // The percent is kept beside a set amount, for a Withdraw that hands the
     // draft back.
     expect(frozen).toMatchObject({ depositPercent: 50, depositCents: 20_000 });
