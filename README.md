@@ -24,3 +24,11 @@ Run `npm test`, `npm run typecheck`, and `npm run build` before deploying. Produ
 A proposal's offer is frozen when it is sent, and the customer's approval seals it with a SHA-256 fingerprint that the signed copy's certificate of completion prints. The customer signing screen reuses FRSG's `paper-screen.css`, sign-bar markup and Homemade Apple handwriting font; the font's Apache license is in `public/fonts/HomemadeApple-LICENSE.txt`.
 
 See [deployment and verification](docs/deployment.md).
+
+## License
+
+Project source code is licensed under the [MIT License](LICENSE).
+
+Third-party dependencies and assets retain their respective licenses. The bundled
+fonts retain their [Homemade Apple license](public/fonts/HomemadeApple-LICENSE.txt)
+and [Tinos license](public/fonts/Tinos-OFL.txt).
