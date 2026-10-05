@@ -19,6 +19,9 @@ own instance using [the setup guide](docs/local-setup.md).
   and a SHA-256 fingerprint on the signed proposal's completion certificate.
 - **Invoices and payments:** deposit/final invoices, Stripe Checkout, and webhook
   handling for payment confirmations, bank returns, refunds, and disputes.
+- **Uploaded documents:** any other PDF uploaded, with signature and date fields
+  placed by hand, signed through the same kind of private link and saved as a
+  verified signed PDF.
 - **Operations:** a Thumbtack lead pipeline with read-only chat, and staff invitations
   and access management.
 
@@ -119,11 +122,11 @@ npm test
 npm run typecheck
 ```
 
-The automated tests use local Convex test fixtures and stub external services;
-they do not require production credentials or live service accounts. The reviewed
-version has **904 passing tests across 44 files**. Coverage includes staff access
-and revocation, frozen proposals and signatures, invoice lifecycle, photos, PDF
-rendering, and duplicate/out-of-order Stripe webhook events.
+The automated tests use local Convex test fixtures and stub external services; they
+do not require production credentials or live service accounts. The reviewed version
+has **946 passing tests across 48 files**. Coverage includes staff access and
+revocation, frozen proposals and signatures, uploaded-document signing, invoice
+lifecycle, photos, PDF rendering, and duplicate/out-of-order Stripe webhook events.
 
 To use the interactive app, follow [local setup](docs/local-setup.md). It requires
 your own Clerk development application and Convex project. Additional integrations

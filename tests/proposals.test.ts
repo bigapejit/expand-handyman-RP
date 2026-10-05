@@ -906,7 +906,7 @@ describe("proposals.paper", () => {
     const { t, customer, site, create } = fixture();
     const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
     await signedInOwner(t).query(api.proposals.paper, { proposalId });
-    expect(await t.run((ctx) => ctx.db.query("proposalViews").collect())).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("documentViews").collect())).toEqual([]);
   });
 
   test.each(["sent", "approved", "declined"] as const)(

@@ -3,6 +3,7 @@
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   FileSignature,
+  FileText,
   Inbox,
   LayoutDashboard,
   MapPin,
@@ -24,13 +25,15 @@ export const navigation = [
   { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
+  { title: "Documents", href: "/documents", icon: FileText },
   { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
 
-// The phone's tab bar holds six; a seventh squeezes every label. Staff, the
-// page visited least, sits behind the account menu there instead.
-export const staffPage = navigation[navigation.length - 1];
-export const phoneTabs = navigation.filter((item) => item !== staffPage);
+// The phone's tab bar holds six; a seventh squeezes every label. Documents
+// and Staff, the pages visited least, sit behind the account menu there
+// instead.
+export const menuPages = navigation.slice(-2);
+export const phoneTabs = navigation.slice(0, -2);
 
 /** Whether `href` is the page the owner is on, or a page under it. */
 export function isNavActive(pathname: string, href: string): boolean {

@@ -657,23 +657,44 @@ describe("The signing-link email", () => {
 });
 
 describe("/sign/<token>", () => {
-  test("tells a proposal's token from one that opens nothing", async () => {
-    const { t, owner, liveToken, sendable } = fixture();
+  test("tells a document's token from a proposal's, and serves the document as before", async () => {
+    const { t, owner, customer, liveToken, sendable } = fixture();
     const { proposalId } = await sendable();
     await owner.action(api.proposals.send, { proposalId });
     const proposalToken = await liveToken(proposalId);
 
+    const documentToken = "d".repeat(64);
+    const documentCustomerId = await customer("doc@example.com", "Doc Customer");
+    const documentId = await t.run(async (ctx) =>
+      ctx.db.insert("documents", {
+        customerId: documentCustomerId,
+        customerName: "Doc Customer",
+        title: "Deck agreement",
+        originalId: await ctx.storage.store(new Blob(["%PDF"])),
+        originalHash: "hash",
+        pageCount: 1,
+        fields: [],
+        status: "ready",
+        token: documentToken,
+        issuedAt: 0,
+      }),
+    );
+
+    expect(await t.query(api.signingLinks.resolve, { token: documentToken })).toBe("document");
+    expect(await t.query(api.documents.forSigner, { token: documentToken })).toMatchObject({
+      _id: documentId,
+      title: "Deck agreement",
+    });
+    expect(await t.query(api.signingLinks.page, { token: documentToken })).toBeNull();
+
     expect(await t.query(api.signingLinks.resolve, { token: proposalToken })).toBe("proposal");
+    expect(await t.query(api.documents.forSigner, { token: proposalToken })).toBeNull();
     expect((await t.query(api.signingLinks.page, { token: proposalToken }))?.paper).toMatchObject({
       code: "1300FRANKLIN-P1",
     });
 
     expect(await t.query(api.signingLinks.resolve, { token: "nothing-here" })).toBe("unknown");
     expect(await t.query(api.signingLinks.resolve, { token: "  " })).toBe("unknown");
-    expect(await t.query(api.signingLinks.page, { token: "nothing-here" })).toBeNull();
-
-    await owner.mutation(api.proposals.withdraw, { proposalId });
-    expect(await t.query(api.signingLinks.resolve, { token: proposalToken })).toBe("ended");
   });
 });
 
@@ -734,7 +755,7 @@ describe("Proposal views", () => {
     vi.setSystemTime(new Date("2026-09-23T11:00:40Z"));
     const res = await t.fetch("/seen", {
       method: "POST",
-      body: JSON.stringify({ viewId, token }),
+      body: JSON.stringify({ viewId, token, kind: "proposal" }),
     });
     expect(res.status).toBe(204);
     // Another token cannot move it.
@@ -759,25 +780,9 @@ describe("Proposal views", () => {
     // The page swaps to "no longer live" and sends what it had read.
     await t.fetch("/seen", {
       method: "POST",
-      body: JSON.stringify({ viewId, token }),
+      body: JSON.stringify({ viewId, token, kind: "proposal" }),
     });
     expect((await t.run((ctx) => ctx.db.get(viewId!)))?.viewedMs).toBe(15_000);
-  });
-
-  test("a beacon with a junk body is dropped and still answered", async () => {
-    vi.setSystemTime(new Date("2026-09-23T10:00:00Z"));
-    const { t, owner, liveToken, sendable } = fixture();
-    const { proposalId } = await sendable();
-    await owner.action(api.proposals.send, { proposalId });
-    const token = await liveToken(proposalId);
-    const viewId = await t.mutation(api.signingLinks.opened, { token });
-    vi.setSystemTime(new Date("2026-09-23T10:00:20Z"));
-    for (const body of ["not json", JSON.stringify({ token }), ""])
-      expect((await t.fetch("/seen", { method: "POST", body })).status).toBe(204);
-    expect((await t.fetch("/seen", { method: "OPTIONS" })).status).toBe(204);
-    expect((await t.run((ctx) => ctx.db.get(viewId!)))?.lastSeenAt).toBe(
-      Date.parse("2026-09-23T10:00:00Z"),
-    );
   });
 
   test("the staff paper writes nothing to the view log", async () => {

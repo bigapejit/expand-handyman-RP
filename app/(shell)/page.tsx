@@ -1,3 +1,4 @@
+import { DashboardDocuments } from "@/components/dashboard-documents";
 import { DashboardInvoices } from "@/components/dashboard-invoices";
 import { DashboardProposals } from "@/components/dashboard-proposals";
 import { PageHeader } from "@/components/page-header";
@@ -12,6 +13,7 @@ export default function DashboardPage() {
       <div className="space-y-8">
         <DashboardProposals />
         <DashboardInvoices />
+        <DashboardDocuments />
       </div>
     </div>
   );

@@ -314,6 +314,7 @@ describe("The invoice link", () => {
     // hears of it, and nothing about it is logged anywhere.
     expect(await t.mutation(api.signingLinks.opened, { token: invoiceToken })).toBeNull();
     expect(await t.run((ctx) => ctx.db.query("proposalViews").collect())).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("documentViews").collect())).toEqual([]);
     // The proposal's own link still opens the signed copy.
     expect(await t.query(api.signingLinks.resolve, { token })).toBe("proposal");
   });
