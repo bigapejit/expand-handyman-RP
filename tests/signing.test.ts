@@ -186,6 +186,49 @@ describe("Access and document lifecycle", () => {
     expect((await owner.query(api.documents.get, { id }))?.status).not.toBe(
       "signed",
     );
+    // The rejected upload is deleted rather than left behind.
+    expect(await t.run((ctx) => ctx.db.system.get("_storage", storageId))).toBeNull();
+  });
+  test("a rejected completion never deletes the document's own files", async () => {
+    const { t, id, token, original } = await fixture();
+    const attemptId = "own-files-attempt-12345678";
+    const intent = await t.mutation(api.documents.beginSigning, {
+      token,
+      name: "Test Signer",
+      consent: true,
+      attemptId,
+    });
+    const originalId = (await t.run((ctx) => ctx.db.get(id)))!.originalId;
+    await expect(
+      t.action(api.pdfActions.finish, {
+        token,
+        attemptId,
+        storageId: originalId,
+        userAgent: "test",
+      }),
+    ).rejects.toThrow("could not be verified");
+    expect(await t.run((ctx) => ctx.db.system.get("_storage", originalId))).not.toBeNull();
+
+    // Signed, then a second upload arrives: it goes, the signed copy stays.
+    const d = (await t.run((ctx) => ctx.db.get(id)))!;
+    const completed = await completePdf(original, d.fields, {
+      name: intent.name,
+      signedAt: intent.signedAt,
+      documentId: id,
+      originalHash: d.originalHash,
+    });
+    const store = () =>
+      t.run((ctx) =>
+        ctx.storage.store(new Blob([new Uint8Array(completed)], { type: "application/pdf" })),
+      );
+    const signedId = await store();
+    await t.action(api.pdfActions.finish, { token, attemptId, storageId: signedId, userAgent: "test" });
+    const late = await store();
+    await t.action(api.pdfActions.finish, { token, attemptId, storageId: late, userAgent: "test" });
+    await t.action(api.pdfActions.finish, { token, attemptId, storageId: signedId, userAgent: "test" });
+    expect(await t.run((ctx) => ctx.db.system.get("_storage", late))).toBeNull();
+    expect(await t.run((ctx) => ctx.db.system.get("_storage", signedId))).not.toBeNull();
+    expect((await t.run((ctx) => ctx.db.get(id)))?.signedId).toBe(signedId);
   });
 });
 describe("PDF geometry", () => {

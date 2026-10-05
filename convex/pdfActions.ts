@@ -1,6 +1,7 @@
 "use node";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, type ActionCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireOwner } from "./auth";
 import { MAX_PDF_BYTES, sha256 } from "../lib/signing";
@@ -47,47 +48,68 @@ export const finish = action({
     userAgent: v.string(),
   },
   handler: async (ctx, a): Promise<void> => {
-    const d = await ctx.runQuery(internal.documents.signingData, {
-      token: a.token,
-    });
-    if (!d || d.status === "draft" || d.status === "declined")
-      throw new Error("This signing link is no longer available.");
-    if (d.status === "signed") return;
-    if (!d.intent || d.intent.id !== a.attemptId)
-      throw new Error("Signing attempt expired. Please try again.");
-    const [original, signed] = await Promise.all([
-      ctx.storage.get(d.originalId),
-      ctx.storage.get(a.storageId),
-    ]);
-    if (!original || !signed || signed.size > MAX_PDF_BYTES * 2)
-      throw new Error("Signed PDF upload failed. Please try again.");
-    const expected = await completePdf(
-      new Uint8Array(await original.arrayBuffer()),
-      d.fields,
-      {
-        name: d.intent.name,
-        signedAt: d.intent.signedAt,
-        documentId: d._id,
-        originalHash: d.originalHash,
-        title: d.intent.title,
-      },
-      d.ownerSignature,
-    );
-    const expectedHash = await sha256(expected);
-    if (
-      expectedHash !==
-      (await sha256(new Uint8Array(await signed.arrayBuffer())))
-    )
-      throw new Error(
-        "The signed PDF could not be verified. Please reload and try again.",
-      );
-    await ctx.runMutation(internal.documents.commitSigned, {
-      id: d._id,
-      token: a.token,
-      attemptId: a.attemptId,
-      signedId: a.storageId,
-      signedHash: expectedHash,
-      userAgent: a.userAgent,
-    });
+    // An upload that is never recorded as the signed copy is deleted, so a
+    // failed or repeated attempt leaves no file behind.
+    let committed = false;
+    try {
+      committed = await verifyAndCommit(ctx, a);
+    } finally {
+      if (!committed)
+        await ctx.runMutation(internal.documents.discardUpload, {
+          token: a.token,
+          storageId: a.storageId,
+        });
+    }
   },
 });
+
+// Whether this upload is now the document's signed copy. False when the
+// document was already signed, by this attempt's earlier try or another.
+async function verifyAndCommit(
+  ctx: ActionCtx,
+  a: { token: string; attemptId: string; storageId: Id<"_storage">; userAgent: string },
+): Promise<boolean> {
+  const d = await ctx.runQuery(internal.documents.signingData, {
+    token: a.token,
+  });
+  if (!d || d.status === "draft" || d.status === "declined")
+    throw new Error("This signing link is no longer available.");
+  if (d.status === "signed") return false;
+  if (!d.intent || d.intent.id !== a.attemptId)
+    throw new Error("Signing attempt expired. Please try again.");
+  const [original, signed] = await Promise.all([
+    ctx.storage.get(d.originalId),
+    ctx.storage.get(a.storageId),
+  ]);
+  if (!original || !signed || signed.size > MAX_PDF_BYTES * 2)
+    throw new Error("Signed PDF upload failed. Please try again.");
+  const expected = await completePdf(
+    new Uint8Array(await original.arrayBuffer()),
+    d.fields,
+    {
+      name: d.intent.name,
+      signedAt: d.intent.signedAt,
+      documentId: d._id,
+      originalHash: d.originalHash,
+      title: d.intent.title,
+    },
+    d.ownerSignature,
+  );
+  const expectedHash = await sha256(expected);
+  if (
+    expectedHash !==
+    (await sha256(new Uint8Array(await signed.arrayBuffer())))
+  )
+    throw new Error(
+      "The signed PDF could not be verified. Please reload and try again.",
+    );
+  const { duplicate } = await ctx.runMutation(internal.documents.commitSigned, {
+    id: d._id,
+    token: a.token,
+    attemptId: a.attemptId,
+    signedId: a.storageId,
+    signedHash: expectedHash,
+    userAgent: a.userAgent,
+  });
+  return !duplicate;
+}

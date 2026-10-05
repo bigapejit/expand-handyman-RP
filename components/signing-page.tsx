@@ -78,6 +78,11 @@ export function SigningPage({ token }: { token: string }) {
       active = false;
     };
   }, [doc?._id, signed, token, opened, retry]);
+  // A withdrawn link leaves this page mounted on "no longer live", which is
+  // not reading the document, so the view stops counting there.
+  useEffect(() => {
+    if (doc === null) view.current = null;
+  }, [doc]);
   useViewHeartbeat(view, token, seen);
 
   if (doc === null) return <LinkNotLive what="document" />;

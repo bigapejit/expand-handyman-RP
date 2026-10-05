@@ -124,7 +124,7 @@ npm run typecheck
 
 The automated tests use local Convex test fixtures and stub external services; they
 do not require production credentials or live service accounts. The reviewed version
-has **945 passing tests across 48 files**. Coverage includes staff access and
+has **946 passing tests across 48 files**. Coverage includes staff access and
 revocation, frozen proposals and signatures, uploaded-document signing, invoice
 lifecycle, photos, PDF rendering, and duplicate/out-of-order Stripe webhook events.
 

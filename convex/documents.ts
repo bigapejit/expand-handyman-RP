@@ -438,6 +438,23 @@ export const commitSigned = internalMutation({
   },
 });
 
+// Deletes a customer's upload that `pdfActions.finish` did not record as the
+// signed copy. The storage id comes from the signing page, so only a file
+// that can be that page's upload goes: never the document's original or
+// signed copy, and nothing stored before its link was issued.
+export const discardUpload = internalMutation({
+  args: { token: v.string(), storageId: v.id("_storage") },
+  handler: async (ctx, a) => {
+    const d = await ctx.db
+      .query("documents")
+      .withIndex("by_token", (q) => q.eq("token", a.token))
+      .unique();
+    if (!d?.issuedAt || a.storageId === d.originalId || a.storageId === d.signedId) return;
+    const file = await ctx.db.system.get("_storage", a.storageId);
+    if (file && file._creationTime >= d.issuedAt) await ctx.storage.delete(a.storageId);
+  },
+});
+
 export const applyOwnerSignature = mutation({
   args: { id: v.id("documents"), name: v.string(), consent: v.boolean() },
   handler: async (ctx, a) => {
