@@ -23,10 +23,56 @@ const cors = (request: Request) => {
       : "https://staff.expandhandyman.com",
     Vary: "Origin",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 };
+http.route({
+  path: "/file",
+  method: "OPTIONS",
+  handler: httpAction(
+    async (_ctx, req) =>
+      new Response(null, { status: 204, headers: cors(req) }),
+  ),
+});
+http.route({
+  path: "/file",
+  method: "GET",
+  handler: httpAction(async (ctx, req) => {
+    try {
+      const url = new URL(req.url);
+      const access = await ctx.runQuery(internal.documents.fileAccess, {
+        id: url.searchParams.get("id") as Id<"documents">,
+        token: url.searchParams.get("token") || undefined,
+        signed: url.searchParams.get("signed") === "1",
+      });
+      if (!access?.storageId)
+        return new Response("Document unavailable", {
+          status: 404,
+          headers: cors(req),
+        });
+      const blob = await ctx.storage.get(access.storageId);
+      if (!blob)
+        return new Response("Document unavailable", {
+          status: 404,
+          headers: cors(req),
+        });
+      return new Response(blob, {
+        headers: {
+          ...cors(req),
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="document.pdf"`,
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch {
+      return new Response("Document unavailable", {
+        status: 404,
+        headers: cors(req),
+      });
+    }
+  }),
+});
 http.route({
   path: "/seen",
   method: "OPTIONS",
@@ -41,11 +87,22 @@ http.route({
   handler: httpAction(async (ctx, req) => {
     try {
       const body = JSON.parse(await req.text());
-      if (typeof body?.viewId === "string" && typeof body?.token === "string")
-        await ctx.runMutation(internal.signingLinks.recordSeen, {
-          viewId: body.viewId as Id<"proposalViews">,
-          token: body.token,
-        });
+      // Documents and proposals keep separate view logs; a beacon from a
+      // proposal's signing page says so, and one that says nothing is a
+      // document's, as every beacon was before proposals had links.
+      if (typeof body?.viewId === "string" && typeof body?.token === "string") {
+        if (body.kind === "proposal") {
+          await ctx.runMutation(internal.signingLinks.recordSeen, {
+            viewId: body.viewId as Id<"proposalViews">,
+            token: body.token,
+          });
+        } else {
+          await ctx.runMutation(internal.documents.recordSeen, {
+            viewId: body.viewId as Id<"documentViews">,
+            token: body.token,
+          });
+        }
+      }
     } catch {
       // A beacon has no one to report to; an unreadable body is simply dropped.
     }
@@ -62,7 +119,7 @@ const thumbtackReply = (status: number, body?: Record<string, unknown>) =>
     status,
     headers: body ? { "Content-Type": "application/json" } : {},
   });
-// Enough of a refused body to see what it was.
+// Enough of a refused body to see what it was, well under a document's limit.
 const MaxLoggedBody = 100_000;
 http.route({
   path: "/thumbtack",

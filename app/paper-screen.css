@@ -620,6 +620,8 @@ a.paper-btn {
 }
 
 
+.paper-pdf-pages { padding: 0 12px; }
+.paper-pdf-page { max-width: 8.5in; margin-bottom: .3in; box-shadow: 0 2px 14px rgb(0 0 0 / .45); scroll-margin-top: 110px; }
 .paper-pdf-loading { width: min(8.5in, 100%); min-height: 70vh; margin: 0 auto; padding: 40px; background: white; color: #666; }
 .paper-bar-sum { min-width: 0; overflow-wrap: anywhere; }
 .paper-form button:disabled { opacity: .6; cursor: default; }

@@ -1,21 +1,32 @@
 # Expand Handyman
 
-Expand Handyman prices handyman work at a customer's site, sends the proposal for the customer to approve, and invoices the work.
+Expand Handyman prices handyman work at a customer's site, sends the proposal for the customer to approve, and invoices the work. It also takes any other PDF the owner uploads and has the customer sign it.
 
 ## Language
 
 **Customer**:
-The person who pays for handyman work and signs its paperwork, added by the owner by hand or made by a Thumbtack lead arriving. Holds contact details; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
+The person who pays for handyman work and signs its paperwork, added by the owner by hand or made by a Thumbtack lead arriving. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
 
 **Site**:
-One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many.
+One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many. Documents belong to the customer, not the site.
 _Avoid_: Property, address, location, service address (as the name of the record)
 
 **Site name**:
 A short code built from the site's street number and street name, skipping a direction word between them (`1600 Amphitheatre Pkwy` becomes `1600AMPHITHEATRE`; `4410 NE 94th St` becomes `441094TH`, not `4410NE`). Rebuilt when the address is corrected. Not a label the owner chooses.
 
+**Document**:
+A PDF the owner uploads for a customer to review and sign, such as a contract or a form written outside the app. Belongs to the customer, never to a site.
+_Avoid_: Proposal (one the app writes itself), file, upload
+
+**Signature field**:
+A box the owner places on a document page where a signature or a signing date appears: the customer's, or the owner's own.
+
+**Signed document**:
+The completed PDF with the signatures and a certificate of completion added, kept for later download.
+_Avoid_: Signed copy (a signed proposal)
+
 **Signing link**:
-A private link that gives a customer access to a proposal without creating an account. A proposal gets a fresh one each time it is sent or re-sent, and the one before stops working. Once the customer approves or declines, the link still shows what they decided but can no longer be used to act.
+A private link that gives a customer access to a document or a proposal without creating an account. A proposal gets a fresh one each time it is sent or re-sent, and the one before stops working. Once the customer approves or declines, the link still shows what they decided but can no longer be used to act.
 
 **Owner**:
 The Expand Handyman staff member who prices the work and sends proposals and invoices, and whose accounts the deployment pins, so they can never be removed from the Staff list.
@@ -28,13 +39,13 @@ _Avoid_: User, admin, team member
 An email from Clerk with a link to create an account, sent when a staff member adds someone's email to the Staff list. Only invited emails can create an account. The invited person waits under Waiting to sign up until they first sign in.
 
 **View**:
-A customer opening a proposal through its signing link and seeing it, including reopening it after answering. Only customers view; an owner opening the same link is a preview, not a view.
+A customer opening a document or a proposal through its signing link and seeing it, including reopening it after answering. Only customers view; an owner opening the same link is a preview, not a view.
 
 **Owner preview**:
 The owner opening a signing link to check what the customer will see. Recorded separately and never counts as a view.
 
 **View log**:
-The record of every view and owner preview of a proposal: who opened it, when, and for how long. The owner reading a proposal inside the staff app is not an owner preview and is not logged.
+The record of every view and owner preview of a document or a proposal: who opened it, when, and for how long. The owner reading a proposal inside the staff app is not an owner preview and is not logged.
 
 **Photo**:
 A picture the owner took at a site, kept on the site with the time it was taken. It has no caption. Only the owner sees photos.
@@ -61,7 +72,7 @@ _Avoid_: Price book, price list, rate card
 
 **Proposal**:
 An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
-_Avoid_: Document, quote, estimate
+_Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
 
 **Deposit**:
 The part of a proposal's total due on signing, with the rest due on completion. The owner states it either as a whole percent of the total (50% unless changed; 0% and 100% are allowed) or as a set amount that stays as typed when the total changes, and never more than the total. The deposit invoice bills it when the customer approves.
@@ -182,7 +193,7 @@ A sent proposal whose current signing link the customer has viewed at least once
 
 **Proposal paper**:
 A proposal laid out as the customer reads it, the same on screen, printed or as a PDF: letterhead, cover details, an opening letter with the total and the two signature lines, one section per solution listing its line items and scope of work with no prices except the amount of a material allowance, the grand total with payment terms and tax, and the terms in full.
-_Avoid_: Proposal document, proposal PDF
+_Avoid_: Proposal document (a document is an uploaded PDF), proposal PDF
 
 **Terms**:
 Expand Handyman's one fixed set of contract conditions (scope, payment, changes, warranty, cancellation and the rest), the same on every proposal and printed in full on the proposal paper. Nobody edits them per proposal, and sending fixes the wording the customer signs under.
@@ -199,7 +210,7 @@ Washington's required contractor disclosure: registration, bond and lien rights.
 
 **Signed copy**:
 The proposal paper of an approved proposal: the customer's typed name on their signature line, followed by the certificate of completion.
-_Avoid_: Signed document
+_Avoid_: Signed document (a signed uploaded PDF, a different thing)
 
 **Certificate of completion**:
 The closing pages of a signed copy, recording how it was signed: when it was sent, first viewed and approved, by whom and from where, with a fingerprint of the offer as accepted, and the Notice to Customer on a second page when it was acknowledged.

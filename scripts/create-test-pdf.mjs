@@ -1,0 +1,15 @@
+import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { mkdir, writeFile } from 'node:fs/promises';
+const pdf=await PDFDocument.create();const font=await pdf.embedFont(StandardFonts.Helvetica);
+const page=pdf.addPage([612,792]);
+page.drawText('EXPAND HANDYMAN', {x:50,y:735,font,size:14,color:rgb(.7,.45,.03)});
+page.drawText('Signing workflow test', {x:50,y:677,font,size:28});
+page.drawText('TEST ONLY - This is not a contract or an authorization for work.', {x:50,y:640,font,size:11});
+page.drawText('Sample customer: Test Customer', {x:50,y:575,font,size:12});
+page.drawText('Sample scope: Verify upload, field placement and browser download.', {x:50,y:545,font,size:12});
+page.drawLine({start:{x:60,y:180},end:{x:325,y:180},thickness:.8});
+page.drawText('Customer signature', {x:60,y:161,font,size:10});
+const rotated=pdf.addPage([612,792]);rotated.setRotation(degrees(90));
+rotated.drawText('ROTATED PAGE TEST', {x:60,y:720,font,size:18});
+rotated.drawText('A second page for checking page navigation and signature placement.', {x:60,y:680,font,size:11});
+await mkdir('test-results',{recursive:true});await writeFile('test-results/upload-test.pdf',await pdf.save());console.log('Created test-results/upload-test.pdf');

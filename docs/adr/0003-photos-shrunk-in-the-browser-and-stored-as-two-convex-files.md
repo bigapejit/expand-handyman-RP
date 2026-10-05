@@ -1,6 +1,6 @@
 # Photos are shrunk in the browser and stored as two Convex files
 
-_2026-09-23: the uploaded documents mentioned below are gone (docs/deployment.md, **Legacy uploaded documents**); the upload URL photos use is now `photos.uploadUrl`._
+_2026-09-23: the upload URL photos use is now `photos.uploadUrl`, their own, rather than the one Documents use._
 
 The owner takes photos of a site on the phone, from the site's Photos tab, and sees them in a grid and full size. A phone photo is 12 to 48 MP and several megabytes, which is slow to send from a job site, and Convex neither resizes images nor makes thumbnails. So the browser does it before anything is uploaded: `createImageBitmap` with its resize options brings the picture down to a 2000px long edge, a canvas encodes it as a JPEG at quality 0.85, and a 400px thumbnail is made the same way from that full image. Where the resize options are missing the picture is drawn from an image element instead. Both JPEGs go up through the owner-gated upload URL Documents already use, and one mutation then saves the photo row with both storage ids, the full image's size and the upload time. Nothing is saved until both files are up. We rejected storing the original: it costs storage and data for detail a handyman's site photo does not need. We rejected one file shown small in the grid: a grid of full images downloads megabytes to show thumbnails.
 

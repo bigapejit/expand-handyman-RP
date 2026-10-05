@@ -28,11 +28,13 @@ npx convex env set CLERK_SECRET_KEY sk_live_… --prod
 
 Without it, Invite says "Invitations aren't set up on this deployment yet." and removing someone still deletes their row.
 
-## Legacy uploaded documents
+## Uploaded documents
 
-The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23: proposals, which the app makes itself, are what customers sign now. Nothing was migrated. The `documents` and `documentViews` tables, the `/file` endpoint that served the PDFs, the `/documents` pages, the Dashboard's Documents card, the Customer page's Documents section, the `backfillCustomerDetails` migration and the PDF.js and pdf-lib dependencies are gone. The `access` query the owner gate reads moved to `auth.ts`, and the upload URL the Photos tab uses to `photos.ts`.
+The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23 (PR #124) and brought back on 2026-10-05, for paperwork the app does not write itself: proposals are still what customers sign for priced work. It returns as it was: the `documents` and `documentViews` tables, the `/file` endpoint that serves the PDFs, the `/documents` pages, the Dashboard's Documents card and the Customer page's Documents section, with PDF.js and pdf-lib back as dependencies and the postinstall that copies PDF.js's worker into `public/`. On a phone, Documents sits behind the account menu beside Staff. The owner gate still reads `auth.access`, and photos keep their own `photos.uploadUrl`.
 
-A customer opening an old document link now sees "This link is no longer live", and the signed PDF can no longer be downloaded through it. Convex accepts the schema without the two tables even where they still hold rows: they just stop being declared, and nothing in the app reads them. To tidy a deployment by hand, download any signed PDF worth keeping first, from the dashboard's Files page by the storage id in the row's `signedId` (`originalId` is the upload); then delete those files, and the `documents` and `documentViews` tables from the Data page. Files hold the proposal and invoice PDF copies and the site photos too, so delete only by those ids.
+Nothing to migrate. Where a deployment still holds the old rows, Convex checks them against the restored tables on the next push, and their links open again. Where the tables were deleted by hand, they start empty.
+
+The owner uploads an unlocked PDF (up to 20 MB and 100 pages), places the customer's signature and date fields and, if wanted, their own, applies their own signature, then creates a signing link and sends it themselves: Expand sends no email for a document. The customer signs or declines from the link. Their browser draws the signed PDF with its certificate and uploads it; Convex rebuilds the same PDF and compares SHA-256 before it records the signature. Creating a link locks the fields, withdrawing an unsigned link unlocks them, and a signed document never changes.
 
 ## Sites and address lookup
 

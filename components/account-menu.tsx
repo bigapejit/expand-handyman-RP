@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Monogram } from "@/components/monogram";
-import { staffPage } from "@/components/nav-items";
+import { menuPages } from "@/components/nav-items";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -76,19 +76,22 @@ export function AccountMenu({ variant }: { variant: "card" | "monogram" }) {
         <Button size="sm" variant="outline" className="w-full" onClick={openAccount}>
           Manage account
         </Button>
-        {/* The phone's tab bar has no room for the Staff page, so it is here. */}
-        {variant === "monogram" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full"
-            nativeButton={false}
-            render={<Link href={staffPage.href} onClick={() => setOpen(false)} />}
-          >
-            <staffPage.icon data-icon="inline-start" aria-hidden />
-            {staffPage.title}
-          </Button>
-        ) : null}
+        {/* The phone's tab bar has no room for these pages, so they are here. */}
+        {variant === "monogram"
+          ? menuPages.map((page) => (
+              <Button
+                key={page.href}
+                size="sm"
+                variant="outline"
+                className="w-full"
+                nativeButton={false}
+                render={<Link href={page.href} onClick={() => setOpen(false)} />}
+              >
+                <page.icon data-icon="inline-start" aria-hidden />
+                {page.title}
+              </Button>
+            ))
+          : null}
       </PopoverContent>
     </Popover>
   );

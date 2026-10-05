@@ -1,5 +1,21 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+export const field = v.object({
+  id: v.string(),
+  page: v.number(),
+  x: v.number(),
+  y: v.number(),
+  width: v.number(),
+  height: v.number(),
+  kind: v.optional(
+    v.union(
+      v.literal("customerSignature"),
+      v.literal("customerDate"),
+      v.literal("ownerSignature"),
+      v.literal("ownerDate"),
+    ),
+  ),
+});
 // One line of a solution's cost buildup. The unit is a plain string so an
 // off-list one reaches lib/solution-pricing.ts's `lineItemFault` and is refused
 // in words rather than by the validator.
@@ -583,7 +599,8 @@ export default defineSchema({
       v.object({ token: v.string(), ...invoiceSheetFields, expiresAt: v.number() }),
     ),
   ).index("by_token", ["token"]),
-  // The view log (ADR 0001): every open of a proposal's signing link.
+  // The proposal half of the view log, the same shape and rules as
+  // `documentViews` (ADR 0001).
   proposalViews: defineTable({
     proposalId: v.id("proposals"),
     token: v.string(),
@@ -600,4 +617,69 @@ export default defineSchema({
   })
     .index("by_proposal", ["proposalId", "openedAt"])
     .index("by_token_viewer", ["token", "viewer", "openedAt"]),
+  documents: defineTable({
+    customerId: v.id("customers"),
+    // Copied from the customer when the signing link is issued, so editing a
+    // customer never rewrites an issued document. Absent on drafts.
+    customerName: v.optional(v.string()),
+    site: v.optional(v.string()),
+    title: v.string(),
+    originalId: v.id("_storage"),
+    originalHash: v.string(),
+    pageCount: v.number(),
+    fields: v.array(field),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("ready"),
+      v.literal("viewed"),
+      v.literal("signed"),
+      v.literal("declined"),
+    ),
+    token: v.optional(v.string()),
+    issuedAt: v.optional(v.number()),
+    viewedAt: v.optional(v.number()),
+    signedAt: v.optional(v.number()),
+    signedId: v.optional(v.id("_storage")),
+    signedHash: v.optional(v.string()),
+    signerName: v.optional(v.string()),
+    signerTitle: v.optional(v.string()),
+    ownerSignature: v.optional(
+      v.object({ name: v.string(), signedAt: v.number() }),
+    ),
+    declinedAt: v.optional(v.number()),
+    declineReason: v.optional(v.string()),
+    consent: v.optional(v.string()),
+    consentVersion: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    intent: v.optional(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        signedAt: v.number(),
+        title: v.optional(v.string()),
+      }),
+    ),
+  })
+    .index("by_token", ["token"])
+    .index("by_customer", ["customerId"])
+    .index("by_status", ["status"])
+    .index("by_status_signed", ["status", "signedAt"])
+    .index("by_status_declined", ["status", "declinedAt"]),
+  documentViews: defineTable({
+    documentId: v.id("documents"),
+    token: v.string(),
+    viewer: v.union(v.literal("owner"), v.literal("customer")),
+    documentStatus: v.union(
+      v.literal("ready"),
+      v.literal("viewed"),
+      v.literal("signed"),
+      v.literal("declined"),
+    ),
+    openedAt: v.number(),
+    lastSeenAt: v.number(),
+    viewedMs: v.number(),
+    userAgent: v.optional(v.string()),
+  })
+    .index("by_document", ["documentId", "openedAt"])
+    .index("by_document_viewer", ["documentId", "viewer", "openedAt"]),
 });
