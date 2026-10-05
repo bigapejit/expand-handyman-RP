@@ -122,11 +122,11 @@ npm test
 npm run typecheck
 ```
 
-The automated tests use local Convex test fixtures and stub external services;
-they do not require production credentials or live service accounts. The reviewed
-version has **945 passing tests across 48 files**. Coverage includes staff access
-and revocation, frozen proposals and signatures, uploaded-document signing, invoice lifecycle, photos, PDF
-rendering, and duplicate/out-of-order Stripe webhook events.
+The automated tests use local Convex test fixtures and stub external services; they
+do not require production credentials or live service accounts. The reviewed version
+has **945 passing tests across 48 files**. Coverage includes staff access and
+revocation, frozen proposals and signatures, uploaded-document signing, invoice
+lifecycle, photos, PDF rendering, and duplicate/out-of-order Stripe webhook events.
 
 To use the interactive app, follow [local setup](docs/local-setup.md). It requires
 your own Clerk development application and Convex project. Additional integrations
