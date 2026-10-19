@@ -190,6 +190,42 @@ describe("Rounding", () => {
     );
     expect(math.priceForWageCents).toBe(142_900);
   });
+
+  // Buckets just short of 100% leave a hundredth of a cent per dollar, so the
+  // roundings can take many dollars to make up; the price keeps climbing
+  // until the work is covered rather than giving up after a few. (From Codex.)
+  it("keeps raising the price until the rounded buckets leave the work covered", () => {
+    const tight = settings({ profitPercent: 10.96, marketingPercent: 89.01, opsPercent: 0.01 });
+    const cost = 845_643;
+    const price = jobMath({ priceCents: 0, laborHours: 0, otherCostCents: cost }, tight)
+      .priceForWageCents!;
+    const atPrice = jobMath({ priceCents: price, laborHours: 0, otherCostCents: cost }, tight);
+    expect(atPrice.laborPoolCents).toBeGreaterThanOrEqual(0);
+    const dollarLess = jobMath(
+      { priceCents: price - 100, laborHours: 0, otherCostCents: cost },
+      tight,
+    );
+    expect(dollarLess.laborPoolCents).toBeLessThan(0);
+  });
+});
+
+describe("The most you can pay, on a short job", () => {
+  // A quarter of an hour: every cent of wage moves the rounded cost by less
+  // than a cent, so the answer must still leave nothing negative.
+  it.each([0.25, 0.1, 1.5, 7.75])("leaves nothing negative at %s hours", (hours) => {
+    const math = jobMath({ priceCents: 5_000, laborHours: hours, otherCostCents: 0 }, defaults);
+    const wage = math.w2.maxWageCents!;
+    const at = jobMath(
+      { priceCents: 5_000, laborHours: hours, otherCostCents: 0, wageCents: wage },
+      defaults,
+    );
+    expect(at.w2.atWage.leftOverCents).toBeGreaterThanOrEqual(0);
+    const centMore = jobMath(
+      { priceCents: 5_000, laborHours: hours, otherCostCents: 0, wageCents: wage + 1 },
+      defaults,
+    );
+    expect(centMore.w2.atWage.leftOverCents).toBeLessThan(0);
+  });
 });
 
 describe("The settings", () => {

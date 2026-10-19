@@ -312,25 +312,33 @@ export function jobMath(inputs: JobInputs, settings: JobMathSettings): JobMath {
 // (pool − hours × L&I) × 10,000 ÷ (hours × (10,000 + payroll)),
 // one division so the floor sees as exact a quotient as floats allow.
 //
-// Then checked against `w2Cost`, which rounds each figure to the cent: should
-// that rounding push the total at the floored wage a cent over the pool, the
-// wage steps down until it fits, so "Left over" at the most you can pay is
-// never negative. A few steps at most for any real number of hours; the cap
-// is only there so a nonsense input can't spin.
+// Rounding each of `w2Cost`'s figures to the cent can put its total above
+// that exact one by at most half a cent per figure: half a cent of wages,
+// carried through payroll tax, plus half a cent each on payroll tax and L&I.
+// So the floor is taken against the pool less that much, which the rounded
+// total can never overrun at any number of hours. That start can sit a cent
+// or so under the true answer, so the wage then climbs while the next cent up
+// still leaves nothing negative. The climb is capped because a short job (a
+// fraction of an hour) can have many wages that round to the same total;
+// stopping early only ever leaves the answer low, never one the job can't pay.
 function maxWageCents(
   laborHours: number,
   laborPoolCents: number,
   settings: JobMathSettings,
 ): number {
   const payroll = hundredths(settings.payrollTaxPercent);
+  const fits = (wage: number) =>
+    w2Cost(laborHours, wage, laborPoolCents, settings).leftOverCents >= 0;
+  const roundingCents = (Hundredths + payroll) / (2 * Hundredths) + 1;
   let wage = Math.floor(
-    ((laborPoolCents - laborHours * settings.workersCompCentsPerHour) * Hundredths) /
+    ((laborPoolCents - roundingCents - laborHours * settings.workersCompCentsPerHour) *
+      Hundredths) /
       (laborHours * (Hundredths + payroll)),
   );
-  for (let step = 0; step < 100; step++) {
-    if (w2Cost(laborHours, wage, laborPoolCents, settings).leftOverCents >= 0) break;
-    wage -= 1;
-  }
+  // Float error in the division above is the only way the start can miss, and
+  // it misses by a cent at most; this cannot run on.
+  while (!fits(wage)) wage -= 1;
+  for (let step = 0; step < 100 && fits(wage + 1); step++) wage += 1;
   return wage;
 }
 
@@ -348,22 +356,22 @@ function maxWageCents(
 // "how many whole dollars" directly. Each bucket is then rounded half up on
 // its own, which at an exact half-cent could take a cent more than the
 // division allowed for, so the price is checked against the buckets as
-// `jobMath` actually takes them and raised a dollar if the work came up short.
+// `jobMath` actually takes them and raised a dollar at a time until the work
+// is covered. That always ends, and soon: the three roundings cost at most a
+// cent and a half together, while each dollar adds at least a hundredth of a
+// cent to what is kept (settings are whole hundredths of a percent below
+// 100%), so it takes at most 150 dollars even at the most extreme settings.
 function priceForWageCents(costCents: number, settings: JobMathSettings): number | null {
   const keep = Hundredths - bucketHundredths(settings);
   if (keep <= 0) return null;
   if (costCents <= 0) return 0;
   let dollars = Math.ceil((costCents * Hundredths) / (keep * 100));
-  for (let step = 0; step < 10; step++) {
-    const priceCents = dollars * 100;
-    const kept =
-      priceCents -
-      percentOf(priceCents, hundredths(settings.profitPercent)) -
-      percentOf(priceCents, hundredths(settings.marketingPercent)) -
-      percentOf(priceCents, hundredths(settings.opsPercent));
-    if (kept >= costCents) break;
-    dollars += 1;
-  }
+  const kept = (priceCents: number) =>
+    priceCents -
+    percentOf(priceCents, hundredths(settings.profitPercent)) -
+    percentOf(priceCents, hundredths(settings.marketingPercent)) -
+    percentOf(priceCents, hundredths(settings.opsPercent));
+  while (kept(dollars * 100) < costCents) dollars += 1;
   return dollars * 100;
 }
 
