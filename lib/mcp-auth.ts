@@ -111,15 +111,107 @@ export const ProtectedResourceMetadataPath = `/.well-known/oauth-protected-resou
 // issues tokens for it and how they travel. Named for /mcp whichever
 // well-known path asked, so a client that tries the bare prefix gets the same
 // answer.
-export function protectedResourceMetadata(origin: string, authServerUrl: string) {
+// The connector's own scope, when MCP_REQUIRED_SCOPE names one, is listed too,
+// so ChatGPT asks for it when it signs in.
+export function protectedResourceMetadata(
+  origin: string,
+  authServerUrl: string,
+  requiredScope?: string,
+) {
+  const scope = readRequiredScope(requiredScope);
   return {
     resource: `${origin}${McpPath}`,
     authorization_servers: [authServerUrl],
     bearer_methods_supported: ["header"],
-    scopes_supported: ["profile", "email"],
+    scopes_supported: ["profile", "email", ...(scope ? [scope] : [])],
     resource_name: "Expand Handyman staff app",
     resource_documentation: `${origin}/`,
   };
+}
+
+// Which OAuth tokens may become a staff member's Convex token.
+//
+// Clerk issues an OAuth token to any client a signed-in person authorizes, and
+// with dynamic client registration or Client ID Metadata Documents turned on,
+// any app on the internet can become a client. A token Clerk verifies only
+// proves who signed in, not that they meant to hand the staff app to this
+// client. So the /mcp route takes a token only from ChatGPT, and, when the
+// owner has set one up, only one granted the connector's own scope.
+//
+// Audience binding relies on the client allowlist: Clerk's verified OAuth
+// token, as `auth({ acceptsToken: "oauth_token" })` hands it over, carries the
+// client id and scopes but no audience or resource, so this deployment can't
+// check that the token was minted for its /mcp.
+
+// The hosts OpenAI serves ChatGPT's Client ID Metadata Documents from. A CIMD
+// client's id is the https address of that document.
+const ChatGptHosts = ["chatgpt.com", "openai.com"];
+
+// Whether a client id is the address of a metadata document on one of
+// OpenAI's hosts or a subdomain of one. Parsed as a URL, so
+// `chatgpt.com.evil.com`, `evil-chatgpt.com`, a plain http address or one
+// carrying a user name before the host are all refused.
+export function isChatGptClientId(clientId: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(clientId);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return false;
+  const host = url.hostname;
+  return ChatGptHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+// MCP_ALLOWED_CLIENT_IDS as a list: comma-separated client ids, matched
+// exactly. It is for when ChatGPT registers by dynamic client registration and
+// is given a random id that says nothing about who it is.
+export function readAllowedClientIds(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+// MCP_REQUIRED_SCOPE, or nothing when unset or blank.
+export function readRequiredScope(raw: string | undefined): string | undefined {
+  return raw?.trim() || undefined;
+}
+
+// What the route answers a token it won't take: an OAuth error, the sentence
+// ChatGPT shows, and any header the error calls for.
+export type ConnectorTokenRefusal = {
+  status: 403;
+  error: "access_denied" | "insufficient_scope";
+  description: string;
+  headers?: Record<string, string>;
+};
+
+// Checks a verified OAuth token's client and scopes against the connector's
+// rules, before any Convex token is minted. Nothing comes back for a token
+// the connector takes.
+export function refuseConnectorToken(
+  token: { clientId: string; scopes: string[] },
+  env: { allowedClientIds?: string; requiredScope?: string },
+): ConnectorTokenRefusal | undefined {
+  const allowed =
+    isChatGptClientId(token.clientId) ||
+    readAllowedClientIds(env.allowedClientIds).includes(token.clientId);
+  if (!allowed)
+    return {
+      status: 403,
+      error: "access_denied",
+      description: `The staff app only connects to ChatGPT, and this app's OAuth client id is "${token.clientId}". If this is the owner's ChatGPT, add that id to MCP_ALLOWED_CLIENT_IDS on Vercel and connect again.`,
+    };
+  const scope = readRequiredScope(env.requiredScope);
+  if (scope && !token.scopes.includes(scope))
+    return {
+      status: 403,
+      error: "insufficient_scope",
+      description: `This connection was not granted the "${scope}" scope. Disconnect and connect again, allowing it.`,
+      headers: { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scope}"` },
+    };
+  return undefined;
 }
 
 // The metadata routes answer any origin: a browser-based MCP client reads

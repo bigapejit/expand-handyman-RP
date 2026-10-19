@@ -14,6 +14,7 @@ export function GET(req: Request) {
   const metadata = protectedResourceMetadata(
     getPublicOrigin(req),
     clerkAuthServerUrl(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
+    process.env.MCP_REQUIRED_SCOPE,
   );
   return Response.json(metadata, {
     headers: { ...MetadataCorsHeaders, "Cache-Control": "max-age=3600" },

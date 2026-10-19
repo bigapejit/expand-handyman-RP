@@ -7,10 +7,13 @@
 // 1. withMcpAuth: a Clerk OAuth access token is required. Without a valid one
 //    the answer is 401 with a WWW-Authenticate header pointing at the
 //    protected resource metadata, which is how ChatGPT learns to sign in.
-// 2. staffOnly: the token's owner is looked up in Clerk, a five-minute Convex
-//    token is signed for them (lib/mcp-auth.ts), and Convex is asked through
-//    `auth.access` whether they are a **Staff member**. Anyone else gets 403
-//    with a sentence saying so, before any tool runs.
+// 2. staffOnly: the token must come from ChatGPT, and carry the connector's
+//    scope when MCP_REQUIRED_SCOPE names one (lib/mcp-auth.ts says why);
+//    any other gets 403 before anything is minted. Then the token's owner is
+//    looked up in Clerk, a five-minute Convex token is signed for them, and
+//    Convex is asked through `auth.access` whether they are a **Staff
+//    member**. Anyone else gets 403 with a sentence saying so, before any
+//    tool runs.
 // 3. Each tool calls the app's own public Convex functions with that token,
 //    so `requireOwner` guards every read and write as it does in the browser.
 
@@ -26,6 +29,7 @@ import {
   mintConvexToken,
   ProtectedResourceMetadataPath,
   readPrivateKeyPem,
+  refuseConnectorToken,
   type ConnectorPerson,
 } from "@/lib/mcp-auth";
 import { errorMessage } from "@/lib/utils";
@@ -53,7 +57,9 @@ const mcp = connectorMcpHandler(toolContext);
 
 // Gate 1's check. `auth({ acceptsToken: "oauth_token" })` has Clerk verify
 // the bearer as an OAuth access token it issued; a session token, an API key
-// or anything else reads as signed out, and withMcpAuth answers 401.
+// or anything else reads as signed out, and withMcpAuth answers 401. Clerk
+// hands back the token's client id and scopes, which staffOnly checks, but no
+// audience to check (lib/mcp-auth.ts).
 async function verifyToken(_req: Request, bearerToken?: string): Promise<AuthInfo | undefined> {
   if (!bearerToken) return undefined;
   const signedIn = await auth({ acceptsToken: "oauth_token" });
@@ -80,14 +86,33 @@ async function personFor(userId: string): Promise<ConnectorPerson> {
   };
 }
 
-function refused(status: number, error: string, description: string): Response {
-  return Response.json({ error, error_description: description }, { status });
+function refused(
+  status: number,
+  error: string,
+  description: string,
+  headers?: Record<string, string>,
+): Response {
+  return Response.json({ error, error_description: description }, { status, headers });
 }
 
 // Gate 2.
 async function staffOnly(req: Request): Promise<Response> {
   const extra = req.auth?.extra as ConnectorExtra | undefined;
   if (!req.auth || !extra?.userId) return refused(401, "invalid_token", "Sign in again.");
+
+  const refusal = refuseConnectorToken(
+    { clientId: req.auth.clientId, scopes: req.auth.scopes },
+    {
+      allowedClientIds: process.env.MCP_ALLOWED_CLIENT_IDS,
+      requiredScope: process.env.MCP_REQUIRED_SCOPE,
+    },
+  );
+  if (refusal) {
+    // Logged so the owner can find a ChatGPT client id to allow, or see who
+    // else tried.
+    console.warn(`ChatGPT connector refused OAuth client ${req.auth.clientId}: ${refusal.error}`);
+    return refused(refusal.status, refusal.error, refusal.description, refusal.headers);
+  }
 
   let convexToken: string;
   let isStaff: boolean;

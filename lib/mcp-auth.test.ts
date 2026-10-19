@@ -12,11 +12,14 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   clerkAuthServerUrl,
   connectorClaims,
+  isChatGptClientId,
   McpTokenAudience,
   McpTokenIssuer,
   mintConvexToken,
   protectedResourceMetadata,
+  readAllowedClientIds,
   readPrivateKeyPem,
+  refuseConnectorToken,
 } from "./mcp-auth";
 
 // A pair made the way scripts/make-mcp-key.mjs makes one, with the JWKS
@@ -131,6 +134,105 @@ describe("protectedResourceMetadata", () => {
       authorization_servers: ["https://clerk.expandhandyman.com"],
       bearer_methods_supported: ["header"],
     });
+  });
+
+  test("lists the connector's own scope only when one is required", () => {
+    const origin = "https://staff.expandhandyman.com";
+    const clerk = "https://clerk.expandhandyman.com";
+    expect(protectedResourceMetadata(origin, clerk).scopes_supported).toEqual(["profile", "email"]);
+    expect(protectedResourceMetadata(origin, clerk, " ").scopes_supported).toEqual([
+      "profile",
+      "email",
+    ]);
+    expect(protectedResourceMetadata(origin, clerk, "staff_app").scopes_supported).toEqual([
+      "profile",
+      "email",
+      "staff_app",
+    ]);
+  });
+});
+
+describe("isChatGptClientId", () => {
+  test("takes a metadata document on OpenAI's hosts or their subdomains", () => {
+    for (const id of [
+      "https://chatgpt.com/oauth/client.json",
+      "https://openai.com/chatgpt/client-metadata.json",
+      "https://auth.openai.com/oauth/cimd",
+      "https://connectors.chatgpt.com/client",
+      "https://CHATGPT.COM/client",
+    ])
+      expect(isChatGptClientId(id), id).toBe(true);
+  });
+
+  test("refuses lookalikes, plain http, user names before the host and random ids", () => {
+    for (const id of [
+      "https://chatgpt.com.evil.com/client",
+      "https://evilchatgpt.com/client",
+      "https://openai.com.example/client",
+      "https://notopenai.com/client",
+      "http://chatgpt.com/client",
+      "https://chatgpt.com@evil.com/client",
+      "https://chatgpt.com:x@evil.com/client",
+      "https://user@chatgpt.com/client",
+      "chatgpt.com",
+      "oauth_2a8f9c7e1b",
+      "",
+    ])
+      expect(isChatGptClientId(id), id).toBe(false);
+  });
+});
+
+describe("readAllowedClientIds", () => {
+  test("reads a comma-separated list, trimmed, with blanks dropped", () => {
+    expect(readAllowedClientIds(" abc, def ,,")).toEqual(["abc", "def"]);
+    expect(readAllowedClientIds(undefined)).toEqual([]);
+  });
+});
+
+describe("refuseConnectorToken", () => {
+  const chatgpt = "https://chatgpt.com/oauth/client.json";
+
+  test("takes ChatGPT's metadata document client with no setup", () => {
+    expect(refuseConnectorToken({ clientId: chatgpt, scopes: ["profile"] }, {})).toBeUndefined();
+  });
+
+  test("takes a registered client only when MCP_ALLOWED_CLIENT_IDS lists it exactly", () => {
+    const token = { clientId: "oauth_abc123", scopes: ["profile"] };
+    expect(refuseConnectorToken(token, { allowedClientIds: "oauth_xyz, oauth_abc123" })).toBeUndefined();
+    expect(refuseConnectorToken(token, { allowedClientIds: "oauth_abc12" })).toMatchObject({
+      status: 403,
+      error: "access_denied",
+    });
+  });
+
+  test("refuses any other client by its id and says where to allow it", () => {
+    const refusal = refuseConnectorToken(
+      { clientId: "https://chatgpt.com.evil.com/c", scopes: ["profile", "email"] },
+      { allowedClientIds: "" },
+    );
+    expect(refusal).toMatchObject({ status: 403, error: "access_denied" });
+    expect(refusal?.description).toContain('"https://chatgpt.com.evil.com/c"');
+    expect(refusal?.description).toContain("MCP_ALLOWED_CLIENT_IDS");
+  });
+
+  test("asks for the required scope only once MCP_REQUIRED_SCOPE is set", () => {
+    const token = { clientId: chatgpt, scopes: ["profile", "email"] };
+    expect(refuseConnectorToken(token, { requiredScope: "" })).toBeUndefined();
+    expect(refuseConnectorToken(token, { requiredScope: "staff_app" })).toEqual({
+      status: 403,
+      error: "insufficient_scope",
+      description: expect.stringContaining('"staff_app"'),
+      headers: { "WWW-Authenticate": 'Bearer error="insufficient_scope", scope="staff_app"' },
+    });
+    expect(
+      refuseConnectorToken({ ...token, scopes: ["profile", "staff_app"] }, { requiredScope: "staff_app" }),
+    ).toBeUndefined();
+  });
+
+  test("checks the client before the scope", () => {
+    expect(
+      refuseConnectorToken({ clientId: "someone-else", scopes: [] }, { requiredScope: "staff_app" }),
+    ).toMatchObject({ error: "access_denied" });
   });
 });
 
