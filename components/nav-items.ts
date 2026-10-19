@@ -5,39 +5,41 @@ import {
   FileSignature,
   FileText,
   Inbox,
-  LayoutDashboard,
   MapPin,
-  ReceiptText,
   ShieldCheck,
   Users,
+  Wallet,
 } from "lucide-react";
 import { Component, type ReactNode } from "react";
 
 import { api } from "@/convex/_generated/api";
 
-// The staff console's pages, in the order both the desktop sidebar and the
-// phone's bottom tab bar list them.
+// PROTOTYPE (proposals-first): the nav shrinks to the three places the owner
+// actually works from. Proposals is the home page; Leads is Thumbtack; Money
+// is the Invoices page. Everything else sits under More.
 export const navigation = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  // Straight after the Dashboard: the Site is the page the owner works from.
-  { title: "Sites", href: "/sites", icon: MapPin },
+  { title: "Proposals", href: "/", icon: FileSignature },
+  { title: "Leads", href: "/thumbtack", icon: Inbox },
+  { title: "Money", href: "/invoices", icon: Wallet },
+] as const;
+
+// The pages still there, one tap further away.
+export const morePages = [
   { title: "Customers", href: "/customers", icon: Users },
-  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
-  { title: "Proposals", href: "/proposals", icon: FileSignature },
-  { title: "Invoices", href: "/invoices", icon: ReceiptText },
+  { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Documents", href: "/documents", icon: FileText },
   { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
 
-// The phone's tab bar holds six; a seventh squeezes every label. Documents
-// and Staff, the pages visited least, sit behind the account menu there
-// instead.
-export const menuPages = navigation.slice(-2);
-export const phoneTabs = navigation.slice(0, -2);
+// The phone's More tab holds these now, so the account menu carries none.
+export const menuPages: readonly (typeof morePages)[number][] = [];
+export const phoneTabs = navigation;
 
 /** Whether `href` is the page the owner is on, or a page under it. */
 export function isNavActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  // A proposal's own page lives under Proposals, the home page.
+  if (href === "/") return pathname === "/" || pathname.startsWith("/proposals");
+  return pathname.startsWith(href);
 }
 
 // Unread Thumbtack leads, for the badge on the Thumbtack nav item. The nav

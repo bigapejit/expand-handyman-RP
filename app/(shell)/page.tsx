@@ -1,20 +1,14 @@
-import { DashboardDocuments } from "@/components/dashboard-documents";
-import { DashboardInvoices } from "@/components/dashboard-invoices";
-import { DashboardProposals } from "@/components/dashboard-proposals";
-import { PageHeader } from "@/components/page-header";
+import { Suspense } from "react";
 
-export default function DashboardPage() {
+import { ProposalsHome } from "@/components/prototype-proposals-first/home";
+
+// PROTOTYPE (proposals-first): throwaway. The home page is the proposals,
+// sorted by what each needs from the owner. The old Dashboard's cards live on
+// in components/dashboard-*.tsx, unused on this branch.
+export default function HomePage() {
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        description="What is waiting on a customer, what they decided, and what they owe."
-      />
-      <div className="space-y-8">
-        <DashboardProposals />
-        <DashboardInvoices />
-        <DashboardDocuments />
-      </div>
-    </div>
+    <Suspense>
+      <ProposalsHome />
+    </Suspense>
   );
 }
