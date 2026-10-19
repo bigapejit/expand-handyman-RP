@@ -75,15 +75,13 @@ function Loaded({ row }: { row: BoardRow }) {
   const tab = useQuery(api.proposals.forSite, { siteId });
   const paper = useQuery(api.proposals.paper, { proposalId: row.proposalId as Id<"proposals"> });
   const site = useQuery(api.sites.get, { siteId });
-  const customers = useQuery(api.customers.list);
   const solutions = useQuery(api.solutions.forSite, { siteId });
   const invoicePanel = useSidePanel(InvoicePanelParam);
 
   const proposal = tab?.proposals.find((candidate) => candidate.proposalId === row.proposalId);
-  if (!tab || !proposal || paper === undefined || !site || !customers || !solutions)
-    return <Loading />;
+  if (!tab || !proposal || paper === undefined || !site || !solutions) return <Loading />;
 
-  const customer = customers.find((candidate) => candidate._id === row.customerId);
+  const phone = site.customerPhone;
   const address = [site.streetLine, site.cityLine].filter(Boolean).join(", ");
   const liveOf = new Map(solutions.map((solution) => [solution._id as string, solution]));
   // The scope of work as the paper prints it: frozen once sent, live before.
@@ -119,13 +117,13 @@ function Loaded({ row }: { row: BoardRow }) {
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
-          {customer?.phone ? (
+          {phone ? (
             <>
-              <ContactLink href={telHref(customer.phone)} icon={<Phone aria-hidden />}>
+              <ContactLink href={telHref(phone)} icon={<Phone aria-hidden />}>
                 Call
               </ContactLink>
               <ContactLink
-                href={`sms:${customer.phone.replace(/[^\d+]/g, "")}`}
+                href={`sms:${phone.replace(/[^\d+]/g, "")}`}
                 icon={<MessageSquare aria-hidden />}
               >
                 Text

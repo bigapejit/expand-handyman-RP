@@ -862,9 +862,10 @@ describe("sites.list", () => {
 });
 
 describe("sites.get", () => {
-  test("reads the header: the address over two lines, whose it is, access notes and each tab's count", async () => {
+  test("reads the header: the address over two lines, whose it is and their phone, access notes and each tab's count", async () => {
     const { t, owner, customer, addSite, proposal, photo } = fixture();
     const customerId = await customer();
+    await t.run((ctx) => ctx.db.patch(customerId, { phone: "360-555-0100" }));
     const siteId = await addSite(customerId, "place-94th", "Apt 2");
     await owner.action(api.sites.update, {
       siteId,
@@ -901,6 +902,7 @@ describe("sites.get", () => {
       cityLine: "Vancouver, WA 98665",
       customerId,
       customerName: "Maria Delgado",
+      customerPhone: "360-555-0100",
       accessNotes: "Gate code 1234",
       counts: { proposals: 2, solutions: 2, photos: 3, invoices: 1 },
     });
