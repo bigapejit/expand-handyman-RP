@@ -3,11 +3,10 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
-import Link from "next/link";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
-import { useJobMathSettings } from "@/components/job-math-page";
+import { JobMathLine } from "@/components/job-math-line";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
 import { SiteTag } from "@/components/site-tag";
 import {
@@ -31,9 +30,8 @@ import {
   lineItemUnitLabel,
   type LineItemUnit,
 } from "@/lib/line-item-units";
-import { jobMath, jobMathHref, solutionJobInputs } from "@/lib/job-math";
+import { solutionJobInputs } from "@/lib/job-math";
 import { formatCents } from "@/lib/money";
-import type { PriceableSolution } from "@/lib/solution-pricing";
 import {
   blankLineItemDraft,
   draftPrice,
@@ -53,6 +51,7 @@ import {
   solutionDetailLabel,
   solutionPriceLabel,
   unitCostField,
+  SolutionPanelParam,
   type LineItemDraft,
 } from "@/lib/solutions";
 import { cn, errorMessage } from "@/lib/utils";
@@ -69,7 +68,7 @@ type SolutionPatch = Omit<FunctionArgs<typeof api.solutions.update>, "solutionId
 export function SiteSolutions({ siteId }: { siteId: Id<"sites"> }) {
   const solutions = useQuery(api.solutions.forSite, { siteId });
   const create = useMutation(api.solutions.create);
-  const { openId, open, close } = useSidePanel("solution");
+  const { openId, open, close } = useSidePanel(SolutionPanelParam);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
 
@@ -491,41 +490,16 @@ function LineItemTable({
         </dl>
       </div>
 
+      {/* Reads the live table, so it moves with the readout above it. */}
       <JobMathLine
-        lineItems={readLineItems(drafts)}
-        markupPercent={markupPercent}
-        materialAllowanceCents={allowanceCents}
+        className="text-right"
+        inputs={solutionJobInputs({
+          lineItems: readLineItems(drafts),
+          markupPercent,
+          materialAllowanceCents: allowanceCents,
+        })}
       />
     </div>
-  );
-}
-
-// **Job math** (CONTEXT.md) for the price above, in one quiet line: what the
-// owner keeps an hour doing it himself, and the most it could pay a W-2
-// worker. Only once the Solution has a price and some HR lines, since without
-// hours there is no per hour to speak of; it reads the live table, so it moves
-// with the readout above it. It never changes the price.
-function JobMathLine(solution: PriceableSolution) {
-  const settings = useJobMathSettings();
-  const inputs = solutionJobInputs(solution);
-  if (settings === undefined || inputs === null || inputs.laborHours <= 0) return null;
-  const { owner, w2 } = jobMath(inputs, settings);
-  // Whole dollars to keep the line short: take-home to the nearest, since it
-  // says "~"; the most it can pay rounded down, so the line never promises a
-  // wage the job can't cover.
-  const dollarsPerHour = (dollars: number) => `${formatCents(dollars * 100)}/hr`;
-  const keep = Math.round((owner.takeHomePerHourCents ?? 0) / 100);
-  const maxWage = Math.floor((w2.maxWageCents ?? 0) / 100);
-  return (
-    <p className="text-right text-xs text-slate-500">
-      You keep ~{dollarsPerHour(keep)}
-      <span aria-hidden> · </span>
-      {maxWage > 0 ? `Can pay a W-2 up to ${dollarsPerHour(maxWage)}` : "Can't pay a W-2"}
-      <span aria-hidden> · </span>
-      <Link href={jobMathHref(inputs)} className="font-medium text-primary hover:underline">
-        Open in Job math
-      </Link>
-    </p>
   );
 }
 
