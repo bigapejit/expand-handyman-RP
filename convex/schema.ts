@@ -156,8 +156,8 @@ export const signingLinkEndedReason = v.union(
   v.literal("withdrawn"),
   v.literal("resent"),
 );
-// Where a lead stands with the owner (CONTEXT.md, **Stage**; lib/thumbtack.ts).
-export const leadStage = v.union(
+// Where a deal stands with the owner (CONTEXT.md, **Stage**; lib/pipeline.ts).
+export const dealStage = v.union(
   v.literal("new"),
   v.literal("talking"),
   v.literal("booked"),
@@ -166,6 +166,15 @@ export const leadStage = v.union(
   v.literal("won"),
   v.literal("lost"),
 );
+// Where a deal came from (CONTEXT.md, **Source**). Only the webhook says
+// Thumbtack; the owner picks one of the rest.
+export const handSource = v.union(
+  v.literal("referral"),
+  v.literal("repeat"),
+  v.literal("website"),
+  v.literal("phone"),
+);
+export const dealSource = v.union(v.literal("thumbtack"), handSource);
 // A file on a lead or a message, as Thumbtack describes it. The file stays on
 // Thumbtack; only its link is kept.
 export const leadAttachment = v.object({
@@ -218,8 +227,13 @@ export default defineSchema({
       }),
     ),
     leadPrice: v.optional(v.string()),
-    stage: leadStage,
-    stageChangedAt: v.number(),
+    // The **Deal** the lead became, which holds its stage. Absent only on a
+    // lead from before deals, until migrations:dealsFromLeads runs.
+    dealId: v.optional(v.id("deals")),
+    // Legacy: the stage lived here before deals. Rows from then still carry
+    // it; nothing reads it.
+    stage: v.optional(dealStage),
+    stageChangedAt: v.optional(v.number()),
     lastMessageAt: v.optional(v.number()),
     lastCustomerMessageAt: v.optional(v.number()),
     // The owner's latest message on Thumbtack: a customer message after one
@@ -231,8 +245,38 @@ export default defineSchema({
   })
     .index("by_negotiation", ["negotiationId"])
     .index("by_customer", ["customerId"])
-    .index("by_thumbtack_customer", ["thumbtackCustomerId"])
-    .index("by_stage", ["stage", "arrivedAt"]),
+    .index("by_thumbtack_customer", ["thumbtackCustomerId"]),
+  // A **Deal** (CONTEXT.md): one job the owner is chasing for a customer, on
+  // the **Pipeline**. A Thumbtack lead makes one as it arrives; the owner adds
+  // the rest by hand. The site is absent until one is known.
+  deals: defineTable({
+    customerId: v.id("customers"),
+    siteId: v.optional(v.id("sites")),
+    title: v.string(),
+    source: dealSource,
+    stage: dealStage,
+    stageChangedAt: v.number(),
+    // Set while the stage is one a proposal moved the deal to (Send, Approve,
+    // or the old board's move an old lead carries); cleared when the owner
+    // or a customer reply moves it. A stand-in deal's proposal-set stage is
+    // undone when a late lead moves the deal to the customer it matched.
+    stageBy: v.optional(v.literal("proposal")),
+    // The owner's own **Notes**, never shown to the customer.
+    notes: v.string(),
+    // The owner's guess at the job, whole dollars in cents, before any
+    // proposal says better.
+    ballparkCents: v.optional(v.number()),
+    // The **Lead** behind a Thumbtack deal.
+    leadId: v.optional(v.id("leads")),
+    // The proposal that last moved the deal, by being sent or approved: the
+    // offer the card and panel read. Absent on a deal no proposal has moved.
+    proposalId: v.optional(v.id("proposals")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customer", ["customerId"])
+    .index("by_stage", ["stage", "stageChangedAt"])
+    .index("by_lead", ["leadId"]),
   // One message of a **Thumbtack chat**, from either side. Read-only: the app
   // never sends one.
   leadMessages: defineTable({
@@ -359,6 +403,11 @@ export default defineSchema({
     // offer and the date it was made are unchanged, only where it went moves.
     frozen: v.optional(frozenProposal),
     sentAt: v.optional(v.number()),
+    // The deal this offer is for, set as Send gives it to one. Kept whatever
+    // becomes of the deal (closed, moved to another site, given to another
+    // customer, or reading a newer offer since), so its approval is that
+    // deal's and no other job's. Absent on an offer from before deals.
+    dealId: v.optional(v.id("deals")),
     // The decision, final either way. Approve writes the signature; a decline
     // says who made it, because only the customer's own keeps their link
     // readable and emails the owner.

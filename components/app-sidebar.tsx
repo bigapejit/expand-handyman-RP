@@ -30,7 +30,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-// The three places, then More folded under them. More starts folded, so the
+// The two places, then More folded under them. More starts folded, so the
 // sidebar reads as three things, and stays open while the owner is on one of
 // its pages, so the page he is on is never hidden.
 export function AppSidebar() {
@@ -65,7 +65,7 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/" ? (
                     <Quiet>
                       <UnreadBadge />
                     </Quiet>
@@ -122,8 +122,8 @@ export function AppSidebar() {
   );
 }
 
-// Unread Thumbtack leads on the nav item, nothing until they are known or
-// while there are none.
+// Unread Thumbtack leads on the **Pipeline**'s nav item, nothing until they
+// are known or while there are none.
 function UnreadBadge() {
   const unread = useUnreadLeads();
   if (!unread) return null;

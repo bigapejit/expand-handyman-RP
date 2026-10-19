@@ -29,7 +29,7 @@ type Photo = FunctionReturnType<typeof api.photos.forSite>[number];
 
 // A picked file on its way to being a photo: a grey tile with a spinner until
 // it is saved, or the reason it was not, with Retry and a cross to drop it.
-type Upload = { key: string; file: File; failure?: string };
+export type Upload = { key: string; file: File; failure?: string };
 
 // The Photos tab: pictures of the site the owner takes here on the phone,
 // seen only by them (CONTEXT.md, **Photo**; ADR 0003). Take photo opens the
@@ -39,51 +39,13 @@ type Upload = { key: string; file: File; failure?: string };
 // is newest first by the time each photo shows.
 export function SitePhotos({ siteId }: { siteId: Id<"sites"> }) {
   const photos = useQuery(api.photos.forSite, { siteId });
-  const getUploadUrl = useMutation(api.photos.uploadUrl);
-  const add = useMutation(api.photos.add);
+  const { uploads, pick, retry, drop } = usePhotoUploads(siteId);
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
-  const picked = useRef(0);
-  const [uploads, setUploads] = useState<Upload[]>([]);
   const [openId, setOpenId] = useState<Id<"photos"> | null>(null);
 
   // A photo deleted elsewhere just closes.
   const openPhoto = photos?.find((photo) => photo._id === openId);
-
-  // The whole pipeline for one file, from the camera time to the save, and
-  // again from the start on Retry. Nothing is saved until both files are up.
-  const upload = async ({ key, file }: Upload) => {
-    setUploads((list) => list.map((u) => (u.key === key ? { key, file } : u)));
-    try {
-      const shrunk = await shrinkPhoto(file);
-      const [fullId, thumbId] = await Promise.all(
-        [shrunk.full, shrunk.thumb].map(
-          async (blob) =>
-            (await uploadFile(await getUploadUrl(), blob, "image/jpeg")) as Id<"_storage">,
-        ),
-      );
-      await add({
-        siteId,
-        fullId,
-        thumbId,
-        width: shrunk.width,
-        height: shrunk.height,
-        takenAt: shrunk.takenAt,
-      });
-      setUploads((list) => list.filter((u) => u.key !== key));
-    } catch (err) {
-      const failure = err instanceof PhotoUnreadable ? err.message : "Didn't upload";
-      setUploads((list) => list.map((u) => (u.key === key ? { ...u, failure } : u)));
-    }
-  };
-
-  const pick = (files: FileList | null) => {
-    if (!files?.length) return;
-    const fresh = Array.from(files, (file) => ({ key: String(picked.current++), file }));
-    // The latest pick at the top, the first of several leading.
-    setUploads((list) => [...fresh, ...list]);
-    for (const next of fresh) void upload(next);
-  };
 
   const count = photos?.length ?? 0;
 
@@ -140,29 +102,12 @@ export function SitePhotos({ siteId }: { siteId: Id<"sites"> }) {
             <UploadTile
               key={pending.key}
               upload={pending}
-              retry={() => void upload(pending)}
-              drop={() => setUploads((list) => list.filter((u) => u.key !== pending.key))}
+              retry={() => retry(pending)}
+              drop={() => drop(pending)}
             />
           ))}
           {photos.map((photo) => (
-            <li key={photo._id} className="aspect-square overflow-hidden rounded-md bg-slate-100">
-              <button
-                type="button"
-                onClick={() => setOpenId(photo._id)}
-                className="block size-full"
-                aria-label={`Open photo, ${photoTimeLabel(photo)}`}
-              >
-                {photo.thumbUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- a Convex storage URL, already shrunk
-                  <img
-                    src={photo.thumbUrl}
-                    alt=""
-                    loading="lazy"
-                    className="size-full object-cover"
-                  />
-                ) : null}
-              </button>
-            </li>
+            <PhotoTile key={photo._id} photo={photo} onOpen={() => setOpenId(photo._id)} />
           ))}
         </ul>
       )}
@@ -173,7 +118,84 @@ export function SitePhotos({ siteId }: { siteId: Id<"sites"> }) {
   );
 }
 
-function UploadTile({
+// The whole pipeline for a picked file, from the camera time to the save, and
+// again from the start on Retry: shrunk, both files uploaded, then saved to
+// `siteId`. Nothing is saved until both files are up. Shared by the Photos
+// tab and a **Deal**'s Quick panel, which saves to the deal's site.
+export function usePhotoUploads(siteId: Id<"sites"> | null) {
+  const getUploadUrl = useMutation(api.photos.uploadUrl);
+  const add = useMutation(api.photos.add);
+  const picked = useRef(0);
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  // A new site starts with an empty list, so a failed upload shown for the
+  // last one is never retried into this one. One still in flight finishes on
+  // the site it began on.
+  const [uploadsFor, setUploadsFor] = useState(siteId);
+  if (uploadsFor !== siteId) {
+    setUploadsFor(siteId);
+    setUploads([]);
+  }
+
+  const upload = async ({ key, file }: Upload) => {
+    if (!siteId) return;
+    setUploads((list) => list.map((u) => (u.key === key ? { key, file } : u)));
+    try {
+      const shrunk = await shrinkPhoto(file);
+      const [fullId, thumbId] = await Promise.all(
+        [shrunk.full, shrunk.thumb].map(
+          async (blob) =>
+            (await uploadFile(await getUploadUrl(), blob, "image/jpeg")) as Id<"_storage">,
+        ),
+      );
+      await add({
+        siteId,
+        fullId,
+        thumbId,
+        width: shrunk.width,
+        height: shrunk.height,
+        takenAt: shrunk.takenAt,
+      });
+      setUploads((list) => list.filter((u) => u.key !== key));
+    } catch (err) {
+      const failure = err instanceof PhotoUnreadable ? err.message : "Didn't upload";
+      setUploads((list) => list.map((u) => (u.key === key ? { ...u, failure } : u)));
+    }
+  };
+
+  return {
+    uploads,
+    pick: (files: FileList | null) => {
+      if (!siteId || !files?.length) return;
+      const fresh = Array.from(files, (file) => ({ key: String(picked.current++), file }));
+      // The latest pick at the top, the first of several leading.
+      setUploads((list) => [...fresh, ...list]);
+      for (const next of fresh) void upload(next);
+    },
+    retry: (pending: Upload) => void upload(pending),
+    drop: (pending: Upload) => setUploads((list) => list.filter((u) => u.key !== pending.key)),
+  };
+}
+
+/** One saved photo in a grid, its thumbnail opening it full size. */
+export function PhotoTile({ photo, onOpen }: { photo: Photo; onOpen: () => void }) {
+  return (
+    <li className="aspect-square overflow-hidden rounded-md bg-slate-100">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block size-full"
+        aria-label={`Open photo, ${photoTimeLabel(photo)}`}
+      >
+        {photo.thumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a Convex storage URL, already shrunk
+          <img src={photo.thumbUrl} alt="" loading="lazy" className="size-full object-cover" />
+        ) : null}
+      </button>
+    </li>
+  );
+}
+
+export function UploadTile({
   upload,
   retry,
   drop,
@@ -213,7 +235,7 @@ function UploadTile({
 
 // The photo full size, when it shows as taken or added, and Delete, which
 // asks once and then removes the photo and both its files for good.
-function PhotoDialog({ photo, onClose }: { photo: Photo; onClose: () => void }) {
+export function PhotoDialog({ photo, onClose }: { photo: Photo; onClose: () => void }) {
   const remove = useMutation(api.photos.remove);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);

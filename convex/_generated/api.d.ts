@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
 import type * as clerk from "../clerk.js";
 import type * as customers from "../customers.js";
+import type * as deals from "../deals.js";
 import type * as documents from "../documents.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   catalog: typeof catalog;
   clerk: typeof clerk;
   customers: typeof customers;
+  deals: typeof deals;
   documents: typeof documents;
   email: typeof email;
   http: typeof http;

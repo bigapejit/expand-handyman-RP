@@ -3,7 +3,7 @@
 import { useAction, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { LoaderCircle, Mail, MoreHorizontal, Send, Trash2, UserPlus } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Monogram } from "@/components/monogram";
 import {
@@ -28,6 +28,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/convex/_generated/api";
+import { useNow } from "@/hooks/use-now";
 import { timeAgo } from "@/lib/thumbtack";
 import { errorMessage } from "@/lib/utils";
 
@@ -36,17 +37,6 @@ const dayFormat = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
 });
-
-// The clock "Last seen" reads from, moved on each minute while the page sits
-// open.
-function useNow() {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return now;
-}
 
 type StaffMember = FunctionReturnType<typeof api.staff.list>[number];
 type Outcome = { tone: "done" | "fault"; text: string };

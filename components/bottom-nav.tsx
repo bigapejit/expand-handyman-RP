@@ -16,8 +16,8 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-// The phone's way between pages: the sidebar's three places as a tab bar
-// along the bottom, where a thumb already is, and a fourth tab, More, that
+// The phone's way between pages: the sidebar's two places as a tab bar
+// along the bottom, where a thumb already is, and a third tab, More, that
 // opens a sheet from the bottom with the pages visited least. Under md only;
 // the desktop keeps the sidebar. Sheets and dialogs (z-50) open over it.
 export function BottomNav() {
@@ -30,7 +30,7 @@ export function BottomNav() {
       aria-label="Pages"
       className="fixed inset-x-0 bottom-0 z-40 border-t bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-3">
         {navigation.map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
@@ -45,7 +45,7 @@ export function BottomNav() {
                     aria-hidden
                     className={cn("size-5", active ? "text-primary" : "text-slate-500")}
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/" ? (
                     <Quiet>
                       <UnreadDot />
                     </Quiet>
@@ -116,7 +116,7 @@ function TabLabel({ active, children }: { active: boolean; children: string }) {
   );
 }
 
-// The sidebar's unread count, pinned to the corner of the Leads icon.
+// The sidebar's unread count, pinned to the corner of the Pipeline icon.
 function UnreadDot() {
   const unread = useUnreadLeads();
   if (!unread) return null;
