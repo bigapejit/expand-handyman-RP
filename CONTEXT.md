@@ -82,6 +82,10 @@ _Avoid_: Overhead %, margin, markup (which is added to cost, not taken from pric
 The most an hour a job could pay a W-2 worker, with every bucket intact and the employer's payroll taxes and L&I paid on top of the wage. Zero or less means the job can't pay anyone.
 _Avoid_: Burden, burdened rate, labor rate
 
+**ChatGPT connector**:
+The owner's way to estimate by chatting with ChatGPT, which signs in as a staff member and then uses the app as its backend: it finds customers, sites and proposals, adds a customer and a site, writes solutions, assembles draft proposals and runs Job math, with money in dollars. Sending, deleting, payments and invoices stay in the app, so nothing it does reaches a customer.
+_Avoid_: Plugin, integration, bot
+
 **Proposal**:
 An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
