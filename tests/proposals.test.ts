@@ -691,7 +691,7 @@ describe("proposals.list", () => {
 });
 
 describe("proposals.get", () => {
-  test("reads one proposal as the board lists it", async () => {
+  test("reads one proposal as the list does, with the deal it is for", async () => {
     const { owner, customer, site, solution, create } = fixture();
     const siteId = await site(await customer("Maria Delgado"), "1300FRANKLIN");
     const deck = await solution(siteId, "Deck", 100_000);
@@ -699,9 +699,11 @@ describe("proposals.get", () => {
     await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
 
     const row = await owner.query(api.proposals.get, { proposalId });
-    expect(row).toEqual(
-      (await owner.query(api.proposals.list, {})).find((p) => p.proposalId === proposalId),
-    );
+    expect(row).toEqual({
+      ...(await owner.query(api.proposals.list, {})).find((p) => p.proposalId === proposalId),
+      // Made from the site's tab for no deal in particular.
+      deal: null,
+    });
     expect(row).toMatchObject({ customerName: "Maria Delgado", title: "Deck" });
   });
 

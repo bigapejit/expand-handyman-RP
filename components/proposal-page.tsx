@@ -12,15 +12,17 @@ import {
   Navigation,
   Pencil,
   Phone,
+  SquareKanban,
   User,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { StageChip } from "@/components/deal-chips";
 import { InvoicePanelHost } from "@/components/invoice-panel";
 import { JobMathLine } from "@/components/job-math-line";
-import { Hint, useBoardRow } from "@/components/proposal-board";
+import { OpenedChip, ProposalStateChip } from "@/components/proposal-chips";
 import {
   ProposalActions,
   ProposalDraftFields,
@@ -36,13 +38,14 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { InvoicePanelParam } from "@/lib/invoices";
 import { solutionJobInputs } from "@/lib/job-math";
 import { formatCents, formatCentsExact } from "@/lib/money";
-import type { BoardRow } from "@/lib/proposal-board";
+import { dealPanelHref } from "@/lib/pipeline";
 import { telHref } from "@/lib/proposal-paper";
 import { proposalPageHref, taxRateField } from "@/lib/proposals";
 import { solutionPanelHref } from "@/lib/solutions";
 import { cn } from "@/lib/utils";
 
 type LiveSolution = FunctionReturnType<typeof api.solutions.forSite>[number];
+type Row = NonNullable<FunctionReturnType<typeof api.proposals.get>>;
 
 // The **Proposal page** (CONTEXT.md): one proposal, the whole job in one
 // scroll, and the page the owner works a proposal from. Who and where, with
@@ -52,11 +55,11 @@ type LiveSolution = FunctionReturnType<typeof api.solutions.forSite>[number];
 // Duplicate and Delete under it all. Writing a Solution or changing its price
 // still happens on the Site's Solutions tab, one tap away.
 //
-// The proposal is read by its id and laid out the way the board lays out its
-// row, with the same plain hint, so the status line here and the row on the
-// board can never say different things.
+// The proposal is read by its id, so any link to it opens it. The owner gets
+// here from a deal on the **Pipeline**, so the page names the deal it is for
+// and leads back to it.
 export function ProposalPage({ proposalId }: { proposalId: string }) {
-  const row = useBoardRow(proposalId);
+  const row = useQuery(api.proposals.get, { proposalId });
 
   if (row === undefined) return <Loading />;
   if (!row)
@@ -69,7 +72,7 @@ export function ProposalPage({ proposalId }: { proposalId: string }) {
   return <Loaded row={row} />;
 }
 
-function Loaded({ row }: { row: BoardRow }) {
+function Loaded({ row }: { row: Row }) {
   const siteId = row.siteId as Id<"sites">;
   const router = useRouter();
   const tab = useQuery(api.proposals.forSite, { siteId });
@@ -91,19 +94,35 @@ function Loaded({ row }: { row: BoardRow }) {
   const isDraft = proposal.state === "draft";
   // The mark only means something beside another proposal at the same site.
   const showRecommended = proposal.recommended || tab.proposals.length > 1;
+  // Back to the deal's panel on the Pipeline, or to the Pipeline itself for a
+  // proposal made for no deal.
+  const back = row.deal ? dealPanelHref(row.deal.dealId) : "/";
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-8 pb-8">
-      <BackLink />
+      <BackLink href={back} />
 
       <header className="space-y-3">
-        <p className="flex flex-wrap items-center gap-x-2 text-sm">
-          <span className="font-semibold text-slate-900">{stageLabel(row)}</span>
-          <span aria-hidden className="text-slate-300">
-            ·
-          </span>
-          <Hint tone={row.tone}>{row.hint}</Hint>
-        </p>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {isDraft ? (
+            <span className="font-semibold text-slate-900">Draft</span>
+          ) : (
+            <ProposalStateChip state={proposal.state} />
+          )}
+          {proposal.state === "sent" && proposal.opened ? <OpenedChip /> : null}
+          {row.deal ? (
+            <Link
+              href={back}
+              className="inline-flex min-w-0 items-center gap-1.5 text-slate-500 hover:text-slate-900 max-md:py-1"
+            >
+              <SquareKanban aria-hidden className="size-3.5 shrink-0" />
+              <span className="truncate">
+                For <span className="font-medium text-slate-700">{row.deal.title}</span>
+              </span>
+              <StageChip stage={row.deal.stage} />
+            </Link>
+          ) : null}
+        </div>
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
           {row.customerName}
         </h1>
@@ -214,7 +233,7 @@ function Loaded({ row }: { row: BoardRow }) {
       <ProposalActions
         proposal={proposal}
         onDuplicated={(copyId) => router.push(proposalPageHref(copyId))}
-        onDeleted={() => router.push("/")}
+        onDeleted={() => router.push(back)}
       />
 
       <nav className="flex flex-wrap gap-x-5 gap-y-2 px-1 text-sm text-slate-500">
@@ -232,20 +251,6 @@ function Loaded({ row }: { row: BoardRow }) {
       <InvoicePanelHost siteId={siteId} />
     </div>
   );
-}
-
-// Which column the proposal sits in on the board, said as a stage.
-function stageLabel(row: BoardRow): string {
-  switch (row.column) {
-    case "draft":
-      return "Draft";
-    case "with_customer":
-      return "With the customer";
-    case "approved":
-      return "Approved";
-    case "done":
-      return row.state === "declined" ? "Declined" : "Done";
-  }
 }
 
 // Under a draft's solution: its scope, then its Job math, or where to price
@@ -305,13 +310,13 @@ function Loading() {
   );
 }
 
-function BackLink() {
+function BackLink({ href = "/" }: { href?: string }) {
   return (
     <Link
-      href="/"
+      href={href}
       className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
     >
-      <ArrowLeft aria-hidden className="size-4" /> Proposals
+      <ArrowLeft aria-hidden className="size-4" /> Pipeline
     </Link>
   );
 }

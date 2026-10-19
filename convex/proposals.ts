@@ -157,11 +157,10 @@ export const forSite = query({
   },
 });
 
-// The Proposal board: every proposal across every customer, newest first,
-// each as one row with its site and customer. Bounded at the newest 1,000:
-// years of work for one owner, and what falls off the end is old and long
-// done. A proposal page never relies on this list; it reads its own row by
-// id with `get` below.
+// Every proposal across every customer, newest first, each as one row with
+// its site and customer. Bounded at the newest 1,000: years of work for one
+// owner, and what falls off the end is old and long done. A proposal page
+// never relies on this list; it reads its own row by id with `get` below.
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -179,14 +178,15 @@ export const list = query({
         customers.set(site.customerId, await ctx.db.get(site.customerId));
       const customer = customers.get(site.customerId);
       if (!customer) continue;
-      const row = await boardRow(ctx, proposal, site, customer);
+      const row = await listRow(ctx, proposal, site, customer);
       if (row) rows.push(row);
     }
     return rows;
   },
 });
 
-// One proposal as the board lists it, for the proposal page. Read by the id
+// One proposal as `list` reads it, for the proposal page, with the **Deal**
+// it is for, so the page can lead back to it on the Pipeline. Read by the id
 // the page address carries, which may be anything a link was typed as, so an
 // id naming no proposal opens nothing rather than failing.
 export const get = query({
@@ -198,13 +198,21 @@ export const get = query({
     const site = proposal ? await ctx.db.get(proposal.siteId) : null;
     const customer = site ? await ctx.db.get(site.customerId) : null;
     if (!proposal || !site || !customer) return null;
-    return boardRow(ctx, proposal, site, customer);
+    const row = await listRow(ctx, proposal, site, customer);
+    if (!row) return null;
+    // The deal it was drafted for, or the one Send gave it to. A deal since
+    // deleted reads as none.
+    const deal = proposal.dealId ? await ctx.db.get(proposal.dealId) : null;
+    return {
+      ...row,
+      deal: deal ? { dealId: deal._id, title: deal.title, stage: deal.stage } : null,
+    };
   },
 });
 
-// A proposal's row on the board: who, where, what and for how much. Null
-// when its offer cannot be read, which only a site gone missing does.
-async function boardRow(
+// A proposal's row: who, where, what and for how much. Null when its offer
+// cannot be read, which only a site gone missing does.
+async function listRow(
   ctx: QueryCtx,
   proposal: Doc<"proposals">,
   site: Doc<"sites">,
