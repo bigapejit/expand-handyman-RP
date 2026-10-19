@@ -50,6 +50,27 @@ export const forSite = query({
   },
 });
 
+// One solution as the panel reads it, by id. The ChatGPT connector reads back
+// what it has just written with it, and names a solution by the id it was
+// given. Like `sites.get`, the id may be anything a caller typed, so one that
+// names no solution reads as null rather than failing.
+export const get = query({
+  args: { solutionId: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const solutionId = ctx.db.normalizeId("solutions", a.solutionId);
+    const solution = solutionId ? await ctx.db.get(solutionId) : null;
+    if (!solution) return null;
+    const site = await ctx.db.get(solution.siteId);
+    const fixed = await solutionsInFixedProposals(ctx, solution.siteId);
+    return {
+      ...solutionForOwner(solution),
+      siteName: site?.name ?? "",
+      deletable: !fixed.has(solution._id),
+    };
+  },
+});
+
 // "New solution" has already asked which site; the title is optional because
 // the panel opens straight away for the owner to write one.
 export const create = mutation({

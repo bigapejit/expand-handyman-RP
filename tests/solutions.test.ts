@@ -129,6 +129,40 @@ describe("solutions.forSite", () => {
   });
 });
 
+describe("solutions.get", () => {
+  test("reads one solution as the tab does, priced, with its site's name", async () => {
+    const { owner, customer, site, proposal } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, { siteId, title: "Gutters" });
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      lineItems: [{ name: "Labor", quantity: 2, unitCostCents: 5_000, unit: "HR" }],
+    });
+    expect(await owner.query(api.solutions.get, { solutionId })).toEqual(
+      expect.objectContaining({
+        _id: solutionId,
+        siteId,
+        siteName: "1215MAIN",
+        title: "Gutters",
+        lineItems: [{ name: "Labor", quantity: 2, unitCostCents: 5_000, unit: "HR" }],
+        price: { costCents: 10_000, priceCents: 11_000 },
+        deletable: true,
+      }),
+    );
+    await proposal(siteId, "sent", [solutionId]);
+    expect((await owner.query(api.solutions.get, { solutionId }))?.deletable).toBe(false);
+  });
+
+  test("reads null for an id that names no solution, typed or deleted", async () => {
+    const { owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, { siteId });
+    await owner.mutation(api.solutions.remove, { solutionId });
+    expect(await owner.query(api.solutions.get, { solutionId })).toBeNull();
+    expect(await owner.query(api.solutions.get, { solutionId: "not-an-id" })).toBeNull();
+  });
+});
+
 describe("solutions.update", () => {
   async function oneSolution() {
     const f = fixture();
@@ -422,6 +456,7 @@ describe("owner only", () => {
     for (const caller of [t, stranger]) {
       for (const call of [
         () => caller.query(api.solutions.forSite, { siteId }),
+        () => caller.query(api.solutions.get, { solutionId }),
         () => caller.query(api.catalog.suggestions, { prefix: "pa" }),
         () => caller.mutation(api.solutions.create, { siteId }),
         () => caller.mutation(api.solutions.update, { solutionId, title: "Mine" }),
