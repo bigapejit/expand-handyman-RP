@@ -157,6 +157,45 @@ describe("proposals.create", () => {
     });
   });
 
+  test("starts a draft with its solutions, deposit, name and notes in one go", async () => {
+    const { owner, customer, site, solution, read } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const gutters = await solution(siteId, "Gutters", 10_000);
+    const proposalId = await owner.action(api.proposals.create, {
+      siteId,
+      solutionIds: [gutters, gutters],
+      depositPercent: 30,
+      name: " Gutters ",
+      notes: " No permits. ",
+    });
+    expect(await read(proposalId)).toMatchObject({
+      code: "1300FRANKLIN-P1",
+      name: "Gutters",
+      notes: "No permits.",
+      depositPercent: 30,
+      solutions: [expect.objectContaining({ solutionId: gutters })],
+    });
+  });
+
+  // The ChatGPT connector assembles a draft in this one call, so a refused
+  // field must leave no empty draft behind, and use up no Proposal ID.
+  test("refuses a solution or a deposit the same way update does, and writes nothing", async () => {
+    const { owner, customer, site, solution, create, tab, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const own = await solution(siteId, "Gutters");
+    const elsewhere = await solution(await site(customerId, "441094TH"), "Fence");
+    for (const [bad, message] of [
+      [{ solutionIds: [own, elsewhere] }, "own site"],
+      [{ solutionIds: [own], depositPercent: 12.5 }, "whole percent"],
+    ] as [object, string][])
+      await expect(
+        owner.action(api.proposals.create, { siteId, name: "Gutters", ...bad }),
+      ).rejects.toThrow(message);
+    expect((await tab(siteId)).proposals).toEqual([]);
+    expect((await read(await create(siteId))).code).toBe("1300FRANKLIN-P1");
+  });
+
   test("numbers per site, never reusing a deleted draft's number", async () => {
     const { owner, customer, site, create, read } = fixture();
     const customerId = await customer();

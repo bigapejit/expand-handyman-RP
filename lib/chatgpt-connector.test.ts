@@ -196,7 +196,6 @@ describe("create_solution", () => {
     const { context, calls, writes } = fakeConvex({
       "sites:get": () => site,
       "solutions:create": () => "sol1",
-      "solutions:update": () => null,
       "solutions:get": () => storedSolution(),
       "settings:get": () => settings,
     });
@@ -214,13 +213,11 @@ describe("create_solution", () => {
       context,
     );
 
-    expect(writes()).toEqual(["solutions:create", "solutions:update"]);
+    // One mutation writes the whole solution, so nothing is left half-written.
+    expect(writes()).toEqual(["solutions:create"]);
     expect(calls.find((c) => c.name === "solutions:create")?.args).toEqual({
       siteId: "site1",
       title: "Replace gutters",
-    });
-    expect(calls.find((c) => c.name === "solutions:update")?.args).toEqual({
-      solutionId: "sol1",
       description: "Take down the old gutters and hang new ones.",
       lineItems: [
         { name: "Labor", quantity: 8, unit: "HR", unitCostCents: 4_550 },
@@ -539,7 +536,6 @@ describe("create_proposal", () => {
       "sites:get": () => site,
       "solutions:forSite": () => [storedSolution()],
       "proposals:create": () => "prop1",
-      "proposals:update": () => null,
       "proposals:forSite": () => ({
         customerEmail: "maria@example.com",
         solutions: [],
@@ -551,9 +547,10 @@ describe("create_proposal", () => {
       { site_id: "site1", solution_ids: ["sol1", "sol1"], deposit_percent: 30 },
       context,
     );
-    expect(writes()).toEqual(["proposals:create", "proposals:update"]);
-    expect(calls.find((c) => c.name === "proposals:update")?.args).toEqual({
-      proposalId: "prop1",
+    // One action inserts the draft with everything in it.
+    expect(writes()).toEqual(["proposals:create"]);
+    expect(calls.find((c) => c.name === "proposals:create")?.args).toEqual({
+      siteId: "site1",
       solutionIds: ["sol1"],
       depositPercent: 30,
     });

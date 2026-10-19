@@ -810,7 +810,8 @@ const createSolutionTool = defineTool({
   }),
   annotations: Adds,
   async run(args, context) {
-    // Every figure is read first, so a refused one leaves nothing behind.
+    // Every figure is read first and the solution is written by one mutation,
+    // so a refused figure or a dropped call leaves nothing half-written.
     const lineItems = storedLineItems(args.line_items);
     const markupPercent = checkedMarkup(args.markup_percent);
     const materialAllowanceCents = allowanceCents(args.material_allowance_dollars);
@@ -821,9 +822,6 @@ const createSolutionTool = defineTool({
     const solutionId = await context.convex.mutation(api.solutions.create, {
       siteId: site.site._id,
       title,
-    });
-    await context.convex.mutation(api.solutions.update, {
-      solutionId,
       ...(args.scope_of_work !== undefined ? { description: args.scope_of_work } : {}),
       ...(lineItems !== undefined ? { lineItems } : {}),
       ...(markupPercent !== undefined ? { markupPercent } : {}),
@@ -907,9 +905,10 @@ const createProposalTool = defineTool({
     const siteId = site.site._id;
     const solutionIds = await siteSolutionIds(context, siteId, args.solution_ids);
 
-    const proposalId = await context.convex.action(api.proposals.create, { siteId });
-    await context.convex.mutation(api.proposals.update, {
-      proposalId,
+    // One call: the draft and everything in it are inserted together, so a
+    // refusal or a dropped call never leaves an empty draft to retry over.
+    const proposalId = await context.convex.action(api.proposals.create, {
+      siteId,
       solutionIds,
       ...(args.deposit_percent !== undefined ? { depositPercent: args.deposit_percent } : {}),
       ...(args.name !== undefined ? { name: args.name } : {}),

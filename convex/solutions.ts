@@ -26,6 +26,15 @@ import {
 
 const DefaultTitle = "Untitled solution";
 
+// What a solution says besides its title, as `create` and `update` both take
+// it. A material allowance named as null means none.
+const solutionEditArgs = {
+  description: v.optional(v.string()),
+  lineItems: v.optional(v.array(solutionLineItem)),
+  markupPercent: v.optional(v.number()),
+  materialAllowanceCents: v.optional(v.union(v.number(), v.null())),
+};
+
 // The site page's Solutions tab: one site's solutions in the order written,
 // read by its index, each saying whether a sent or decided proposal holds it
 // and so it can't be deleted. A site that is gone has none.
@@ -72,20 +81,31 @@ export const get = query({
 });
 
 // "New solution" has already asked which site; the title is optional because
-// the panel opens straight away for the owner to write one.
+// the panel opens straight away for the owner to write one. The ChatGPT
+// connector writes a whole solution at once, so the rest of what `update`
+// takes can come too, checked the same way: a refused figure throws before the
+// insert, and the solution is written whole or not at all.
 export const create = mutation({
-  args: { siteId: v.id("sites"), title: v.optional(v.string()) },
-  handler: async (ctx, a) => {
+  args: {
+    siteId: v.id("sites"),
+    title: v.optional(v.string()),
+    ...solutionEditArgs,
+  },
+  handler: async (ctx, { siteId, title, ...edits }) => {
     await requireOwner(ctx);
-    if (!(await ctx.db.get(a.siteId))) throw new Error("Site not found.");
+    if (!(await ctx.db.get(siteId))) throw new Error("Site not found.");
+    const fields = verifiedSolutionEdits(edits);
     const now = Date.now();
-    return ctx.db.insert("solutions", {
-      siteId: a.siteId,
-      title: a.title?.trim() || DefaultTitle,
+    const solutionId = await ctx.db.insert("solutions", {
+      siteId,
+      title: title?.trim() || DefaultTitle,
       description: "",
+      ...fields,
       createdAt: now,
       updatedAt: now,
     });
+    if (fields.lineItems !== undefined) await rememberLineItems(ctx, fields.lineItems, now);
+    return solutionId;
   },
 });
 
@@ -96,38 +116,22 @@ export const update = mutation({
   args: {
     solutionId: v.id("solutions"),
     title: v.optional(v.string()),
-    description: v.optional(v.string()),
-    lineItems: v.optional(v.array(solutionLineItem)),
-    markupPercent: v.optional(v.number()),
-    materialAllowanceCents: v.optional(v.union(v.number(), v.null())),
+    ...solutionEditArgs,
   },
-  handler: async (ctx, a) => {
+  handler: async (ctx, { solutionId, title, ...edits }) => {
     await requireOwner(ctx);
-    const solution = await requireSolution(ctx, a.solutionId);
+    const solution = await requireSolution(ctx, solutionId);
     const patch: Partial<Doc<"solutions">> = {};
 
-    if (a.title !== undefined) {
-      const title = a.title.trim();
-      if (!title) throw new Error("A Solution needs a title the customer can read.");
-      patch.title = title;
+    if (title !== undefined) {
+      const trimmed = title.trim();
+      if (!trimmed) throw new Error("A Solution needs a title the customer can read.");
+      patch.title = trimmed;
     }
-    if (a.description !== undefined) patch.description = a.description.trim();
-    if (a.lineItems !== undefined) patch.lineItems = verifiedLineItems(a.lineItems);
-    // A stored zero is a real markup, so this asks whether the field was named
-    // rather than whether it is truthy.
-    if (a.markupPercent !== undefined) {
-      const fault = markupPercentFault(a.markupPercent);
-      if (fault) throw new Error(markupFaultMessage(fault));
-      patch.markupPercent = a.markupPercent;
-    }
+    Object.assign(patch, verifiedSolutionEdits(edits));
     // Patching the field to undefined is what removes it, so a solution with
     // no allowance never stores one of zero.
-    if (a.materialAllowanceCents === null) patch.materialAllowanceCents = undefined;
-    else if (a.materialAllowanceCents !== undefined) {
-      const fault = materialAllowanceFault(a.materialAllowanceCents);
-      if (fault) throw new Error(materialAllowanceFaultMessage(fault));
-      patch.materialAllowanceCents = a.materialAllowanceCents;
-    }
+    if (edits.materialAllowanceCents === null) patch.materialAllowanceCents = undefined;
 
     const now = Date.now();
     await ctx.db.patch(solution._id, { ...patch, updatedAt: now });
@@ -169,6 +173,40 @@ export async function deleteSiteSolutions(ctx: MutationCtx, siteId: Id<"sites">)
     .withIndex("by_site", (q) => q.eq("siteId", siteId))
     .collect();
   for (const solution of solutions) await ctx.db.delete(solution._id);
+}
+
+type SolutionEdits = {
+  description?: string;
+  lineItems?: SolutionLineItem[];
+  markupPercent?: number;
+  materialAllowanceCents?: number | null;
+};
+
+// The named fields as they will be stored, each refused with the sentence
+// lib/solution-pricing.ts words for it. Only what is named comes back, and a
+// null allowance comes back as nothing, for `update` to take off.
+function verifiedSolutionEdits(edits: SolutionEdits) {
+  const fields: {
+    description?: string;
+    lineItems?: (SolutionLineItem & { unit: LineItemUnit })[];
+    markupPercent?: number;
+    materialAllowanceCents?: number;
+  } = {};
+  if (edits.description !== undefined) fields.description = edits.description.trim();
+  if (edits.lineItems !== undefined) fields.lineItems = verifiedLineItems(edits.lineItems);
+  // A stored zero is a real markup, so this asks whether the field was named
+  // rather than whether it is truthy.
+  if (edits.markupPercent !== undefined) {
+    const fault = markupPercentFault(edits.markupPercent);
+    if (fault) throw new Error(markupFaultMessage(fault));
+    fields.markupPercent = edits.markupPercent;
+  }
+  if (edits.materialAllowanceCents !== undefined && edits.materialAllowanceCents !== null) {
+    const fault = materialAllowanceFault(edits.materialAllowanceCents);
+    if (fault) throw new Error(materialAllowanceFaultMessage(fault));
+    fields.materialAllowanceCents = edits.materialAllowanceCents;
+  }
+  return fields;
 }
 
 function solutionForOwner(solution: Doc<"solutions">) {

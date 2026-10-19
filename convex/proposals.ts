@@ -292,11 +292,24 @@ export const paper = query({
   },
 });
 
+// What a draft says that `create` and `update` both take: its name, the
+// solutions it offers in order, its Notes and exclusions, and its Deposit as a
+// percent.
+const draftEditArgs = {
+  name: v.optional(v.string()),
+  solutionIds: v.optional(v.array(v.id("solutions"))),
+  notes: v.optional(v.string()),
+  depositPercent: v.optional(v.number()),
+};
+
 // An action rather than a mutation: a Washington site's tax rate comes from
 // the Department of Revenue over the network, and the new draft carries it
-// from the moment the panel opens.
+// from the moment the panel opens. The ChatGPT connector assembles a whole
+// draft at once, so its solutions, Deposit, name and notes can come too; they
+// are checked as `update` checks them and written in the one mutation that
+// inserts the draft, so a refused one leaves no draft behind.
 export const create = action({
-  args: { siteId: v.id("sites") },
+  args: { siteId: v.id("sites"), ...draftEditArgs },
   handler: async (ctx, a): Promise<Id<"proposals">> => {
     await requireOwner(ctx);
     const { proposalId, taxed } = await ctx.runMutation(internal.proposals.insertDraft, a);
@@ -349,11 +362,12 @@ export async function lookUpDraftTax(
 }
 
 export const insertDraft = internalMutation({
-  args: { siteId: v.id("sites") },
-  handler: async (ctx, a) => {
+  args: { siteId: v.id("sites"), ...draftEditArgs },
+  handler: async (ctx, { siteId, ...edits }) => {
     await requireOwner(ctx);
-    const site = await ctx.db.get(a.siteId);
+    const site = await ctx.db.get(siteId);
     if (!site) throw new Error("Site not found.");
+    const fields = await verifiedDraftEdits(ctx, site._id, edits);
 
     // Washington or nothing: `none` is the whole of "this site charges no
     // sales tax", and a Washington site starts with a rate nobody has yet.
@@ -367,6 +381,7 @@ export const insertDraft = internalMutation({
       recommended: false,
       depositPercent: DefaultDepositPercent,
       tax: { source: taxed ? "lookup" : "none" },
+      ...fields,
       createdAt: now,
       updatedAt: now,
     });
@@ -406,10 +421,7 @@ export const storeLookedUpRate = internalMutation({
 export const update = mutation({
   args: {
     proposalId: v.id("proposals"),
-    name: v.optional(v.string()),
-    solutionIds: v.optional(v.array(v.id("solutions"))),
-    notes: v.optional(v.string()),
-    depositPercent: v.optional(v.number()),
+    ...draftEditArgs,
     // Whole cents.
     depositCents: v.optional(v.number()),
     // A decimal of the whole, the way DOR states one. Typing a rate is what
@@ -419,24 +431,12 @@ export const update = mutation({
   handler: async (ctx, a) => {
     await requireOwner(ctx);
     const proposal = await requireDraft(ctx, a.proposalId, "edited");
-    const patch: Partial<Doc<"proposals">> = {};
-
-    // An emptied field is not a blank name: it is the proposal going back to
-    // being called after the solutions it offers.
-    if (a.name !== undefined) patch.name = optionalText(a.name, NameMaxLength);
-    if (a.solutionIds !== undefined)
-      patch.solutionIds = await verifiedSolutions(ctx, proposal.siteId, a.solutionIds);
-    // Whitespace is not a Notes and exclusions block: an emptied field puts
-    // the proposal back to printing nothing there.
-    if (a.notes !== undefined) patch.notes = optionalText(a.notes, NotesMaxLength);
     if (a.depositPercent !== undefined && a.depositCents !== undefined)
       throw new Error("Set the deposit as a percent or as an amount, not both.");
-    if (a.depositPercent !== undefined) {
-      refuse(depositPercentFault(a.depositPercent));
-      patch.depositPercent = a.depositPercent;
-      // Patching a field to undefined is what removes it.
-      patch.depositCents = undefined;
-    }
+    const patch: Partial<Doc<"proposals">> = await verifiedDraftEdits(ctx, proposal.siteId, a);
+    // A percent puts the proposal back on a percent. Patching a field to
+    // undefined is what removes it.
+    if (a.depositPercent !== undefined) patch.depositCents = undefined;
     if (a.taxRate !== undefined) {
       if (proposal.tax.source === "none")
         throw new Error("This site is not in Washington, so it charges no sales tax.");
@@ -1033,6 +1033,35 @@ async function issueProposalNumber(ctx: MutationCtx, site: Doc<"sites">) {
   const number = site.lastProposalNumber + 1;
   await ctx.db.patch(site._id, { lastProposalNumber: number });
   return number;
+}
+
+// The named fields as they will be stored, each refused as `update` has
+// always refused it. Only what is named comes back.
+async function verifiedDraftEdits(
+  ctx: MutationCtx,
+  siteId: Id<"sites">,
+  edits: {
+    name?: string;
+    solutionIds?: Id<"solutions">[];
+    notes?: string;
+    depositPercent?: number;
+  },
+) {
+  const fields: Partial<Pick<Doc<"proposals">, "name" | "solutionIds" | "notes" | "depositPercent">> =
+    {};
+  // An emptied field is not a blank name: it is the proposal going back to
+  // being called after the solutions it offers.
+  if (edits.name !== undefined) fields.name = optionalText(edits.name, NameMaxLength);
+  if (edits.solutionIds !== undefined)
+    fields.solutionIds = await verifiedSolutions(ctx, siteId, edits.solutionIds);
+  // Whitespace is not a Notes and exclusions block: an emptied field puts
+  // the proposal back to printing nothing there.
+  if (edits.notes !== undefined) fields.notes = optionalText(edits.notes, NotesMaxLength);
+  if (edits.depositPercent !== undefined) {
+    refuse(depositPercentFault(edits.depositPercent));
+    fields.depositPercent = edits.depositPercent;
+  }
+  return fields;
 }
 
 async function verifiedSolutions(

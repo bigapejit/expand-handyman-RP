@@ -91,6 +91,57 @@ describe("solutions.create", () => {
     ]);
   });
 
+  test("writes a whole solution in one go, and the catalog learns its lines", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, {
+      siteId,
+      title: "Gutters",
+      description: " Hang new gutters. ",
+      lineItems: [{ name: " Gutter ", quantity: 10, unit: "LF", unitCostCents: 1_000 }],
+      markupPercent: 0,
+      materialAllowanceCents: 5_000,
+    });
+    expect(await list(siteId)).toEqual([
+      expect.objectContaining({
+        _id: solutionId,
+        title: "Gutters",
+        description: "Hang new gutters.",
+        lineItems: [{ name: "Gutter", quantity: 10, unit: "LF", unitCostCents: 1_000 }],
+        markupPercent: 0,
+        materialAllowanceCents: 5_000,
+      }),
+    ]);
+    expect(await owner.query(api.catalog.suggestions, { prefix: "Gut" })).toEqual([
+      expect.objectContaining({ name: "Gutter" }),
+    ]);
+  });
+
+  test("a null allowance is none", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    await owner.mutation(api.solutions.create, { siteId, materialAllowanceCents: null });
+    expect((await list(siteId))[0].materialAllowanceCents).toBeNull();
+  });
+
+  // The ChatGPT connector writes a solution in this one call, so a refused
+  // figure must leave no titled, half-written solution to retry over.
+  test("refuses a line, a markup or an allowance the same way update does, and writes nothing", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const line = { name: "Paint", quantity: 1, unitCostCents: 4_000 };
+    for (const [bad, message] of [
+      [{ lineItems: [{ ...line, quantity: -1 }] }, "Line Item"],
+      [{ lineItems: [line], markupPercent: 12.5 }, "whole percent"],
+      [{ lineItems: [line], materialAllowanceCents: 50 }, "Material Allowance"],
+    ] as [object, string][])
+      await expect(
+        owner.mutation(api.solutions.create, { siteId, title: "Paint", ...bad }),
+      ).rejects.toThrow(message);
+    expect(await list(siteId)).toEqual([]);
+    expect(await owner.query(api.catalog.suggestions, { prefix: "Pai" })).toEqual([]);
+  });
+
   test("refuses a site that no longer exists", async () => {
     const { t, owner, customer, site } = fixture();
     const siteId = await site(await customer(), "1215MAIN");
