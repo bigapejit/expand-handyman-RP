@@ -4,6 +4,7 @@
 // the Convex functions and the page read the same rules.
 
 import { formatCents } from "./money";
+import { panelHref } from "./side-panel";
 
 export type Stage = "new" | "talking" | "booked" | "estimating" | "quoted" | "won" | "lost";
 
@@ -23,6 +24,15 @@ export const STAGE_LABELS: Record<Stage, string> = {
 export const OPEN_STAGES: readonly Stage[] = ["new", "talking", "booked", "estimating", "quoted"];
 
 export const isOpen = (stage: Stage) => OPEN_STAGES.includes(stage);
+
+/** The search parameter naming the open deal on the Pipeline, as `?deal=<id>`. */
+export const DealPanelParam = "deal";
+
+// Where a deal opens from anywhere else in the app: its Quick panel over the
+// Pipeline, the home page.
+export function dealPanelHref(dealId: string): string {
+  return panelHref("/", "", DealPanelParam, dealId);
+}
 
 // The moves the app makes for the owner (CONTEXT.md, **Stage**). Each only
 // ever moves a deal forward, never out of a later stage or a closed one.

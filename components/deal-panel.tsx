@@ -47,9 +47,6 @@ import { proposalPageHref, proposalStateLabel } from "@/lib/proposals";
 import { conversationUrl } from "@/lib/thumbtack";
 import { cn, errorMessage } from "@/lib/utils";
 
-/** The search parameter naming the open deal, as `?deal=<id>`. */
-export const DealPanelParam = "deal";
-
 // The Quick panel the **Pipeline** opens over itself: what the owner reaches
 // for on the way to a job. One tap out to the Thumbtack conversation, the
 // contact with a copy button on each line, the stage, the owner's **Notes**,

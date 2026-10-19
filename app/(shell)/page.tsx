@@ -1,7 +1,21 @@
-import { ProposalBoard } from "@/components/proposal-board";
+import { Suspense } from "react";
 
-// Home is the Proposal board: the owner thinks in proposals, so the app opens
-// on every one of them, sorted by how far each job has got.
+import { PageHeader } from "@/components/page-header";
+import { PipelinePage } from "@/components/pipeline-page";
+
+// Home is the **Pipeline**: every job the owner is chasing, Thumbtack leads
+// included, from first contact to won. A deal's proposal opens on its own
+// page from the deal's panel.
 export default function HomePage() {
-  return <ProposalBoard />;
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Pipeline"
+        description="Every job you are chasing, from first contact to won. Thumbtack leads arrive in New on their own."
+      />
+      <Suspense>
+        <PipelinePage />
+      </Suspense>
+    </div>
+  );
 }

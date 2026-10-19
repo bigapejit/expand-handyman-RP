@@ -1,18 +1,14 @@
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
-import { PageHeader } from "@/components/page-header";
-import { PipelinePage } from "@/components/pipeline-page";
+import { DealPanelParam, dealPanelHref } from "@/lib/pipeline";
 
-export default function Pipeline() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Pipeline"
-        description="Every job you are chasing, from first contact to won. Thumbtack leads arrive in New on their own."
-      />
-      <Suspense>
-        <PipelinePage />
-      </Suspense>
-    </div>
-  );
+// The Pipeline is the home page now. An old link to it, bookmarked or copied,
+// lands there, still opening the deal it named.
+export default async function OldPipelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const deal = (await searchParams)[DealPanelParam];
+  redirect(typeof deal === "string" ? dealPanelHref(deal) : "/");
 }
