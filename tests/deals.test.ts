@@ -1136,3 +1136,46 @@ describe("owner only", () => {
     await expect(stranger.mutation(api.deals.open, { dealId })).rejects.toThrow(refused);
   });
 });
+
+describe("a deal and its proposal page lead to each other", () => {
+  test("the deal reads the draft made for it, and the page names the deal", async () => {
+    const { owner, customer, site, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    expect(await row(dealId)).toMatchObject({ proposal: null, draft: null });
+
+    // The Quick panel's New proposal: a draft for the deal, at its site.
+    await owner.action(api.proposals.create, { siteId });
+    const proposalId = await owner.action(api.proposals.create, { siteId, dealId });
+    expect(await row(dealId)).toMatchObject({
+      proposal: null,
+      draft: { proposalId, code: "1300FRANKLIN-P2" },
+    });
+    expect(await owner.query(api.proposals.get, { proposalId })).toMatchObject({
+      deal: { dealId, title: "Fence repair", stage: "new" },
+    });
+  });
+
+  test("a draft for no deal is named on the deal Send gives it to, and is no longer a draft there", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const dealId = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const proposalId = await send(siteId);
+    expect(await row(dealId)).toMatchObject({ proposal: { proposalId }, draft: null });
+    expect(await owner.query(api.proposals.get, { proposalId })).toMatchObject({
+      deal: { dealId, stage: "quoted" },
+    });
+  });
+});

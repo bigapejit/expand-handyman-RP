@@ -16,6 +16,7 @@ import {
   titleFault,
   type Stage,
 } from "../lib/pipeline";
+import { proposalCode } from "../lib/proposals";
 import { siteAddressLine } from "../lib/sites";
 import { estimateLine, isUnread, leadAddressLine } from "../lib/thumbtack";
 
@@ -60,6 +61,7 @@ async function dealRow(ctx: QueryCtx, deal: Doc<"deals">) {
     email: customer?.email ?? "",
     site: site ? { siteId: site._id, name: site.name, line: siteAddressLine(site) } : null,
     proposal: await proposalOf(ctx, deal),
+    draft: site ? await draftOf(ctx, deal, site) : null,
     lead: lead
       ? {
           negotiationId: lead.negotiationId,
@@ -104,6 +106,26 @@ async function proposalOf(ctx: QueryCtx, deal: Doc<"deals">) {
     sentAt: live?.sentAt ?? latest.sentAt ?? latest.updatedAt,
     opened: live ? await customerViewedLink(ctx, live.token) : false,
   };
+}
+
+// The newest draft made for the deal, so the Quick panel leads back to a
+// proposal still being written: `proposalOf` reads only one past Send. A
+// draft made for the deal is at the deal's site, so only that site's are
+// read.
+async function draftOf(ctx: QueryCtx, deal: Doc<"deals">, site: Doc<"sites">) {
+  const drafts = (
+    await ctx.db
+      .query("proposals")
+      .withIndex("by_site", (q) => q.eq("siteId", site._id))
+      .collect()
+  ).filter((proposal) => proposal.state === "draft" && proposal.dealId === deal._id);
+  const newest = drafts.reduce<Doc<"proposals"> | null>(
+    (best, proposal) => (!best || proposal.number > best.number ? proposal : best),
+    null,
+  );
+  return newest
+    ? { proposalId: newest._id, code: proposalCode(site.name, newest.number) }
+    : null;
 }
 
 // The New deal dialog: a deal in New for a customer already on file, or for
