@@ -9,12 +9,12 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { isOwner } from "./auth";
-import { invoiceLinkForToken } from "./invoiceLinks";
+import { invoiceLinkForToken, invoiceLinksFor } from "./invoiceLinks";
+import { sentPaper } from "./offers";
+import { paymentFor, paymentOnItsWayFor } from "./payments";
 import { emailOutcome } from "./schema";
-import { proposalDisplayName } from "../lib/proposal-pricing";
+import { invoiceMoney } from "../lib/invoice-money";
 import { noticeToCustomerApplies } from "../lib/proposal-signing";
-import type { PaperProposal } from "../lib/proposal-paper";
-import { offeredLineItems } from "../lib/solution-pricing";
 
 // A proposal's **Signing link** (CONTEXT.md), ported from FRSG's
 // convex/signingLinks.ts for one recipient: minted by each Send and Re-send,
@@ -22,8 +22,8 @@ import { offeredLineItems } from "../lib/solution-pricing";
 // page. Rows are ended rather than deleted, so they stay as the record of what
 // went where and how it finished.
 //
-// Nothing public here is owner-gated: the token is the whole access model.
-// The owner opening a link is told apart from the customer by their Clerk
+// Nothing public here is owner-gated: the token is the whole access model, as
+// a document's is. The owner opening a link is told apart from the customer by their Clerk
 // session, and logged as an owner preview (ADR 0001).
 
 export function signingLinksForProposal(ctx: QueryCtx, proposalId: Id<"proposals">) {
@@ -133,84 +133,24 @@ export async function firstCustomerView(ctx: QueryCtx, token: string): Promise<n
   return view?.openedAt ?? null;
 }
 
-// A proposal past Draft as its paper, read wholly from what Send froze.
-export function sentPaper(proposal: Doc<"proposals">): PaperProposal | null {
-  const frozen = proposal.frozen;
-  if (proposal.state === "draft" || !frozen || proposal.sentAt === undefined) return null;
-  return {
-    proposalId: proposal._id,
-    number: proposal.number,
-    code: frozen.code,
-    name: proposalDisplayName(
-      proposal.name,
-      frozen.solutions.map((solution) => solution.title),
-    ),
-    state: proposal.state,
-    recommended: proposal.recommended,
-    sentAt: proposal.sentAt,
-    estimator: frozen.estimator,
-    customerName: frozen.customerName,
-    site: { street: frozen.site.street, city: frozen.site.city },
-    solutions: frozen.solutions.map((solution) => ({
-      solutionId: solution.solutionId,
-      title: solution.title,
-      scopeOfWork: solution.scopeOfWork,
-      lineItems: offeredLineItems(solution.lineItems),
-      materialAllowanceCents: solution.materialAllowanceCents,
-    })),
-    ...(frozen.notes === undefined ? {} : { notes: frozen.notes }),
-    terms: frozen.terms,
-    tax: frozen.tax,
-    subtotalCents: frozen.subtotalCents,
-    taxCents: frozen.taxCents,
-    totalCents: frozen.totalCents,
-    depositPercent: frozen.depositPercent,
-    ...(frozen.depositCents === undefined ? {} : { depositCents: frozen.depositCents }),
-    ...decision(proposal),
-  };
-}
-
-// What the paper prints of the customer's answer: the signature and its
-// certificate once approved, the day of a decline once declined.
-function decision(proposal: Doc<"proposals">): Pick<PaperProposal, "signature" | "declinedAt"> {
-  const signature = proposal.signature;
-  if (proposal.state === "approved" && signature)
-    return {
-      signature: {
-        signerName: signature.signerName,
-        signedAt: signature.signedAt,
-        ...(signature.firstOpenedAt === undefined ? {} : { firstOpenedAt: signature.firstOpenedAt }),
-        ...(signature.userAgent === undefined ? {} : { userAgent: signature.userAgent }),
-        consentWording: signature.consentWording,
-        consentWordingVersion: signature.consentWordingVersion,
-        noticeShown: signature.noticeShown,
-        ...(signature.noticeTicked &&
-        signature.noticeWording !== undefined &&
-        signature.noticeWordingVersion !== undefined
-          ? {
-              notice: {
-                wording: signature.noticeWording,
-                version: signature.noticeWordingVersion,
-              },
-            }
-          : {}),
-        fingerprint: signature.sealed.fingerprint,
-      },
-    };
-  if (proposal.state === "declined" && proposal.declinedAt !== undefined)
-    return { declinedAt: proposal.declinedAt };
-  return {};
-}
-
-// What the `/sign/<token>` page is looking at. Proposals and invoices share
-// the address, so the page asks here first and draws whichever it is. A token
-// naming nothing, like an ended proposal link, gets "This link is no longer
-// live"; the invoice page says the same for an ended invoice link.
+// What the `/sign/<token>` page is looking at. Documents, proposals and
+// invoices share the address, so the page asks here first and draws whichever
+// it is. A token naming nothing, like an ended proposal link, gets "This link
+// is no longer live"; the document page and the invoice page say the same for
+// a withdrawn document and an ended invoice link.
 export const resolve = query({
   args: { token: v.string() },
-  handler: async (ctx, a): Promise<"proposal" | "invoice" | "ended" | "unknown"> => {
+  handler: async (
+    ctx,
+    a,
+  ): Promise<"document" | "proposal" | "invoice" | "ended" | "unknown"> => {
     const token = a.token.trim();
     if (!token) return "unknown";
+    const document = await ctx.db
+      .query("documents")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .unique();
+    if (document) return "document";
     if (await paperStillOpenedBy(ctx, token)) return "proposal";
     // An invoice link's own page says when it no longer opens anything, in
     // words about an invoice rather than an answer the customer owes.
@@ -219,10 +159,40 @@ export const resolve = query({
   },
 });
 
+// The deposit an approved proposal's bar offers to take there and then: the
+// **Deposit invoice**'s live **Invoice link** and its Amount Due, while that
+// invoice still owes and nothing is on its way. Null when the proposal had no
+// Deposit, and as soon as the deposit is paid, on its way or void, so the bar
+// never offers a payment that is not owed. The link is whichever the invoice
+// has live now: a re-send moves the button to the new one, and an ended link
+// is never offered, since it can no longer pay.
+type DepositToPay = { token: string; amountDueCents: number } | null;
+
+async function depositToPay(ctx: QueryCtx, proposal: Doc<"proposals">): Promise<DepositToPay> {
+  if (proposal.state !== "approved") return null;
+  const invoice = (
+    await ctx.db
+      .query("invoices")
+      .withIndex("by_proposal", (q) => q.eq("proposalId", proposal._id))
+      .collect()
+  ).find((row) => row.kind === "deposit");
+  if (!invoice || invoice.state !== "sent") return null;
+  const { amountDueCents } = invoiceMoney(invoice.lines, invoice.taxRate);
+  if (amountDueCents <= 0) return null;
+  if ((await paymentFor(ctx, invoice._id)) || (await paymentOnItsWayFor(ctx, invoice._id)))
+    return null;
+  const live = (await invoiceLinksFor(ctx, invoice._id)).find(
+    (link) => link.endedAt === undefined,
+  );
+  return live ? { token: live.token, amountDueCents } : null;
+}
+
 // What the customer's link shows: the paper, stamped with their answer once
-// they have given one, and whether the sign bar must show Washington's Notice
-// to Customer. A query, so reading it writes nothing; the page reports the
-// open itself through `opened`.
+// they have given one, whether the sign bar must show Washington's Notice to
+// Customer, and once they have signed, the deposit the bar offers to take. A
+// query, so reading it writes nothing; the page reports the open itself
+// through `opened`, and following the deposit button logs nothing either,
+// as no invoice link ever does.
 export const page = query({
   args: { token: v.string() },
   handler: async (ctx, a) => {
@@ -232,6 +202,7 @@ export const page = query({
     const site = await ctx.db.get(opened.proposal.siteId);
     return {
       paper,
+      deposit: await depositToPay(ctx, opened.proposal),
       noticeRequired:
         // The frozen total, read the way Approve reads it, so the notice the
         // page shows is the notice Approve asks to have been ticked.
@@ -274,11 +245,11 @@ const seenArgs = { viewId: v.id("proposalViews"), token: v.string() };
 // Heartbeats arrive every 20 seconds while the tab is visible. A longer gap
 // since the last one means the tab was hidden, and that time is not counted
 // as reading.
-const MAX_SEEN_STEP = 30_000;
+export const MAX_SEEN_STEP = 30_000;
 
 // What one heartbeat or beacon changes on a view, or nothing when the clock
-// has not moved forward.
-function seenUpdate(
+// has not moved forward. Documents count their views the same way.
+export function seenUpdate(
   view: { lastSeenAt: number; viewedMs: number },
   now: number,
 ): { lastSeenAt: number; viewedMs: number } | null {

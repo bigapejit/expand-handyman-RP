@@ -1,5 +1,21 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+export const field = v.object({
+  id: v.string(),
+  page: v.number(),
+  x: v.number(),
+  y: v.number(),
+  width: v.number(),
+  height: v.number(),
+  kind: v.optional(
+    v.union(
+      v.literal("customerSignature"),
+      v.literal("customerDate"),
+      v.literal("ownerSignature"),
+      v.literal("ownerDate"),
+    ),
+  ),
+});
 // One line of a solution's cost buildup. The unit is a plain string so an
 // off-list one reaches lib/solution-pricing.ts's `lineItemFault` and is refused
 // in words rather than by the validator.
@@ -108,6 +124,32 @@ export const frozenInvoice = v.object({
 // (lib/invoice-paper.ts, `invoicePaperState`): what a PDF copy of it, and the
 // render pass that prints one, are bound to.
 export const invoicePaperState = v.union(v.literal("sent"), v.literal("paid"), v.literal("void"));
+
+// A proposal's sheet: one state, under the **Signing link** it went out on or
+// was signed through. The link is what tells an offer from the one sent after
+// it was withdrawn, where the state alone would call both Sent.
+const proposalSheetFields = {
+  proposalId: v.id("proposals"),
+  state: v.union(v.literal("sent"), v.literal("approved")),
+  linkId: v.id("signingLinks"),
+};
+
+// An invoice's sheet: one **Paper state**, and the day on a PAID or VOID
+// stamp. Marked unpaid and then paid on another day, the paper is paid again
+// but not the sheet a render was begun for.
+const invoiceSheetFields = {
+  invoiceId: v.id("invoices"),
+  paperState: invoicePaperState,
+  stampDay: v.optional(v.string()),
+};
+
+// Which sheet a **Render pass** prints and a **PDF copy** is kept against: a
+// proposal in one state under the signing link it went out on, or an invoice
+// in one paper state on the day its stamp names. A pass carries one, and a
+// file that lands is kept only while its paper still stands on the same one
+// (convex/pdfCopyFiles.ts, `sameSheet`).
+export const pdfSheet = v.union(v.object(proposalSheetFields), v.object(invoiceSheetFields));
+
 export const signingLinkEndedReason = v.union(
   v.literal("approved"),
   v.literal("declined"),
@@ -470,27 +512,96 @@ export default defineSchema({
     .index("by_invoice", ["invoiceId"])
     .index("by_token", ["token"]),
   // A **Payment** (CONTEXT.md): that a sent invoice's money arrived, and
-  // nothing about how much or how. At most one per invoice, which Mark paid
-  // checks before it writes one. Never edited: Mark unpaid deletes the row,
-  // and refuses one the app wrote from Stripe. Its presence is what makes the
-  // invoice's **Standing** read Paid.
+  // nothing about how much. The owner's Mark paid writes one only on an
+  // invoice that holds none, so the owner's rows stay one per invoice; the
+  // app writes one whenever Stripe says money arrived, even on an invoice
+  // already paid or void, because money that moved is never hidden. So an
+  // invoice may hold more than one: its **Standing** reads Paid on any of
+  // them, the paper stamps the earliest day, and the panel lists them all.
+  // Never edited: Mark unpaid deletes the owner's row and refuses one the app
+  // wrote, which goes only when a full refund or a lost dispute sends the
+  // money back.
   payments: defineTable({
     invoiceId: v.id("invoices"),
     // The Pacific calendar day the money arrived, `YYYY-MM-DD`
-    // (lib/invoice-standing.ts, `pacificDay`).
+    // (lib/invoice-standing.ts, `pacificDay`). For a Stripe row, the day of
+    // the event that confirmed it, never the day the customer pressed Pay.
     receivedOn: v.string(),
-    // Who recorded it: the owner by hand, or, once Pay now exists, the app
-    // from Stripe.
+    // Who recorded it: the owner by hand, or the app from **Pay now**.
     source: v.union(v.literal("owner"), v.literal("stripe")),
     // The recorder's sign-in subject, or `stripe`.
     recordedBy: v.string(),
     recordedAt: v.number(),
-    // The Stripe payment a `stripe` row came from, so a webhook delivered
-    // twice finds the row it already wrote. Nothing writes it yet.
+    // How the money moved, on a `stripe` row only: the owner's rows say
+    // nothing about it, since Zelle and a check are both just money in.
+    method: v.optional(v.union(v.literal("bank"), v.literal("card"))),
+    // The Stripe payment a `stripe` row came from, always there on one, so a
+    // webhook delivered twice finds the row it already wrote.
     stripePaymentIntentId: v.optional(v.string()),
   })
     .index("by_invoice", ["invoiceId"])
     .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
+  // One **Pay now** through Stripe whose Checkout Session completed, or whose
+  // money went back before Stripe told the app it had: the payment's life
+  // before its `payments` row exists and after it is gone. A
+  // bank payment is `on_its_way` until the bank confirms it, which is what
+  // makes the invoice read **Payment on its way**; `paid` while its
+  // `payments` row stands; and `returned` (a **Returned payment**),
+  // `refunded` or `dispute_lost` once the money has gone back, which the
+  // panel keeps as a grey note until the invoice is paid, on its way again or
+  // void. Written only by what Stripe tells the app, never by the owner.
+  stripePayments: defineTable({
+    invoiceId: v.id("invoices"),
+    // Absent only on a row a full refund or a lost dispute wrote before the
+    // session's completion arrived: Stripe names no session on a charge or a
+    // dispute, and the completion, when it comes, fills it in. Never an empty
+    // string, so the index finds a session's row and nothing else.
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.string(),
+    method: v.union(v.literal("bank"), v.literal("card")),
+    // What Stripe took, in whole cents. Only the sentences read it: the
+    // payment itself has no amount, and the invoice's Amount Due is the
+    // figure owed.
+    amountCents: v.number(),
+    // When Stripe accepted the payment: the session's completion, whenever
+    // it arrives. A row another event wrote first holds that event's time,
+    // and the completion's replaces it only when it is later: a
+    // confirmation's or a return's day is corrected back to the day the
+    // customer paid, while a refund's or a lost dispute's charge time, made
+    // a moment before the completion, normally stands.
+    acceptedAt: v.number(),
+    status: v.union(
+      v.literal("on_its_way"),
+      v.literal("paid"),
+      v.literal("returned"),
+      v.literal("refunded"),
+      v.literal("dispute_lost"),
+    ),
+    // Once returned, refunded or lost: when, and the bank's or Stripe's own
+    // words for why, which only the owner reads.
+    endedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    // Once returned: whether the letter asking the customer to pay again
+    // went, written back by its scheduled send, so the owner's grey note
+    // never says they were emailed when Resend refused it or there was no
+    // link to give. False too when another bank payment was still on its
+    // way and the customer was not asked. Absent until the send has run.
+    customerEmailed: v.optional(v.boolean()),
+    // The `payments` row this payment wrote, while it stands.
+    paymentId: v.optional(v.id("payments")),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_checkout_session", ["stripeCheckoutSessionId"])
+    .index("by_payment_intent", ["stripePaymentIntentId"]),
+  // Every Stripe webhook event the app applied, keyed by Stripe's `evt_` id,
+  // so a redelivered event is found here and changes nothing. A refused
+  // delivery (a bad signature, a body that cannot be read) is answered and
+  // logged, never stored, as the Thumbtack route treats a wrong secret.
+  stripeEvents: defineTable({
+    eventId: v.string(),
+    type: v.string(),
+    receivedAt: v.number(),
+  }).index("by_event", ["eventId"]),
   // Counters that run across the whole business, one row per name. `invoice`
   // holds the last Invoice number given; the first is 1001.
   sequences: defineTable({
@@ -519,38 +630,26 @@ export default defineSchema({
   // The business's few settings the owner edits in the app, in one row. Read
   // at render time, so a change reaches every paper without a deploy.
   settings: defineTable({
-    // The Zelle address the invoice paper prints; absent until the owner sets
-    // one, when the paper prints lib/expand-business.ts's default.
-    zelleEmail: v.optional(v.string()),
+    // The **Zelle tag** the invoice paper and the Pay sheet name, stored as
+    // Zelle reads it, in lower case; absent until the owner sets one, when
+    // both print lib/expand-business.ts's default.
+    zelleTag: v.optional(v.string()),
   }),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
   // paper with, at `/paper/<token>`. One per render, expiring within minutes
-  // and deleted when the render ends, and naming one of two papers: a
-  // proposal in the state being rendered, under the signing link it went out
-  // under; or an invoice in the paper state being rendered, with the day on
-  // its stamp. Reading the paper through one never touches any log.
+  // and deleted when the render ends, and naming the one sheet it prints
+  // (`pdfSheet`): a proposal in the state being rendered, under the signing
+  // link it went out under; or an invoice in the paper state being rendered,
+  // with the day on its stamp. Reading the paper through one never touches
+  // any log.
   renderPasses: defineTable(
     v.union(
-      v.object({
-        token: v.string(),
-        proposalId: v.id("proposals"),
-        state: v.union(v.literal("sent"), v.literal("approved")),
-        linkId: v.id("signingLinks"),
-        expiresAt: v.number(),
-      }),
-      v.object({
-        token: v.string(),
-        invoiceId: v.id("invoices"),
-        paperState: invoicePaperState,
-        // The day on a PAID or VOID stamp: marked unpaid and then paid on
-        // another day, the paper is paid again but not the sheet this pass
-        // was made for.
-        stampDay: v.optional(v.string()),
-        expiresAt: v.number(),
-      }),
+      v.object({ token: v.string(), ...proposalSheetFields, expiresAt: v.number() }),
+      v.object({ token: v.string(), ...invoiceSheetFields, expiresAt: v.number() }),
     ),
   ).index("by_token", ["token"]),
-  // The view log (ADR 0001): every open of a proposal's signing link.
+  // The proposal half of the view log, the same shape and rules as
+  // `documentViews` (ADR 0001).
   proposalViews: defineTable({
     proposalId: v.id("proposals"),
     token: v.string(),
@@ -567,4 +666,69 @@ export default defineSchema({
   })
     .index("by_proposal", ["proposalId", "openedAt"])
     .index("by_token_viewer", ["token", "viewer", "openedAt"]),
+  documents: defineTable({
+    customerId: v.id("customers"),
+    // Copied from the customer when the signing link is issued, so editing a
+    // customer never rewrites an issued document. Absent on drafts.
+    customerName: v.optional(v.string()),
+    site: v.optional(v.string()),
+    title: v.string(),
+    originalId: v.id("_storage"),
+    originalHash: v.string(),
+    pageCount: v.number(),
+    fields: v.array(field),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("ready"),
+      v.literal("viewed"),
+      v.literal("signed"),
+      v.literal("declined"),
+    ),
+    token: v.optional(v.string()),
+    issuedAt: v.optional(v.number()),
+    viewedAt: v.optional(v.number()),
+    signedAt: v.optional(v.number()),
+    signedId: v.optional(v.id("_storage")),
+    signedHash: v.optional(v.string()),
+    signerName: v.optional(v.string()),
+    signerTitle: v.optional(v.string()),
+    ownerSignature: v.optional(
+      v.object({ name: v.string(), signedAt: v.number() }),
+    ),
+    declinedAt: v.optional(v.number()),
+    declineReason: v.optional(v.string()),
+    consent: v.optional(v.string()),
+    consentVersion: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    intent: v.optional(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        signedAt: v.number(),
+        title: v.optional(v.string()),
+      }),
+    ),
+  })
+    .index("by_token", ["token"])
+    .index("by_customer", ["customerId"])
+    .index("by_status", ["status"])
+    .index("by_status_signed", ["status", "signedAt"])
+    .index("by_status_declined", ["status", "declinedAt"]),
+  documentViews: defineTable({
+    documentId: v.id("documents"),
+    token: v.string(),
+    viewer: v.union(v.literal("owner"), v.literal("customer")),
+    documentStatus: v.union(
+      v.literal("ready"),
+      v.literal("viewed"),
+      v.literal("signed"),
+      v.literal("declined"),
+    ),
+    openedAt: v.number(),
+    lastSeenAt: v.number(),
+    viewedMs: v.number(),
+    userAgent: v.optional(v.string()),
+  })
+    .index("by_document", ["documentId", "openedAt"])
+    .index("by_document_viewer", ["documentId", "viewer", "openedAt"]),
 });

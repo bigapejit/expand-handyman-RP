@@ -25,13 +25,19 @@ export const ExpandBusiness = {
   waContractorRegistration: "606 261 044",
   waContractorBond: "$30,000",
   waRegistrationExpires: Unknown,
+  // Where a customer may mail a check, printed in the Pay sheet's check steps
+  // and on the paper's check line. The owner has still to supply it (spec
+  // #121, Further Notes); until then it is null rather than Unknown, because
+  // a customer must never be told to post a check to "<unknown>", and both
+  // say "handed to us in person" only.
+  mailingAddress: null as string | null,
 };
 
-// Where the invoice paper tells customers to send a Zelle payment until the
-// owner sets another address in the app (convex/settings.ts). A setting rather
-// than a constant above, because the mailbox behind it may change without a
-// deploy.
-export const DefaultZelleEmail = "pay@expandhandyman.com";
+// The **Zelle tag** (CONTEXT.md) the invoice paper and the Pay sheet name
+// until the owner sets another in the app (convex/settings.ts). A setting
+// rather than a constant above, because the bank may change the tag without
+// a deploy.
+export const DefaultZelleTag = "expandhandyman";
 
 // The block under the company name on every sheet: where Expand works, how to
 // reach it, and its registrations. No street address.

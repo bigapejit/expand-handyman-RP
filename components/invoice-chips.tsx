@@ -25,6 +25,7 @@ export function InvoiceChip({
         "shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium",
         badge === "unpaid" && "border-sky-300 bg-sky-50 text-sky-900",
         badge === "overdue" && "border-red-300 bg-red-50 text-red-900",
+        badge === "on_its_way" && "border-amber-300 bg-amber-50 text-amber-900",
         badge === "paid" && "border-emerald-300 bg-emerald-50 text-emerald-900",
         badge === "draft" && "border-dashed border-slate-300 bg-white text-slate-600",
         badge === "void" && "border-slate-300 bg-slate-100 text-slate-500",

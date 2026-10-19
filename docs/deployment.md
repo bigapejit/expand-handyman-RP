@@ -28,11 +28,13 @@ npx convex env set CLERK_SECRET_KEY sk_live_… --prod
 
 Without it, Invite says "Invitations aren't set up on this deployment yet." and removing someone still deletes their row.
 
-## Legacy uploaded documents
+## Uploaded documents
 
-The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23: proposals, which the app makes itself, are what customers sign now. Nothing was migrated. The `documents` and `documentViews` tables, the `/file` endpoint that served the PDFs, the `/documents` pages, the Dashboard's Documents card, the Customer page's Documents section, the `backfillCustomerDetails` migration and the PDF.js and pdf-lib dependencies are gone. The `access` query the owner gate reads moved to `auth.ts`, and the upload URL the Photos tab uses to `photos.ts`.
+The app began as a portal for uploading a PDF, placing signature fields on it and sending it for signature. That feature was removed on 2026-09-23 (PR #124) and brought back on 2026-10-05, for paperwork the app does not write itself: proposals are still what customers sign for priced work. It returns as it was: the `documents` and `documentViews` tables, the `/file` endpoint that serves the PDFs, the `/documents` pages, the Dashboard's Documents card and the Customer page's Documents section, with PDF.js and pdf-lib back as dependencies and the postinstall that copies PDF.js's worker into `public/`. On a phone, Documents sits behind the account menu beside Staff. The owner gate still reads `auth.access`, and photos keep their own `photos.uploadUrl`.
 
-A customer opening an old document link now sees "This link is no longer live", and the signed PDF can no longer be downloaded through it. Convex accepts the schema without the two tables even where they still hold rows: they just stop being declared, and nothing in the app reads them. To tidy a deployment by hand, download any signed PDF worth keeping first, from the dashboard's Files page by the storage id in the row's `signedId` (`originalId` is the upload); then delete those files, and the `documents` and `documentViews` tables from the Data page. Files hold the proposal and invoice PDF copies and the site photos too, so delete only by those ids.
+Nothing to migrate. Where a deployment still holds the old rows, Convex checks them against the restored tables on the next push, and their links open again. Where the tables were deleted by hand, they start empty.
+
+The owner uploads an unlocked PDF (up to 20 MB and 100 pages), places the customer's signature and date fields and, if wanted, their own, applies their own signature, then creates a signing link and sends it themselves: Expand sends no email for a document. The customer signs or declines from the link. Their browser draws the signed PDF with its certificate and uploads it; Convex rebuilds the same PDF and compares SHA-256 before it records the signature. Creating a link locks the fields, withdrawing an unsigned link unlocks them, and a signed document never changes.
 
 ## Sites and address lookup
 
@@ -100,10 +102,51 @@ Dev and preview deployments stay without them and answer "This deployment does n
 Before the first production render, prove the paper against a Vercel preview whose Convex deployment has a sent proposal. Mint a pass on the deployment the preview reads (add `--prod` or `--preview-name <name>` to `npx convex run` if that isn't dev) and run the check within five minutes, using the production values of the two variables locally. If the preview is behind Vercel Deployment Protection, Cloudflare's browser stops at its login: append `?x-vercel-protection-bypass=<secret>` to the page URL.
 
 ```
-npx convex run pdfCopies:mintRenderPass '{"proposalId":"<id>","token":"<43 URL-safe characters>"}'
+npx convex run pdfCopies:mintRenderPass '{"paper":{"proposalId":"<id>"},"token":"<43 URL-safe characters>"}'
 CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_BROWSER_RENDERING_TOKEN=… npx tsx scripts/render-pdf-check.ts https://<preview>/paper/<token> check.pdf <code>
 ```
 
+`"paper":{"invoiceId":"<id>"}` mints a pass for a sent, paid or void invoice's paper instead, footed with its invoice number.
+
 It prints the sheet count, the words on each sheet (an empty last sheet is a fault) and the embedded fonts, which should be Tinos and, on a signed copy, Homemade Apple. `python -m pip install pypdf` enables that read-out.
 
-This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers render passes (single use, expiry, bound to one state, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.
+This adds the `renderPasses` table and the `pdfCopy` field on proposals, so run `npx convex deploy --yes` after merging. `tests/pdf-copies.test.ts` covers both papers, a proposal and an invoice, running the rules they share over each: render passes (single use, expiry, bound to one sheet, never a view), which states keep a file, and who may download, with Cloudflare stubbed at `fetch`; `tests/pdf-renderer.test.ts` covers the request and each renderer outcome.
+
+## Pay now through Stripe
+
+An unpaid invoice's link offers Pay by bank and Pay by card through Stripe's hosted Checkout (spec #121). Pressing either mints a Checkout Session from `stripePayments.mintCheckoutSession` for the full Amount Due, 30 minutes to live (plus a minute's margin, since Stripe measures its 30-minute floor by its own clock), and sends the customer to Stripe's page; coming back, `stripePayments.applyCheckoutReturn` reads the session from Stripe so the paper is right at once. Stripe's webhook then records the payment, a bank payment's confirmation or return, and a full refund or a lost dispute, through one mutation, `stripePayments.applyStripeEvent`, which keeps every event it has taken in `stripeEvents` so a redelivery changes nothing. The app never moves money: refunds and disputes are handled in Stripe's dashboard, and the app only listens. The one mail it sends is the Returned payment letters (`convex/stripeEmails.ts`), because Stripe sends nothing when a bank returns a debit. Only the owner's goes when the customer is not to be asked again: another bank payment is on its way, or was and has come back too with its own letters, or the invoice was voided or paid since. Stripe's own receipts and the owner's payment and dispute notifications are switched on in its dashboard.
+
+Two Convex variables drive it, set per deployment, test-mode values on dev and live ones on production:
+
+| Variable | What it is |
+| --- | --- |
+| `STRIPE_SECRET_KEY` | the account's secret key, `sk_test_…` on dev and `sk_live_…` on production. The panel's "See it in Stripe" links open the test dashboard while it starts `sk_test_`. |
+| `STRIPE_WEBHOOK_SECRET` | the signing secret, `whsec_…`, of the webhook destination that delivers to this deployment. |
+
+Both are set on dev (test mode) and production (live). On a deployment without `STRIPE_SECRET_KEY`, the Pay sheet refuses bank and card with "Paying by bank or card is not switched on yet. Please pay by Zelle or check as How to pay says." and the rest of the link works; without `STRIPE_WEBHOOK_SECRET`, the webhook answers 401 and writes nothing. Pay by bank and card also need `APP_ORIGIN`, already set for email, to bring the customer back to the link.
+
+```
+npx convex env set STRIPE_SECRET_KEY sk_test_…
+npx convex env set STRIPE_WEBHOOK_SECRET whsec_…
+npx convex env set --prod STRIPE_SECRET_KEY sk_live_…
+npx convex env set --prod STRIPE_WEBHOOK_SECRET whsec_…
+```
+
+The webhook is `POST https://<deployment>.convex.site/stripe/webhook` (`glorious-donkey-718` for dev, `dashing-cricket-260` for production). Each Stripe destination, the test one for dev and the live one for production, subscribes to exactly these six events:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `charge.refunded`
+- `charge.dispute.closed`
+
+Any other event it is sent is recorded and answered 200 untouched. A delivery whose signature does not check out, or whose body is not an event, is answered 400 and logged, never stored.
+
+Enable a destination only after the handler is deployed to the deployment it points at, so Stripe never retries against nothing: the test destination once this is on dev, the live one only after the test run below has passed.
+
+**Test run on dev**, in Stripe's test mode with the dev keys: send a throwaway invoice to `<owner>+test_email@<domain>` so Stripe's test emails go out, then on its link pay by card with `4242 4242 4242 4242`; by bank through the "Test (OAuth)" institution for a payment that confirms, and with the failing test account for one the bank returns (which account fails under instant verification is found while trying it); then refund one payment and lose a dispute from the sandbox dashboard. Check each on the link and in the panel, and for the return, both letters.
+
+**Live rehearsal**, on production with the live destination enabled: one typed invoice for a few dollars to the owner's own address paid by card, a second paid by bank, both refunded in Stripe's dashboard and seen to come off. Then customers get Pay now.
+
+`tests/stripe-pay-now.test.ts` covers minting and every refusal, each event twice and out of order, the success return, the webhook through the router with signed bodies, both letters and the link's page, with Stripe stubbed at `fetch`; `lib/stripe-events.test.ts` covers how an event is read.

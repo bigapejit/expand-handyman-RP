@@ -13,6 +13,7 @@ import type * as catalog from "../catalog.js";
 import type * as clerk from "../clerk.js";
 import type * as customers from "../customers.js";
 import type * as deals from "../deals.js";
+import type * as documents from "../documents.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
 import type * as invoiceEmails from "../invoiceEmails.js";
@@ -20,7 +21,9 @@ import type * as invoiceLinks from "../invoiceLinks.js";
 import type * as invoices from "../invoices.js";
 import type * as leads from "../leads.js";
 import type * as migrations from "../migrations.js";
+import type * as offers from "../offers.js";
 import type * as payments from "../payments.js";
+import type * as pdfActions from "../pdfActions.js";
 import type * as pdfCopies from "../pdfCopies.js";
 import type * as pdfCopyFiles from "../pdfCopyFiles.js";
 import type * as pdfRenderer from "../pdfRenderer.js";
@@ -34,6 +37,8 @@ import type * as signingLinks from "../signingLinks.js";
 import type * as sites from "../sites.js";
 import type * as solutions from "../solutions.js";
 import type * as staff from "../staff.js";
+import type * as stripeEmails from "../stripeEmails.js";
+import type * as stripePayments from "../stripePayments.js";
 
 import type {
   ApiFromModules,
@@ -47,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   clerk: typeof clerk;
   customers: typeof customers;
   deals: typeof deals;
+  documents: typeof documents;
   email: typeof email;
   http: typeof http;
   invoiceEmails: typeof invoiceEmails;
@@ -54,7 +60,9 @@ declare const fullApi: ApiFromModules<{
   invoices: typeof invoices;
   leads: typeof leads;
   migrations: typeof migrations;
+  offers: typeof offers;
   payments: typeof payments;
+  pdfActions: typeof pdfActions;
   pdfCopies: typeof pdfCopies;
   pdfCopyFiles: typeof pdfCopyFiles;
   pdfRenderer: typeof pdfRenderer;
@@ -68,6 +76,8 @@ declare const fullApi: ApiFromModules<{
   sites: typeof sites;
   solutions: typeof solutions;
   staff: typeof staff;
+  stripeEmails: typeof stripeEmails;
+  stripePayments: typeof stripePayments;
 }>;
 
 /**

@@ -55,9 +55,11 @@ describe("The chip a row wears", () => {
     expect(invoiceBadge({ state: "sent", standing: "overdue" })).toBe("overdue");
     expect(invoiceBadge({ state: "draft", standing: null })).toBe("draft");
     expect(invoiceBadge({ state: "void", standing: null })).toBe("void");
-    expect(["unpaid", "overdue", "paid", "draft", "void"].map((b) => invoiceBadgeLabel(b as never))).toEqual([
+    expect(invoiceBadge({ state: "sent", standing: "on_its_way" })).toBe("on_its_way");
+    expect(["unpaid", "overdue", "on_its_way", "paid", "draft", "void"].map((b) => invoiceBadgeLabel(b as never))).toEqual([
       "Unpaid",
       "Overdue",
+      "Payment on its way",
       "Paid",
       "Draft",
       "Void",
@@ -77,26 +79,27 @@ const row = (over: Partial<Row> & { id: string }): Row & { id: string } => ({
 describe("The Invoices page's filters", () => {
   const overdue = row({ id: "o", standing: "overdue" });
   const unpaid = row({ id: "u" });
+  const onItsWay = row({ id: "w", standing: "on_its_way" });
   const paid = row({ id: "p", standing: "paid" });
   const draft = row({ id: "d", state: "draft", standing: null, sentAt: null });
   const voided = row({ id: "v", state: "void", standing: null });
-  const all = [overdue, unpaid, paid, draft, voided];
+  const all = [overdue, unpaid, onItsWay, paid, draft, voided];
   const shown = (filter: Parameters<typeof matchesInvoiceFilter>[0]) =>
     all.filter((r) => matchesInvoiceFilter(filter, r)).map((r) => r.id);
 
-  it("counts an overdue invoice as unpaid too: Unpaid is everything still owed", () => {
-    expect(shown("unpaid")).toEqual(["o", "u"]);
+  it("counts overdue invoices and payments on their way as unpaid too: Unpaid is everything still owed", () => {
+    expect(shown("unpaid")).toEqual(["o", "u", "w"]);
     expect(shown("overdue")).toEqual(["o"]);
     expect(shown("paid")).toEqual(["p"]);
   });
 
   it("shows drafts and void invoices only under All", () => {
-    expect(shown("all")).toEqual(["o", "u", "p", "d", "v"]);
+    expect(shown("all")).toEqual(["o", "u", "w", "p", "d", "v"]);
   });
 });
 
 describe("The Invoices page's order", () => {
-  it("puts overdue first, then unpaid, then the rest, newest sent first within each", () => {
+  it("puts overdue first, then unpaid with payments on their way among them, then the rest, newest sent first within each", () => {
     const rows = [
       row({ id: "paid-new", standing: "paid", sentAt: 900 }),
       row({ id: "unpaid-old", sentAt: 100 }),
@@ -105,11 +108,13 @@ describe("The Invoices page's order", () => {
       row({ id: "void", state: "void", standing: null, sentAt: 800 }),
       row({ id: "overdue-new", standing: "overdue", sentAt: 50 }),
       row({ id: "draft", state: "draft", standing: null, sentAt: null, createdAt: 850 }),
+      row({ id: "on-its-way", standing: "on_its_way", sentAt: 300 }),
     ];
     expect(rows.sort(compareInvoiceRows).map((r) => r.id)).toEqual([
       "overdue-new",
       "overdue-old",
       "unpaid-new",
+      "on-its-way",
       "unpaid-old",
       "paid-new",
       "draft",

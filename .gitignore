@@ -7,7 +7,7 @@ node_modules/
 .scratch/
 .convex/
 test-results/
-# Left in old checkouts by the PDF.js postinstall the app no longer has.
+# Copied from pdfjs-dist by the postinstall (scripts/copy-worker.mjs).
 public/pdfjs/
 public/pdf.worker.min.mjs
 

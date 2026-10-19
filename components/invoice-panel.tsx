@@ -88,9 +88,9 @@ function OpenInvoice({
 // Everything about one invoice: its header, its lines and money, the sending
 // block, its payment, and a footer. A draft's lines are open for writing, with
 // Send in the sending block and Delete in the footer; once sent, the lines are
-// read only, Mark paid or Mark unpaid sits under the sending block, Download
-// joins the footer for the PDF copy, and so does Void while nothing is
-// recorded as paid.
+// read only, the payment block sits under the sending block, Download joins
+// the footer for the PDF copy, and so does Void while no payment stands and
+// none is on its way.
 function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: () => void }) {
   const update = useMutation(api.invoices.update);
   const remove = useMutation(api.invoices.remove);
@@ -104,8 +104,10 @@ function InvoicePanel({ invoice, onClose }: { invoice: PanelInvoice; onClose: ()
   // An amount typed in the draft that cannot be read yet (InvoiceDraftLines).
   const [unreadable, setUnreadable] = useState(false);
   const isDraft = invoice.state === "draft";
-  // Void is refused while a payment stands: marking it unpaid comes first.
-  const voidable = invoice.state === "sent" && invoice.payment === null;
+  // Void is refused while a payment stands, marking it unpaid coming first,
+  // and while a bank payment is on its way through Stripe.
+  const voidable =
+    invoice.state === "sent" && invoice.payment === null && invoice.onItsWay === null;
   // A sent or void invoice has a PDF copy; a draft has none.
   const pdf = usePdfDownload(isDraft ? null : { invoiceId: invoice.invoiceId });
   const shownRefusal = refusal || pdf.fault;

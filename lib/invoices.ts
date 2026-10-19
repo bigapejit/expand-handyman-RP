@@ -51,6 +51,8 @@ export function invoiceBadgeLabel(badge: InvoiceBadge): string {
       return "Unpaid";
     case "overdue":
       return "Overdue";
+    case "on_its_way":
+      return "Payment on its way";
     case "paid":
       return "Paid";
     case "draft":
@@ -76,7 +78,9 @@ export function invoicePaperHref(invoiceId: string): string {
 }
 
 // The Invoices page's Segmented. Unpaid is everything still owed, the overdue
-// with it; drafts and void invoices owe nothing and show only under All.
+// with it, and a payment on its way too: it is owed until the bank confirms
+// it, so it needs no filter of its own. Drafts and void invoices owe nothing
+// and show only under All.
 export type InvoiceFilter = "unpaid" | "overdue" | "paid" | "all";
 
 export const invoiceFilters: { value: InvoiceFilter; label: string }[] = [
@@ -94,16 +98,21 @@ export function matchesInvoiceFilter(
     case "all":
       return true;
     case "unpaid":
-      return invoice.standing === "unpaid" || invoice.standing === "overdue";
+      return (
+        invoice.standing === "unpaid" ||
+        invoice.standing === "overdue" ||
+        invoice.standing === "on_its_way"
+      );
     case "overdue":
     case "paid":
       return invoice.standing === filter;
   }
 }
 
-// Overdue first, then unpaid, then everything else, and newest sent first
-// within each: the overdue ones are at the top without the newest invoice
-// being buried.
+// Overdue first, then unpaid and on its way together, then everything else,
+// and newest sent first within each: the overdue ones are at the top without
+// the newest invoice being buried, and a payment on its way sits among the
+// unpaid, where it was the day before.
 export function compareInvoiceRows(x: InvoiceOrderRow, y: InvoiceOrderRow): number {
   return standingRank(x) - standingRank(y) || newestSentFirst(x, y);
 }
@@ -133,7 +142,7 @@ type InvoiceOrderRow = {
 
 function standingRank(row: InvoiceOrderRow): number {
   if (row.standing === "overdue") return 0;
-  if (row.standing === "unpaid") return 1;
+  if (row.standing === "unpaid" || row.standing === "on_its_way") return 1;
   return 2;
 }
 

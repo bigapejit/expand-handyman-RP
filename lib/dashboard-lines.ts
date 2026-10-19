@@ -1,6 +1,20 @@
-// How a proposal out with a customer reads on a Dashboard row: whether the
-// customer has opened it. Takes the locale and time zone so a test can pin
-// them; the app passes neither and gets the owner's own.
+// How a document out with a customer reads on a Dashboard row: when its link
+// was created, whether the customer has opened it, and how it was answered. Each
+// takes the locale and time zone so a test can pin them; the app passes neither
+// and gets the owner's own. The Dashboard's Proposals card says whether a
+// proposal was opened with the same `openedLine`.
+
+export function issuedLine(issuedAt: number, locale?: string, timeZone?: string) {
+  const when = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(issuedAt);
+  return `Link created ${when}`;
+}
 
 // "Opened twice, last Tuesday": the customer's views of the current link, and
 // how recently, which is what decides whether to chase them today.
@@ -14,6 +28,27 @@ export function openedLine(
   if (count === 0 || lastViewedAt === undefined) return "Not opened";
   const times = count === 1 ? "once" : count === 2 ? "twice" : `${count} times`;
   return `Opened ${times}, ${dayPhrase(lastViewedAt, now, locale, timeZone)}`;
+}
+
+export function decidedLine(
+  d: {
+    status: "signed" | "declined";
+    decidedAt: number;
+    signerName?: string;
+    declineReason?: string;
+  },
+  locale?: string,
+  timeZone?: string,
+) {
+  const day = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(d.decidedAt);
+  if (d.status === "signed")
+    return d.signerName ? `Signed ${day} by ${d.signerName}` : `Signed ${day}`;
+  return d.declineReason ? `Declined ${day}: ${d.declineReason}` : `Declined ${day}`;
 }
 
 // Today, yesterday, a weekday within the last week, then a date.

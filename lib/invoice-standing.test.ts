@@ -13,6 +13,7 @@ const sent = (sentAt: number, amountDueCents = 29_948) => ({
   sentAt,
   amountDueCents,
   hasPayment: false,
+  hasPaymentOnItsWay: false,
 });
 
 describe("The Pacific day", () => {
@@ -78,6 +79,32 @@ describe("An invoice's standing", () => {
     expect(invoiceStanding({ ...sent(at), hasPayment: true }, "2026-12-01")).toBe("paid");
   });
 
+  it("reads Payment on its way while a bank payment confirms, and never Overdue meanwhile", () => {
+    const at = pdt(2026, 9, 1);
+    const onItsWay = { ...sent(at), hasPaymentOnItsWay: true };
+    expect(invoiceStanding(onItsWay, "2026-09-01")).toBe("on_its_way");
+    expect(invoiceStanding(onItsWay, "2026-09-09")).toBe("on_its_way");
+    expect(invoiceStanding(onItsWay, "2026-12-01")).toBe("on_its_way");
+  });
+
+  it("is Paid, not on its way, once a payment is recorded beside it, and Paid when nothing is due", () => {
+    const at = pdt(2026, 9, 1);
+    expect(
+      invoiceStanding({ ...sent(at), hasPayment: true, hasPaymentOnItsWay: true }, "2026-09-20"),
+    ).toBe("paid");
+    expect(invoiceStanding({ ...sent(at, 0), hasPaymentOnItsWay: true }, "2026-09-20")).toBe(
+      "paid",
+    );
+  });
+
+  it("counts Overdue from the sent day again once the payment is no longer on its way", () => {
+    // Returned on the 12th, the invoice sent on the 1st is Overdue at once:
+    // the bounce bought no time.
+    const at = pdt(2026, 9, 1);
+    expect(invoiceStanding(sent(at), "2026-09-12")).toBe("overdue");
+    expect(invoiceStanding(sent(at), "2026-09-08")).toBe("unpaid");
+  });
+
   it("leaves a credit Unpaid until it is marked paid", () => {
     const at = pdt(2026, 9, 1);
     expect(invoiceStanding(sent(at, -8_000), "2026-09-02")).toBe("unpaid");
@@ -87,9 +114,15 @@ describe("An invoice's standing", () => {
   it("is nothing for a draft or a void invoice", () => {
     const at = pdt(2026, 9, 1);
     expect(
-      invoiceStanding({ state: "draft", amountDueCents: 0, hasPayment: false }, "2026-09-20"),
+      invoiceStanding(
+        { state: "draft", amountDueCents: 0, hasPayment: false, hasPaymentOnItsWay: false },
+        "2026-09-20",
+      ),
     ).toBeNull();
     expect(invoiceStanding({ ...sent(at), state: "void" }, "2026-09-20")).toBeNull();
     expect(invoiceStanding({ ...sent(at, 0), state: "void", hasPayment: true }, "2026-09-20")).toBeNull();
+    expect(
+      invoiceStanding({ ...sent(at), state: "void", hasPaymentOnItsWay: true }, "2026-09-20"),
+    ).toBeNull();
   });
 });

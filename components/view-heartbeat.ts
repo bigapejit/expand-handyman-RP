@@ -7,11 +7,13 @@ import { sendSeenBeacon } from "@/lib/files";
 // How long a signing-link view lasts (ADR 0001): a heartbeat every 20 seconds
 // while the tab is visible, and a beacon when it is hidden or closed. The view
 // itself is logged by the page once what it shows has arrived; this only keeps
-// it counting.
+// it counting. Documents and proposals keep separate logs, and a proposal's
+// beacon says so.
 export function useViewHeartbeat<ViewId extends string>(
   view: RefObject<ViewId | null>,
   token: string,
   seen: (args: { viewId: ViewId; token: string }) => Promise<unknown>,
+  kind?: "proposal",
 ) {
   useEffect(() => {
     const beat = () => {
@@ -19,7 +21,7 @@ export function useViewHeartbeat<ViewId extends string>(
         void seen({ viewId: view.current, token }).catch(() => {});
     };
     const close = () => {
-      if (view.current) sendSeenBeacon(view.current, token);
+      if (view.current) sendSeenBeacon(view.current, token, kind);
     };
     const onVisibility = () =>
       document.visibilityState === "visible" ? beat() : close();
@@ -35,5 +37,5 @@ export function useViewHeartbeat<ViewId extends string>(
       // last heartbeat was still read, so it is sent now.
       close();
     };
-  }, [view, seen, token]);
+  }, [view, seen, token, kind]);
 }

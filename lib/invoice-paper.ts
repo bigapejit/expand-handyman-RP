@@ -19,8 +19,12 @@ export type PaperInvoice = {
   // Before tax, in the order the invoice lists them.
   lines: InvoiceLine[];
   taxRate: number;
-  // The owner's Zelle setting at the moment the paper is read.
-  zelleEmail: string;
+  // How to pay: the owner's **Zelle tag** setting at the moment the paper is
+  // read, and where a check may be mailed, null until the owner has supplied
+  // an address (lib/expand-business.ts), when the paper says a check is
+  // handed over in person only.
+  zelleTag: string;
+  mailingAddress: string | null;
   // PAID once a payment is recorded, VOID once voided, and nothing while it
   // is owed or still a draft.
   stamp: InvoiceStamp | null;

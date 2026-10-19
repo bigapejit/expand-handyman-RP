@@ -1,10 +1,10 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
+import type { FunctionArgs } from "convex/server";
 import { useState } from "react";
 
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import type { InvoicePaperState } from "@/lib/invoice-paper";
 import type { PdfCopyState } from "@/lib/pdf-copy";
 import { errorMessage } from "@/lib/utils";
@@ -17,50 +17,17 @@ import { errorMessage } from "@/lib/utils";
 // another render. Ported from FRSG's PaperDownload, split from its
 // button because the panel draws a staff button and the paper a paper one.
 //
-// The owner names the proposal or the invoice; the customer names nothing but
-// their signing or invoice link, which is the whole of their authority. None
-// is ever logged as a view. No source reads nothing, for a paper with no PDF
-// copy to offer.
-export type PdfSource =
-  | { proposalId: Id<"proposals"> }
-  | { token: string }
-  | { invoiceId: Id<"invoices"> }
-  | { invoiceToken: string };
+// The owner names the proposal or the invoice by id (`proposalId`,
+// `invoiceId`); the customer names nothing but the token of their signing or
+// invoice link (`signingToken`, `invoiceToken`), which is the whole of their
+// authority. None is ever logged as a view. No source reads nothing, for a
+// paper with no PDF copy to offer.
+export type PdfSource = FunctionArgs<typeof api.pdfCopies.download>["paper"];
 
 export function usePdfDownload(source: PdfSource | null) {
-  const owner = source && "proposalId" in source ? source : null;
-  const customer = source && "token" in source ? source : null;
-  const invoiceOwner = source && "invoiceId" in source ? source : null;
-  const invoiceCustomer =
-    source && "invoiceToken" in source ? { token: source.invoiceToken } : null;
-  const ownerFile = useQuery(api.pdfCopies.downloadForOwner, owner ?? "skip");
-  const customerFile = useQuery(api.pdfCopies.downloadForCustomer, customer ?? "skip");
-  const invoiceOwnerFile = useQuery(api.pdfCopies.invoiceDownloadForOwner, invoiceOwner ?? "skip");
-  const invoiceCustomerFile = useQuery(
-    api.pdfCopies.invoiceDownloadForCustomer,
-    invoiceCustomer ?? "skip",
-  );
-  const renderForOwner = useAction(api.pdfCopies.renderForOwner);
-  const renderForCustomer = useAction(api.pdfCopies.renderForCustomer);
-  const renderInvoiceForOwner = useAction(api.pdfCopies.renderInvoiceForOwner);
-  const renderInvoiceForCustomer = useAction(api.pdfCopies.renderInvoiceForCustomer);
-  const stored = owner
-    ? ownerFile
-    : customer
-      ? customerFile
-      : invoiceOwner
-        ? invoiceOwnerFile
-        : invoiceCustomerFile;
+  const stored = useQuery(api.pdfCopies.download, source ? { paper: source } : "skip");
   // What a press with no stored file asks the server to make.
-  const render = owner
-    ? () => renderForOwner(owner)
-    : customer
-      ? () => renderForCustomer(customer)
-      : invoiceOwner
-        ? () => renderInvoiceForOwner(invoiceOwner)
-        : invoiceCustomer
-          ? () => renderInvoiceForCustomer(invoiceCustomer)
-          : null;
+  const render = useAction(api.pdfCopies.render);
 
   const [working, setWorking] = useState(false);
   // What stopped the last press, in the server's words: someone who presses
@@ -77,8 +44,8 @@ export function usePdfDownload(source: PdfSource | null) {
     try {
       const file = stored
         ? { outcome: "ready" as const, ...stored }
-        : render
-          ? await render()
+        : source
+          ? await render({ paper: source })
           : null;
       if (!file) return;
       if (file.outcome === "unavailable") {

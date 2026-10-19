@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "./providers";
@@ -17,8 +17,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Expand Handyman · Staff",
   description: "Proposals, invoices and customer signatures for Expand Handyman.",
-  icons: { icon: "/logo.svg" },
+  icons: { icon: "/logo.svg", apple: "/icons/apple-touch-icon.png" },
   robots: { index: false, follow: false },
+  // Android reads app/manifest.ts; iOS reads these when the site is added to
+  // the home screen.
+  appleWebApp: { capable: true, title: "Expand", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#ffffff",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

@@ -221,7 +221,7 @@ export function DealPanel({
         <div className="border-t pt-4">
           <Link
             href={`/customers/${deal.customerId}`}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline max-md:-my-2.5 max-md:py-2.5"
           >
             <UserRound aria-hidden className="size-4" /> Open customer
           </Link>

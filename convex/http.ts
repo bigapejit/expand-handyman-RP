@@ -2,6 +2,12 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import {
+  disputedChargeFromStripe,
+  failureReasonFromStripe,
+  verifiedStripeEvent,
+} from "./stripePayments";
+import { prunedStripeEvent, readStripeEvent } from "../lib/stripe-events";
 import { eventTypeOf, webhookAuthorized } from "../lib/thumbtack";
 const http = httpRouter();
 const cors = (request: Request) => {
@@ -17,10 +23,56 @@ const cors = (request: Request) => {
       : "https://staff.expandhandyman.com",
     Vary: "Origin",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 };
+http.route({
+  path: "/file",
+  method: "OPTIONS",
+  handler: httpAction(
+    async (_ctx, req) =>
+      new Response(null, { status: 204, headers: cors(req) }),
+  ),
+});
+http.route({
+  path: "/file",
+  method: "GET",
+  handler: httpAction(async (ctx, req) => {
+    try {
+      const url = new URL(req.url);
+      const access = await ctx.runQuery(internal.documents.fileAccess, {
+        id: url.searchParams.get("id") as Id<"documents">,
+        token: url.searchParams.get("token") || undefined,
+        signed: url.searchParams.get("signed") === "1",
+      });
+      if (!access?.storageId)
+        return new Response("Document unavailable", {
+          status: 404,
+          headers: cors(req),
+        });
+      const blob = await ctx.storage.get(access.storageId);
+      if (!blob)
+        return new Response("Document unavailable", {
+          status: 404,
+          headers: cors(req),
+        });
+      return new Response(blob, {
+        headers: {
+          ...cors(req),
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="document.pdf"`,
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch {
+      return new Response("Document unavailable", {
+        status: 404,
+        headers: cors(req),
+      });
+    }
+  }),
+});
 http.route({
   path: "/seen",
   method: "OPTIONS",
@@ -35,11 +87,22 @@ http.route({
   handler: httpAction(async (ctx, req) => {
     try {
       const body = JSON.parse(await req.text());
-      if (typeof body?.viewId === "string" && typeof body?.token === "string")
-        await ctx.runMutation(internal.signingLinks.recordSeen, {
-          viewId: body.viewId as Id<"proposalViews">,
-          token: body.token,
-        });
+      // Documents and proposals keep separate view logs; a beacon from a
+      // proposal's signing page says so, and one that says nothing is a
+      // document's, as every beacon was before proposals had links.
+      if (typeof body?.viewId === "string" && typeof body?.token === "string") {
+        if (body.kind === "proposal") {
+          await ctx.runMutation(internal.signingLinks.recordSeen, {
+            viewId: body.viewId as Id<"proposalViews">,
+            token: body.token,
+          });
+        } else {
+          await ctx.runMutation(internal.documents.recordSeen, {
+            viewId: body.viewId as Id<"documentViews">,
+            token: body.token,
+          });
+        }
+      }
     } catch {
       // A beacon has no one to report to; an unreadable body is simply dropped.
     }
@@ -56,7 +119,7 @@ const thumbtackReply = (status: number, body?: Record<string, unknown>) =>
     status,
     headers: body ? { "Content-Type": "application/json" } : {},
   });
-// Enough of a refused body to see what it was.
+// Enough of a refused body to see what it was, well under a document's limit.
 const MaxLoggedBody = 100_000;
 http.route({
   path: "/thumbtack",
@@ -98,6 +161,60 @@ http.route({
         // Nowhere left to record it; the 500 is all Thumbtack gets.
       }
       return thumbtackReply(500);
+    }
+  }),
+});
+// Stripe's webhook, for **Pay now** (CONTEXT.md): the two destinations, test
+// on dev and live on production, deliver here, server to server. The body is
+// read as text, untouched, because the signature is over the raw bytes. A
+// delivery that is not Stripe's (a bad signature, a body that is not an
+// event) is answered 400 and logged, never stored, so a scanner cannot fill
+// a table; while no signing secret is set the endpoint is shut, as the
+// Thumbtack one is. Anything else is applied by one mutation and answered
+// 200, including the event types the app leaves alone, so Stripe stops
+// sending them; only a failure to apply answers 500, for Stripe to retry.
+// What the mutation needs and the event does not carry, a returned payment's
+// reason or a lost dispute's charge, is asked of Stripe first.
+const stripeReply = (status: number) => new Response(null, { status });
+http.route({
+  path: "/stripe/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+    if (!secret) {
+      console.error("Stripe webhook refused: this deployment has no STRIPE_WEBHOOK_SECRET.");
+      return stripeReply(401);
+    }
+    let event;
+    try {
+      event = prunedStripeEvent(
+        await verifiedStripeEvent(
+          await req.text(),
+          req.headers.get("Stripe-Signature") ?? "",
+          secret,
+        ),
+      );
+    } catch (error) {
+      console.error(
+        `Stripe webhook refused: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return stripeReply(400);
+    }
+    try {
+      const reading = readStripeEvent(event);
+      const failureReason = await failureReasonFromStripe(reading);
+      const charge = await disputedChargeFromStripe(reading);
+      await ctx.runMutation(internal.stripePayments.applyStripeEvent, {
+        event,
+        ...(failureReason ? { failureReason } : {}),
+        ...(charge ? { charge } : {}),
+      });
+      return stripeReply(200);
+    } catch (error) {
+      console.error(
+        `Stripe event ${String(event.id)} was not applied: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return stripeReply(500);
     }
   }),
 });

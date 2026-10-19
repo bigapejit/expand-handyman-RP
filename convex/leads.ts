@@ -241,7 +241,7 @@ function thumbtackPhone(raw: string) {
 async function dropBareStandIn(ctx: MutationCtx, customerId: Id<"customers">) {
   const customer = await ctx.db.get(customerId);
   if (!customer || customer.email || customer.phone) return;
-  for (const table of ["leads", "deals", "sites"] as const) {
+  for (const table of ["leads", "deals", "sites", "documents"] as const) {
     const held = await ctx.db
       .query(table)
       .withIndex("by_customer", (q) => q.eq("customerId", customerId))

@@ -137,6 +137,20 @@
   --accent: #f0eeea;
   --ring: #c18718;
 }
+@font-face {
+  font-family: "Allura";
+  src: url("/fonts/Allura-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+.signature-ink {
+  font-family: "Homemade Apple", cursive;
+  color: #1a1f7a;
+}
+@font-face {
+  font-family: "Homemade Apple";
+  src: url("/fonts/HomemadeApple-Regular.woff2") format("woff2");
+  font-display: block;
+}
 button,
 a,
 input {

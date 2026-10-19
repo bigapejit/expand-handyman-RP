@@ -66,11 +66,11 @@ export function ProposalSigningPage({ token }: { token: string }) {
       })
       .catch(() => {});
   }, [arrived, opened, token]);
-  useViewHeartbeat(view, token, seen);
+  useViewHeartbeat(view, token, seen, "proposal");
 
   if (page === undefined) return <PaperLoading />;
   if (page === null) return <LinkNotLive what="proposal" />;
-  const { paper, noticeRequired } = page;
+  const { paper, noticeRequired, deposit } = page;
 
   // One of the two acts, run against the server. The form closes only when the
   // server has committed; a refusal stays on the form, in its words. What the
@@ -98,7 +98,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
       // The PDF copy, while this link opens the paper: the offer, or the
       // signed copy once approved. A declined proposal has none. The owner
       // previewing through the link gets the same button.
-      download={{ token }}
+      download={{ signingToken: token }}
       pending={
         paper.state === "sent"
           ? {
@@ -115,6 +115,7 @@ export function ProposalSigningPage({ token }: { token: string }) {
         <ProposalSignBar
           paper={paper}
           noticeRequired={noticeRequired}
+          deposit={deposit}
           open={open}
           busy={busy}
           error={error}
