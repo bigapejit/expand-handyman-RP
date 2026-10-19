@@ -121,3 +121,12 @@ export function protectedResourceMetadata(origin: string, authServerUrl: string)
     resource_documentation: `${origin}/`,
   };
 }
+
+// The metadata routes answer any origin: a browser-based MCP client reads
+// them before it holds a token, and they say nothing that is not public.
+export const MetadataCorsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Max-Age": "86400",
+};
