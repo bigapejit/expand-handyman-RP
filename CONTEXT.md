@@ -8,7 +8,7 @@ Expand Handyman prices handyman work at a customer's site, sends the proposal fo
 The person who pays for handyman work and signs its paperwork, added by the owner by hand or made by a Thumbtack lead arriving. Holds contact details and documents; the work itself lives on their sites. Has zero or more sites, and can exist with no site until a proposal is needed. The owner looks a customer up mainly to reach their sites.
 
 **Site**:
-One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. The place the owner works from: solutions, proposals, invoices and photos all belong to a site, and reaching any of them from elsewhere in the app lands on the site. A customer may have many. Documents belong to the customer, not the site.
+One verified street address belonging to a customer where handyman work takes place, picked from Google's address suggestions. Solutions, proposals, invoices and photos all belong to a site, and solutions are written and priced on the site's page; the owner works a proposal from its own proposal page, which links back to the site. A customer may have many. Documents belong to the customer, not the site.
 _Avoid_: Property, address, location, service address (as the name of the record)
 
 **Site name**:
@@ -85,6 +85,14 @@ _Avoid_: Burden, burdened rate, labor rate
 **Proposal**:
 An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
+
+**Proposal board**:
+The home page: every proposal in four columns by how far the job has got (Drafts, With customer, Approved · to do, Done & declined), each with one plain hint about what it is waiting on, and above them what customers owe and how much of it is late. A proposal moves to Done once its final invoice is sent and everything on it is paid.
+_Avoid_: Dashboard, pipeline, kanban
+
+**Proposal page**:
+One proposal's own page, where the owner works it: the customer and site with ways to reach them, the solutions with their Job math, the draft's fields, Send and the signing link's actions, and the invoices once approved. Writing or pricing a solution still happens on the site.
+_Avoid_: Proposal panel (the narrower one on the site's page)
 
 **Deposit**:
 The part of a proposal's total due on signing, with the rest due on completion. The owner states it either as a whole percent of the total (50% unless changed; 0% and 100% are allowed) or as a set amount that stays as typed when the total changes, and never more than the total. The deposit invoice bills it when the customer approves.
