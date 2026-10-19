@@ -5,6 +5,7 @@ import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { WashingtonNoticeToCustomer } from "../lib/expand-business";
 import { pacificDay } from "../lib/invoice-standing";
+import { DefaultJobMathSettings, jobMathSettingsFaultMessage } from "../lib/job-math";
 import { SigningConsent } from "../lib/proposal-signing";
 
 const modules = import.meta.glob("../convex/**/*.ts");
@@ -552,13 +553,13 @@ describe("The Zelle tag setting", () => {
     const { t, owner, customer, approved, links } = fixture();
     const { invoiceId } = await approved(await customer());
     const [link] = await links(invoiceId);
-    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expandhandyman" });
+    expect(await owner.query(api.settings.get, {})).toMatchObject({ zelleTag: "expandhandyman" });
     const before = await t.query(api.invoiceLinks.page, { token: link.token });
     expect(before?.paper.zelleTag).toBe("expandhandyman");
 
     // Zelle ignores case, so the tag is kept as Zelle reads it.
     await owner.mutation(api.settings.setZelleTag, { zelleTag: " Expand-Handyman-WA " });
-    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expand-handyman-wa" });
+    expect(await owner.query(api.settings.get, {})).toMatchObject({ zelleTag: "expand-handyman-wa" });
     const page = await t.query(api.invoiceLinks.page, { token: link.token });
     expect(page?.paper.zelleTag).toBe("expand-handyman-wa");
     const paper = await owner.query(api.invoices.paper, { invoiceId });
@@ -573,7 +574,7 @@ describe("The Zelle tag setting", () => {
     const { owner } = fixture();
     await owner.mutation(api.settings.setZelleTag, { zelleTag: "expand-handyman-wa" });
     await owner.mutation(api.settings.setZelleTag, { zelleTag: "  " });
-    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expandhandyman" });
+    expect(await owner.query(api.settings.get, {})).toMatchObject({ zelleTag: "expandhandyman" });
   });
 
   test("refuses a tag Zelle would refuse, in Zelle's own rule, and keeps the one before", async () => {
@@ -583,8 +584,49 @@ describe("The Zelle tag setting", () => {
       await expect(owner.mutation(api.settings.setZelleTag, { zelleTag: tag })).rejects.toThrow(
         "A Zelle tag is 6 to 40 letters, digits and hyphens, like expandhandyman.",
       );
-    expect(await owner.query(api.settings.get, {})).toEqual({ zelleTag: "expand-handyman-wa" });
+    expect(await owner.query(api.settings.get, {})).toMatchObject({ zelleTag: "expand-handyman-wa" });
     expect(await t.run((ctx) => ctx.db.query("settings").collect())).toHaveLength(1);
+  });
+});
+
+describe("The Job math settings", () => {
+  test("read the defaults until the owner saves others, which then read back", async () => {
+    const { owner } = fixture();
+    expect((await owner.query(api.settings.get, {})).jobMath).toEqual(DefaultJobMathSettings);
+    const mine = { ...DefaultJobMathSettings, profitPercent: 12.5, workersCompCentsPerHour: 131 };
+    await owner.mutation(api.settings.setJobMath, mine);
+    expect((await owner.query(api.settings.get, {})).jobMath).toEqual(mine);
+  });
+
+  test("share the one settings row with the Zelle tag, leaving it alone", async () => {
+    const { t, owner } = fixture();
+    await owner.mutation(api.settings.setZelleTag, { zelleTag: "expand-handyman-wa" });
+    await owner.mutation(api.settings.setJobMath, { ...DefaultJobMathSettings, opsPercent: 8 });
+    expect(await owner.query(api.settings.get, {})).toMatchObject({
+      zelleTag: "expand-handyman-wa",
+      jobMath: { opsPercent: 8 },
+    });
+    expect(await t.run((ctx) => ctx.db.query("settings").collect())).toHaveLength(1);
+  });
+
+  test("refuse buckets of 100% or more in the calculator's own words, and keep the ones before", async () => {
+    const { owner } = fixture();
+    await expect(
+      owner.mutation(api.settings.setJobMath, {
+        ...DefaultJobMathSettings,
+        profitPercent: 50,
+        marketingPercent: 50,
+      }),
+    ).rejects.toThrow(jobMathSettingsFaultMessage("buckets_too_high"));
+    expect((await owner.query(api.settings.get, {})).jobMath).toEqual(DefaultJobMathSettings);
+  });
+
+  test("are the owner's alone", async () => {
+    const { t } = fixture();
+    await expect(t.query(api.settings.get, {})).rejects.toThrow("Owner access required");
+    await expect(t.mutation(api.settings.setJobMath, DefaultJobMathSettings)).rejects.toThrow(
+      "Owner access required",
+    );
   });
 });
 

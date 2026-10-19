@@ -3,10 +3,17 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { DefaultZelleTag } from "../lib/expand-business";
+import {
+  jobMathSettingsFault,
+  jobMathSettingsFaultMessage,
+  readJobMathSettings,
+} from "../lib/job-math";
 import { readZelleTag, ZelleTagRule } from "../lib/pay-now";
 
 // The business's one row of settings (convex/schema.ts, `settings`), edited
-// by the owner from the Invoices page's header. There is no Settings page.
+// by the owner where each is used: the Zelle tag from the Invoices page's
+// header, Job math's percentages from the Job math page. There is no Settings
+// page.
 
 // The **Zelle tag** the invoice paper and the Pay sheet name, read at render
 // time so a change reaches every paper, sent or not, without a deploy.
@@ -20,7 +27,11 @@ export const get = query({
   args: {},
   handler: async (ctx) => {
     await requireOwner(ctx);
-    return { zelleTag: await zelleTag(ctx) };
+    const settings = await ctx.db.query("settings").first();
+    return {
+      zelleTag: settings?.zelleTag || DefaultZelleTag,
+      jobMath: readJobMathSettings(settings),
+    };
   },
 });
 
@@ -40,5 +51,29 @@ export const setZelleTag = mutation({
     const zelle = tag ?? undefined;
     if (settings) await ctx.db.patch(settings._id, { zelleTag: zelle });
     else await ctx.db.insert("settings", { zelleTag: zelle });
+  },
+});
+
+// **Job math**'s percentages and rates, saved whole from the form that shows
+// them all. Refused with the same fault the form words (lib/job-math.ts), so
+// nothing the calculator can't divide by is ever stored.
+export const setJobMath = mutation({
+  args: {
+    profitPercent: v.number(),
+    marketingPercent: v.number(),
+    opsPercent: v.number(),
+    ownerTaxPercent: v.number(),
+    payrollTaxPercent: v.number(),
+    workersCompCentsPerHour: v.number(),
+    wageCents: v.number(),
+  },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const fault = jobMathSettingsFault(a);
+    if (fault)
+      throw new ConvexError({ code: fault, message: jobMathSettingsFaultMessage(fault) });
+    const settings = await ctx.db.query("settings").first();
+    if (settings) await ctx.db.patch(settings._id, a);
+    else await ctx.db.insert("settings", a);
   },
 });
