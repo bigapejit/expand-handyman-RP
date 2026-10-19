@@ -18,7 +18,12 @@ export function ProposalsHome() {
   const variant = useVariant();
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8">
+    <div
+      className={cn(
+        "mx-auto w-full space-y-8",
+        variant === "A" ? "max-w-7xl" : "max-w-3xl",
+      )}
+    >
       <PrototypeBar switchable />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
@@ -65,42 +70,102 @@ function OwedLine({ owedCents, overdueCents }: { owedCents: number; overdueCents
   );
 }
 
-// Variant A: four stages, the last folded away.
-const stages: { group: Exclude<Group, "done">; title: string; empty: string }[] = [
-  { group: "draft", title: "Drafts to finish", empty: "No drafts." },
-  { group: "waiting", title: "Waiting on the customer", empty: "Nothing out with a customer." },
-  { group: "approved", title: "Approved · work to do", empty: "No approved work open." },
+// Variant A: a board, one column per stage, left to right in the order a
+// job moves. No cards: columns are split by a hairline and jobs inside a
+// column by another, so the board reads as one sheet. On a phone the columns
+// scroll sideways, one screen-wide column at a time.
+const stages: { group: Group; title: string; empty: string }[] = [
+  { group: "draft", title: "Drafts", empty: "No drafts." },
+  { group: "waiting", title: "With customer", empty: "Nothing out with a customer." },
+  { group: "approved", title: "Approved · to do", empty: "No approved work open." },
+  { group: "done", title: "Done & declined", empty: "Nothing finished yet." },
 ];
 
 function ByStage({ rows }: { rows: BoardRow[] }) {
   const inGroup = (group: Group) => rows.filter((row) => row.group === group);
   return (
-    <div className="space-y-10">
-      {stages.map((stage) => {
-        const held = inGroup(stage.group);
-        const ordered =
-          stage.group === "waiting"
-            ? [...held].sort((x, y) => x.at - y.at)
-            : stage.group === "approved"
-              ? [...held].sort((x, y) => y.urgency - x.urgency || y.at - x.at)
-              : held;
-        return (
-          <Section
-            key={stage.group}
-            title={stage.title}
-            count={held.length}
-            totalCents={stage.group === "draft" ? null : sumTotals(held)}
-          >
-            {held.length === 0 ? (
-              <p className="px-1 text-slate-400">{stage.empty}</p>
-            ) : (
-              <RowList rows={ordered} />
-            )}
-          </Section>
-        );
-      })}
-      <Folded rows={inGroup("done")} label="Done & declined" />
+    <div className="no-scrollbar -mx-4 snap-x snap-mandatory overflow-x-auto md:mx-0 md:overflow-visible">
+      <div className="grid w-max grid-cols-[repeat(4,85vw)] border-y border-slate-200 md:w-full md:grid-cols-4">
+        {stages.map((stage, index) => {
+          const held = inGroup(stage.group);
+          const ordered =
+            stage.group === "waiting"
+              ? [...held].sort((x, y) => x.at - y.at)
+              : stage.group === "approved"
+                ? [...held].sort((x, y) => y.urgency - x.urgency || y.at - x.at)
+                : [...held].sort((x, y) => y.at - x.at);
+          return (
+            <section
+              key={stage.group}
+              aria-label={stage.title}
+              className={cn(
+                "min-w-0 snap-start",
+                index > 0 && "border-l border-slate-200",
+              )}
+            >
+              <header className="flex items-baseline justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                <h2 className="text-sm font-semibold whitespace-nowrap text-slate-900">
+                  {stage.title}
+                  {held.length > 0 ? (
+                    <span className="ml-1.5 font-normal text-slate-400">{held.length}</span>
+                  ) : null}
+                </h2>
+                {stage.group !== "draft" && stage.group !== "done" && held.length > 0 ? (
+                  <span className="text-xs text-slate-500 tabular-nums">
+                    {formatCents(sumTotals(held))}
+                  </span>
+                ) : null}
+              </header>
+              {held.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-400">{stage.empty}</p>
+              ) : (
+                <ol className="divide-y divide-slate-100">
+                  {ordered.map((row) => (
+                    <li key={row.proposalId}>
+                      <BoardItem row={row} muted={stage.group === "done"} />
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </div>
+  );
+}
+
+// One job on the board: who and what it costs on the first line, where and
+// what under it, and the one plain hint last. Sized for a quarter of the page.
+function BoardItem({ row, muted }: { row: BoardRow; muted: boolean }) {
+  return (
+    <Link
+      href={`/proposals/${row.proposalId}`}
+      className="block space-y-1 px-4 py-3 transition-colors hover:bg-amber-50/50"
+    >
+      <span className="flex items-baseline justify-between gap-3">
+        <span
+          className={cn(
+            "min-w-0 truncate text-[15px] font-medium",
+            muted ? "text-slate-600" : "text-slate-900",
+          )}
+        >
+          {row.customerName}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 text-sm font-semibold tabular-nums",
+            muted ? "text-slate-500" : "text-slate-900",
+          )}
+        >
+          {row.totalCents ? formatCents(row.totalCents) : "—"}
+        </span>
+      </span>
+      <span className="line-clamp-2 block text-sm text-slate-500">
+        {[row.street, row.title].filter(Boolean).join(" · ")}
+      </span>
+      <Hint row={row} />
+    </Link>
   );
 }
 
