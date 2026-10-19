@@ -86,12 +86,8 @@ _Avoid_: Burden, burdened rate, labor rate
 An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
 
-**Proposal board**:
-The home page: every proposal in four columns by how far the job has got (Drafts, With customer, Approved · to do, Done & declined), each with one plain hint about what it is waiting on, and above them what customers owe and how much of it is late. A proposal moves to Done once its final invoice is sent and everything on it is paid.
-_Avoid_: Dashboard, pipeline, kanban
-
 **Proposal page**:
-One proposal's own page, where the owner works it: the customer and site with ways to reach them, the solutions with their Job math, the draft's fields, Send and the signing link's actions, and the invoices once approved. Writing or pricing a solution still happens on the site.
+One proposal's own page, where the owner works it: the deal it is for, the customer and site with ways to reach them, the solutions with their Job math, the draft's fields, Send and the signing link's actions, and the invoices once approved. The owner reaches it from the deal on the Pipeline, and it leads back there. Writing or pricing a solution still happens on the site.
 _Avoid_: Proposal panel (the narrower one on the site's page)
 
 **Deposit**:
@@ -256,8 +252,8 @@ The owner's guess at a deal's price in whole dollars, before any proposal. Once 
 _Avoid_: Estimate (Thumbtack's own figure on a lead), quote
 
 **Pipeline**:
-The staff page listing every open deal by stage, newest first, with a mark on each Thumbtack deal whose lead is Unread. Won and Lost deals are listed under Closed.
-_Avoid_: Leads page, Thumbtack board, CRM
+The home page, listing every open deal by stage, newest first, with a mark on each Thumbtack deal whose lead is Unread. Won and Lost deals are listed under Closed. A deal's panel leads to its proposals, each on its own proposal page.
+_Avoid_: Leads page, Thumbtack board, Proposal board, Dashboard, CRM
 
 **Notes** (on a deal):
 One free-text field the owner keeps for themself on a deal. Never shown to the customer.
