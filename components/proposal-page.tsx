@@ -20,7 +20,7 @@ import type { ReactNode } from "react";
 
 import { InvoicePanelHost } from "@/components/invoice-panel";
 import { JobMathLine } from "@/components/job-math-line";
-import { Hint, useProposalBoard } from "@/components/proposal-board";
+import { Hint, useBoardRow } from "@/components/proposal-board";
 import {
   ProposalActions,
   ProposalDraftFields,
@@ -52,16 +52,13 @@ type LiveSolution = FunctionReturnType<typeof api.solutions.forSite>[number];
 // Duplicate and Delete under it all. Writing a Solution or changing its price
 // still happens on the Site's Solutions tab, one tap away.
 //
-// The proposal is found through the board, which already reads every
-// proposal with its site and its plain hint, so the status line here and the
-// row on the board can never say different things.
+// The proposal is read by its id and laid out the way the board lays out its
+// row, with the same plain hint, so the status line here and the row on the
+// board can never say different things.
 export function ProposalPage({ proposalId }: { proposalId: string }) {
-  const board = useProposalBoard();
-  const row = board?.columns
-    .flatMap((column) => column.rows)
-    .find((candidate) => candidate.proposalId === proposalId);
+  const row = useBoardRow(proposalId);
 
-  if (board === undefined) return <Loading />;
+  if (row === undefined) return <Loading />;
   if (!row)
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-16 text-center">

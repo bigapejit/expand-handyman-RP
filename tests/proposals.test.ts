@@ -690,6 +690,40 @@ describe("proposals.list", () => {
   });
 });
 
+describe("proposals.get", () => {
+  test("reads one proposal as the board lists it", async () => {
+    const { owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer("Maria Delgado"), "1300FRANKLIN");
+    const deck = await solution(siteId, "Deck", 100_000);
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
+
+    const row = await owner.query(api.proposals.get, { proposalId });
+    expect(row).toEqual(
+      (await owner.query(api.proposals.list, {})).find((p) => p.proposalId === proposalId),
+    );
+    expect(row).toMatchObject({ customerName: "Maria Delgado", title: "Deck" });
+  });
+
+  test("opens nothing for an id that names no proposal", async () => {
+    const { t, owner, customer, site, create } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const gone = await create(siteId);
+    await t.run((ctx) => ctx.db.delete(gone));
+    for (const proposalId of [gone, "not-an-id", customerId])
+      expect(await owner.query(api.proposals.get, { proposalId })).toBeNull();
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger, customer, site, create } = fixture();
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+    await expect(stranger.query(api.proposals.get, { proposalId })).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});
+
 describe("the Customers list", () => {
   test("says where each customer's proposals stand", async () => {
     const { owner, customer, site, create, setState } = fixture();

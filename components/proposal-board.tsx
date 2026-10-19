@@ -13,6 +13,7 @@ import {
   proposalBoard,
   type Board,
   type BoardColumn,
+  type BoardProposal,
   type BoardRow,
   type HintTone,
 } from "@/lib/proposal-board";
@@ -22,14 +23,28 @@ import { cn } from "@/lib/utils";
 // The **Proposal board** (CONTEXT.md), the home page: every proposal in four
 // columns by how far the job has got, read from the queries that already
 // exist and sorted by lib/proposal-board.ts. Undefined until all four have
-// answered.
-//
-// The hints count days from "now", which a query cannot say without going
-// stale, so the page keeps its own clock and moves it on every minute.
+// answered. proposals.list holds the newest 1,000, years of work for one
+// owner; what it leaves off is old and long done.
 export function useProposalBoard(): Board | undefined {
+  return useBoardOf(useQuery(api.proposals.list));
+}
+
+// One proposal's row as the board would show it, for the proposal page: read
+// by its id, so a proposal too old for the board's list still opens. Null
+// when there is no such proposal, undefined while loading.
+export function useBoardRow(proposalId: string): BoardRow | null | undefined {
+  const proposal = useQuery(api.proposals.get, { proposalId });
+  const board = useBoardOf(proposal === undefined ? undefined : proposal ? [proposal] : []);
+  if (proposal === null) return null;
+  return board?.columns.flatMap((column) => column.rows)[0];
+}
+
+// The board laid out from the given proposals and everything their hints
+// read. The hints count days from "now", which a query cannot say without
+// going stale, so the page keeps its own clock and moves it on every minute.
+function useBoardOf(proposals: readonly BoardProposal[] | undefined): Board | undefined {
   const today = usePacificToday();
   const now = useNow();
-  const proposals = useQuery(api.proposals.list);
   const dashboard = useQuery(api.proposals.dashboard);
   const sites = useQuery(api.sites.list);
   const invoices = useQuery(api.invoices.list, { filter: "all", today });
