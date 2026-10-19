@@ -154,6 +154,8 @@ function Columns({ columns }: { columns: BoardColumn[] }) {
 
 // One job on the board: who and what it costs on the first line, where and
 // what under it, and the one plain hint last. Sized for a quarter of the page.
+// A draft still missing a price shows a dash, since its total is not the
+// price yet; a job priced at $0 says $0.
 function BoardItem({ row, muted }: { row: BoardRow; muted: boolean }) {
   return (
     <Link
@@ -175,7 +177,7 @@ function BoardItem({ row, muted }: { row: BoardRow; muted: boolean }) {
             muted ? "text-slate-500" : "text-slate-900",
           )}
         >
-          {row.totalCents ? formatCents(row.totalCents) : "—"}
+          {row.unpricedSolutions > 0 ? "—" : formatCents(row.totalCents)}
         </span>
       </span>
       <span className="line-clamp-2 block text-sm text-slate-500">

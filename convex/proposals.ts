@@ -178,6 +178,10 @@ export const list = query({
         title: offerTitle(proposal, offer),
         state: proposal.state,
         totalCents: offer.totalCents,
+        // Solutions nobody has priced, which the total leaves out. Said apart
+        // from the total, because a solution priced at $0 is a price and
+        // can be sent.
+        unpricedSolutions: offer.solutions.filter(({ priceCents }) => priceCents === null).length,
       });
     }
     return rows;

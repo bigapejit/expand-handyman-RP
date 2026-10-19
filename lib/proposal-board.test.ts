@@ -21,6 +21,7 @@ function proposal(id: string, patch: Partial<BoardProposal> = {}): BoardProposal
     title: "Replace rotted deck boards",
     state: "draft",
     totalCents: 100_000,
+    unpricedSolutions: 0,
     ...patch,
   };
 }
@@ -117,13 +118,23 @@ describe("The board's columns", () => {
 describe("A draft", () => {
   it("says it has not gone, or that it has no price to send yet", () => {
     const result = board({
-      proposals: [proposal("priced"), proposal("empty", { totalCents: 0 })],
+      proposals: [
+        proposal("priced"),
+        proposal("unpriced", { totalCents: 0, unpricedSolutions: 1 }),
+        proposal("partly", { totalCents: 40_000, unpricedSolutions: 1 }),
+      ],
     });
     const hints = column(result, "draft").rows.map((row) => [row.proposalId, row.hint]);
     expect(hints).toEqual([
       ["priced", "Not sent yet"],
-      ["empty", "No price yet"],
+      ["unpriced", "No price yet"],
+      ["partly", "No price yet"],
     ]);
+  });
+
+  it("priced at $0 is priced, and only waits to be sent", () => {
+    const result = board({ proposals: [proposal("free", { totalCents: 0 })] });
+    expect(column(result, "draft").rows[0]?.hint).toBe("Not sent yet");
   });
 
   it("keeps the newest-first order the list came in", () => {

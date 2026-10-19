@@ -33,6 +33,9 @@ export type BoardProposal = {
   title: string;
   state: ProposalState;
   totalCents: number;
+  // How many of its solutions have no price yet. Zero is not the same as a
+  // $0 total: a free solution is priced, and a draft holding one can be sent.
+  unpricedSolutions: number;
 };
 
 // A sent proposal's link, as the Dashboard query reads it: when it went and
@@ -144,7 +147,7 @@ export function proposalBoard(inputs: BoardInputs, now: number): Board {
         return {
           ...base,
           column: "draft",
-          hint: proposal.totalCents === 0 ? "No price yet" : "Not sent yet",
+          hint: proposal.unpricedSolutions > 0 ? "No price yet" : "Not sent yet",
           tone: "quiet",
           rank: 0,
           at: -index,

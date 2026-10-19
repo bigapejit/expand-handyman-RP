@@ -645,6 +645,7 @@ describe("proposals.list", () => {
         title: "Untitled proposal",
         state: "sent",
         totalCents: 0,
+        unpricedSolutions: 0,
       }),
       expect.objectContaining({
         proposalId: first,
@@ -656,8 +657,29 @@ describe("proposals.list", () => {
         state: "draft",
         // $1,100 plus 8.9% tax.
         totalCents: 119_790,
+        unpricedSolutions: 0,
       }),
     ]);
+  });
+
+  test("tells a solution with no price from one priced at $0", async () => {
+    const { owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const free = await solution(siteId, "Free estimate", 0);
+    const unpriced = await solution(siteId, "Gutters");
+    const freeDraft = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId: freeDraft, solutionIds: [free] });
+    const mixedDraft = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId: mixedDraft,
+      solutionIds: [free, unpriced],
+    });
+
+    const rows = await owner.query(api.proposals.list, {});
+    const row = (proposalId: Id<"proposals">) =>
+      rows.find((candidate) => candidate.proposalId === proposalId);
+    expect(row(freeDraft)).toMatchObject({ totalCents: 0, unpricedSolutions: 0 });
+    expect(row(mixedDraft)).toMatchObject({ totalCents: 0, unpricedSolutions: 1 });
   });
 
   test("turns away anyone who is not the owner", async () => {
