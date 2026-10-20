@@ -33,6 +33,7 @@ import {
   type JobMathSettings,
 } from "./job-math";
 import { LineItemUnits } from "./line-item-units";
+import { dealPanelHref, STAGE_LABELS } from "./pipeline";
 import type { PlaceSuggestion } from "./places";
 import {
   depositPercentFault,
@@ -601,7 +602,7 @@ const getSiteTool = defineTool({
   name: "get_site",
   title: "Get a site",
   description:
-    "Read one site: its address, its customer, access notes, every solution written for it (with line items, prices in dollars and a one-line Job math), and every proposal at it. Use this before writing a proposal, to see which solutions exist.",
+    "Read one site: its address, its customer, access notes, the customer's open deals (jobs on the Pipeline) a proposal here could be for, every solution written for it (with line items, prices in dollars and a one-line Job math), and every proposal at it. Use this before writing a proposal, to see which solutions and deals exist.",
   inputSchema: z.object({
     site_id: z.string().min(1).describe("The site's id, from find_customers."),
   }),
@@ -609,9 +610,10 @@ const getSiteTool = defineTool({
   async run({ site_id }, context) {
     const site = await requireSite(context, site_id);
     const siteId = site.site._id;
-    const [solutions, atSite, settings] = await Promise.all([
+    const [solutions, atSite, deals, settings] = await Promise.all([
       context.convex.query(api.solutions.forSite, { siteId }),
       context.convex.query(api.proposals.forSite, { siteId }),
+      context.convex.query(api.deals.openAtSite, { siteId }),
       jobMathSettings(context),
     ]);
     return {
@@ -622,6 +624,13 @@ const getSiteTool = defineTool({
       customer_email: atSite.customerEmail,
       access_notes: site.accessNotes || null,
       link: link(context, siteHref(siteId)),
+      // The customer's open deals a proposal here could be for, newest first.
+      open_deals: deals.map((deal) => ({
+        deal_id: deal.dealId,
+        title: deal.title,
+        stage: STAGE_LABELS[deal.stage],
+        link: link(context, dealPanelHref(deal.dealId)),
+      })),
       solutions: solutions.map((solution) => solutionOut(solution, context, settings)),
       proposals: atSite.proposals.map((proposal) => {
         const out = proposalOut(proposal, context);
@@ -888,10 +897,11 @@ const createProposalTool = defineTool({
   name: "create_proposal",
   title: "Assemble a draft proposal",
   description:
-    "Assemble a draft Proposal at a site from some of its solutions, in the order given. It stays a draft: the owner reviews and sends it from the app, never from here. The deposit is a whole percent of the total, 50 unless given. Washington sites get their sales tax rate looked up. Returns the totals in dollars, what would stop it being sent, and a link.",
+    "Assemble a draft Proposal at a site from some of its solutions, in the order given. It stays a draft: the owner reviews and sends it from the app, never from here. A proposal is for one deal: pass deal_id from get_site's open_deals; when the site's customer has more than one open deal, ask the owner which, or the app will refuse to send it until one is picked. The deposit is a whole percent of the total, 50 unless given. Washington sites get their sales tax rate looked up. Returns the totals in dollars, what would stop it being sent, and a link.",
   inputSchema: z.object({
     site_id: z.string().min(1).describe("The site's id."),
     solution_ids: z.array(z.string()).describe("The solutions to offer, from get_site, in the order the customer reads them."),
+    deal_id: z.string().optional().describe("The deal this proposal is for, from get_site's open_deals."),
     deposit_percent: z.number().optional().describe("Whole percent of the total due on signing, 0 to 100. Default 50."),
     ...draftFields,
   }),
@@ -910,6 +920,7 @@ const createProposalTool = defineTool({
     const proposalId = await context.convex.action(api.proposals.create, {
       siteId,
       solutionIds,
+      ...(args.deal_id !== undefined ? { dealId: args.deal_id.trim() as Id<"deals"> } : {}),
       ...(args.deposit_percent !== undefined ? { depositPercent: args.deposit_percent } : {}),
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.notes !== undefined ? { notes: args.notes } : {}),
@@ -962,5 +973,5 @@ export const ConnectorTools: ConnectorTool[] = [
 // What the server tells ChatGPT once, when it connects.
 export const ConnectorInstructions = `You are the backend of Expand Handyman's staff app, helping the owner estimate handyman work.
 All money in and out of these tools is in US dollars. A line item's unit cost is what the work costs the owner; a solution's price is worked out by the app, never typed.
-Usual flow: find_customers (or create_customer, then create_site), get_site, create_solution for each piece of work, then create_proposal. Proposals stay drafts here: the owner sends them from the app, and sending, deleting, payments and invoices are not available through these tools.
+Usual flow: find_customers (or create_customer, then create_site), get_site, create_solution for each piece of work, then create_proposal for the deal it is for. Proposals stay drafts here: the owner sends them from the app, and sending, deleting, payments and invoices are not available through these tools.
 When a tool returns a link, offer it to the owner so they can check the result in the app.`;

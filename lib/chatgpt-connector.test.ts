@@ -530,8 +530,31 @@ describe("get_proposal", () => {
   });
 });
 
+describe("get_site", () => {
+  test("lists the customer's open deals a proposal here could be for, each with a Pipeline link", async () => {
+    const { context } = fakeConvex({
+      "sites:get": () => site,
+      "solutions:forSite": () => [],
+      "proposals:forSite": () => ({ customerEmail: null, solutions: [], proposals: [] }),
+      "deals:openAtSite": () => [
+        { dealId: "deal1", title: "Gutters", stage: "estimating", hasSite: true },
+      ],
+      "settings:get": () => settings,
+    });
+    const result = await callTool(tool("get_site"), { site_id: "site1" }, context);
+    expect(result.ok && result.output.open_deals).toEqual([
+      {
+        deal_id: "deal1",
+        title: "Gutters",
+        stage: "Estimating",
+        link: "https://staff.expandhandyman.com/?deal=deal1",
+      },
+    ]);
+  });
+});
+
 describe("create_proposal", () => {
-  test("makes a draft offering the named solutions with the deposit asked for", async () => {
+  test("makes a draft for the deal named, offering the named solutions with the deposit asked for", async () => {
     const { context, calls, writes } = fakeConvex({
       "sites:get": () => site,
       "solutions:forSite": () => [storedSolution()],
@@ -544,7 +567,7 @@ describe("create_proposal", () => {
     });
     const result = await callTool(
       tool("create_proposal"),
-      { site_id: "site1", solution_ids: ["sol1", "sol1"], deposit_percent: 30 },
+      { site_id: "site1", solution_ids: ["sol1", "sol1"], deal_id: "deal1", deposit_percent: 30 },
       context,
     );
     // One action inserts the draft with everything in it.
@@ -552,6 +575,7 @@ describe("create_proposal", () => {
     expect(calls.find((c) => c.name === "proposals:create")?.args).toEqual({
       siteId: "site1",
       solutionIds: ["sol1"],
+      dealId: "deal1",
       depositPercent: 30,
     });
     expect(result.ok && result.output).toMatchObject({ proposal_id: "prop1", state: "draft" });
