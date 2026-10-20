@@ -369,6 +369,8 @@ describe("create_site", () => {
     expect(result.ok && result.output).toEqual({
       status: "choose_address",
       message: expect.stringContaining("Nothing was saved"),
+      // Handed back with the pick, so the details call closes this session.
+      session_token: "session-token-1",
       candidates: [
         { place_id: "p1", address: "4410 NE 94th St, Vancouver, WA, USA" },
         { place_id: "p2", address: "4410 NE 94th Ave, Vancouver, WA, USA" },
@@ -376,21 +378,27 @@ describe("create_site", () => {
     });
   });
 
-  test("saves the chosen place in the lookup's own session and reads back Google's address", async () => {
+  test("saves the chosen place in the session its candidates came from and reads back Google's address", async () => {
     const { context, calls } = fakeConvex({
       "sites:add": () => "site1",
       "sites:get": () => site,
     });
     const result = await callTool(
       tool("create_site"),
-      { customer_id: "cust1", address: "1215 Main", place_id: "p9", unit: "Apt 2" },
+      {
+        customer_id: "cust1",
+        address: "1215 Main",
+        place_id: "p9",
+        session_token: "lookup-session-7",
+        unit: "Apt 2",
+      },
       context,
     );
     expect(calls.map((c) => c.name)).toEqual(["sites:add", "sites:get"]);
     expect(calls[0].args).toEqual({
       customerId: "cust1",
       placeId: "p9",
-      sessionToken: "session-token-1",
+      sessionToken: "lookup-session-7",
       addressLine2: "Apt 2",
       accessNotes: "",
     });
@@ -400,6 +408,17 @@ describe("create_site", () => {
       address: "1215 Main St, Vancouver, WA 98660",
       link: "https://staff.expandhandyman.com/sites/site1",
     });
+  });
+
+  test("refuses a session token that isn't one a lookup gave, before asking Google", async () => {
+    const { context, calls } = fakeConvex({});
+    const result = await callTool(
+      tool("create_site"),
+      { customer_id: "cust1", address: "1215 Main", place_id: "p9", session_token: "bad token!" },
+      context,
+    );
+    expect(result.ok === false && result.message).toMatch(/session_token: must be the session_token/);
+    expect(calls).toEqual([]);
   });
 
   test("says when Google finds nothing", async () => {

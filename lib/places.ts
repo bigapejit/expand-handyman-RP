@@ -9,6 +9,9 @@ const PLACES = "https://places.googleapis.com/v1";
 const ADDRESS_TYPES = ["street_address", "premise", "subpremise"];
 export const MIN_LOOKUP = 3;
 export const MAX_LOOKUP = 200;
+// What a session token may be: one the browser or the ChatGPT connector made,
+// handed back to close the lookup it opened.
+export const SESSION_TOKEN = /^[\w-]{8,100}$/;
 
 export type PlaceSuggestion = {
   placeId: string;

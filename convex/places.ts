@@ -6,6 +6,7 @@ import {
   MIN_LOOKUP,
   placeAddress,
   placesKey,
+  SESSION_TOKEN,
   suggestAddresses,
 } from "../lib/places";
 
@@ -27,7 +28,7 @@ export function lookUpPlace(placeId: string, sessionToken: string | undefined) {
 }
 
 function checkedSession(sessionToken: string) {
-  if (!/^[\w-]{8,100}$/.test(sessionToken))
+  if (!SESSION_TOKEN.test(sessionToken))
     throw new Error("Invalid address lookup session.");
   return sessionToken;
 }

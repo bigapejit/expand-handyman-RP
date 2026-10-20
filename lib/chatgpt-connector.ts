@@ -34,7 +34,7 @@ import {
 } from "./job-math";
 import { LineItemUnits } from "./line-item-units";
 import { dealPanelHref, STAGE_LABELS } from "./pipeline";
-import type { PlaceSuggestion } from "./places";
+import { SESSION_TOKEN, type PlaceSuggestion } from "./places";
 import {
   depositPercentFault,
   proposalFaultMessage,
@@ -788,7 +788,7 @@ const createSiteTool = defineTool({
   name: "create_site",
   title: "Add a site",
   description:
-    "Add a site (a street address where work happens) to a customer. The app keeps only addresses Google verifies, so the typed address is looked up: when it clearly matches one place the site is made and the address Google returned comes back, which you should read to the owner to confirm. When several places could match, nothing is made: status is choose_address with the candidates; ask the owner which, then call again with that candidate's place_id.",
+    "Add a site (a street address where work happens) to a customer. The app keeps only addresses Google verifies, so the typed address is looked up: when it clearly matches one place the site is made and the address Google returned comes back, which you should read to the owner to confirm. When several places could match, nothing is made: status is choose_address with the candidates and a session_token; ask the owner which, then call again with that candidate's place_id and the same session_token.",
   inputSchema: z.object({
     customer_id: z.string().min(1).describe("The customer's id, from find_customers or create_customer."),
     address: z
@@ -799,12 +799,20 @@ const createSiteTool = defineTool({
       .string()
       .optional()
       .describe("A candidate's place_id from an earlier choose_address answer, to save that one."),
+    session_token: z
+      .string()
+      .regex(SESSION_TOKEN, "must be the session_token a choose_address answer gave, as given")
+      .optional()
+      .describe("The session_token from that same choose_address answer, sent back with its place_id."),
     unit: z.string().optional().describe("Apartment or unit, such as 'Apt 2'."),
     access_notes: z.string().optional().describe("Gate codes, parking, pets: anything about getting in."),
   }),
   annotations: { ...Adds, idempotentHint: true },
-  async run({ customer_id, address, place_id, unit = "", access_notes = "" }, context) {
-    const sessionToken = (context.newSessionToken ?? (() => crypto.randomUUID()))();
+  async run({ customer_id, address, place_id, session_token, unit = "", access_notes = "" }, context) {
+    // One lookup is one Google session from the suggestions to the details
+    // that close it, so a pick from candidates comes back with their token.
+    const sessionToken =
+      session_token ?? (context.newSessionToken ?? (() => crypto.randomUUID()))();
     let placeId = place_id?.trim();
     if (!placeId) {
       const suggestions = await context.convex.action(api.places.suggest, {
@@ -820,7 +828,8 @@ const createSiteTool = defineTool({
         return {
           status: "choose_address",
           message:
-            "Several addresses could match. Ask the owner which one, then call create_site again with its place_id. Nothing was saved.",
+            "Several addresses could match. Ask the owner which one, then call create_site again with its place_id and this session_token. Nothing was saved.",
+          session_token: sessionToken,
           candidates: pick.candidates.map((c) => ({
             place_id: c.placeId,
             address: suggestionText(c),
