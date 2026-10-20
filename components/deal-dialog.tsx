@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionArgs } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
 
@@ -40,6 +40,7 @@ import {
 import { cn, errorMessage } from "@/lib/utils";
 
 type Who = "existing" | "new";
+type Found = FunctionReturnType<typeof api.customers.search>;
 
 // The New deal dialog: a **Deal** the owner is chasing that did not come
 // from Thumbtack, for a customer already on file (and one of their sites, if
@@ -57,7 +58,8 @@ export function DealDialog({
   const [busy, setBusy] = useState(false);
   const [who, setWho] = useState<Who>("existing");
   const [search, setSearch] = useState("");
-  const [customerId, setCustomerId] = useState<Id<"customers"> | null>(null);
+  const [chosen, setChosen] = useState<Found[number] | null>(null);
+  const customerId = chosen?._id ?? null;
   const [siteId, setSiteId] = useState<Id<"sites"> | null>(null);
   const [customer, setCustomer] = useState<CustomerInput>(blankCustomer);
   const [title, setTitle] = useState("");
@@ -67,16 +69,20 @@ export function DealDialog({
   const [faults, setFaults] = useState<CustomerErrors & { pick?: string; title?: string; ballpark?: string }>({});
   const [error, setError] = useState("");
 
-  const needle = search.trim().toLowerCase();
-  const matches = (customers ?? [])
-    .filter((c) => c.name.toLowerCase().includes(needle))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 6);
+  // Searched on the server, so every customer can be found, not only those
+  // the Customers list holds. The last answer stays up while the next one
+  // comes, so the list does not blink at each key.
+  const found = useQuery(api.customers.search, { text: search });
+  const [lastFound, setLastFound] = useState<Found | undefined>(found);
+  if (found !== undefined && found !== lastFound) setLastFound(found);
+  const results = found ?? lastFound;
+  const matches = [...(results ?? [])].sort((a, b) => a.name.localeCompare(b.name));
   // The picked customer stays in view whatever the search says since, so the
   // deal is never added for someone the owner cannot see is picked.
-  const chosen = customers?.find((c) => c._id === customerId);
   const shown =
-    chosen && !matches.includes(chosen) ? [chosen, ...matches.slice(0, 5)] : matches;
+    chosen && !matches.some((c) => c._id === chosen._id)
+      ? [chosen, ...matches.slice(0, 5)]
+      : matches;
 
   return (
     <Dialog
@@ -158,12 +164,12 @@ export function DealDialog({
                     value={search}
                     disabled={busy}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder={customers === undefined ? "Loading customers…" : "Search customers"}
+                    placeholder={results === undefined ? "Loading customers…" : "Search customers"}
                     className="pl-8"
                   />
                 </label>
                 <ul className="max-h-44 divide-y overflow-y-auto rounded-lg border">
-                  {customers !== undefined && shown.length === 0 ? (
+                  {results !== undefined && shown.length === 0 ? (
                     <li className="px-3 py-2 text-sm text-slate-500">
                       No customer matches. Try New customer.
                     </li>
@@ -177,7 +183,7 @@ export function DealDialog({
                             disabled={busy}
                             aria-pressed={picked}
                             onClick={() => {
-                              setCustomerId(c._id);
+                              setChosen(c);
                               setSiteId(null);
                               setFaults((held) => ({ ...held, pick: undefined }));
                             }}
