@@ -25,7 +25,7 @@ import { z } from "zod";
 
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { contactWarnings, displayPhone, findCustomers } from "./customer";
+import { contactWarnings, displayPhone } from "./customer";
 import {
   jobMath,
   jobMathHref,
@@ -481,40 +481,30 @@ const findCustomersTool = defineTool({
   name: "find_customers",
   title: "Find customers",
   description:
-    "Search the owner's customers by name, phone number or email. Returns each match with its contact details and its sites (the verified street addresses where work happens), each with an id and a link to open it in the app. Use the site_id with get_site, create_solution or create_proposal.",
+    "Search the owner's customers by name, or by the start of a phone number or email. Returns each match with its contact details and its sites (the verified street addresses where work happens), each with an id and a link to open it in the app. Use the site_id with get_site, create_solution or create_proposal.",
   inputSchema: z.object({
-    query: z.string().min(1).describe("Part of a name, phone number or email, such as 'maria' or '555 12'."),
+    query: z.string().min(1).describe("A name or part of one, or the start of a phone number or email, such as 'maria', '360 555' or 'maria@'."),
     limit: z.number().int().min(1).max(25).optional().describe("Most customers to return. Default 10."),
   }),
   annotations: Reads,
   async run({ query, limit = 10 }, context) {
-    const [customers, sites] = await Promise.all([
-      context.convex.query(api.customers.list),
-      context.convex.query(api.sites.list),
-    ]);
-    const text = query.trim().toLowerCase();
-    const byNameOrPhone = findCustomers(customers, query, customers.length);
-    const byEmail =
-      text.length >= 3 ? customers.filter((c) => c.email.toLowerCase().includes(text)) : [];
-    const matches = [...new Set([...byNameOrPhone, ...byEmail])];
+    const { customers, more } = await context.convex.query(api.customers.find, { text: query, limit });
     return {
-      customers: matches.slice(0, limit).map((customer) => ({
+      customers: customers.map((customer) => ({
         customer_id: customer._id,
         name: customer.name,
         email: customer.email || null,
         phone: customer.phone ? displayPhone(customer.phone) : null,
         link: link(context, customerHref(customer._id)),
-        sites: sites
-          .filter((site) => site.customerId === customer._id)
-          .map((site) => ({
-            site_id: site.siteId,
-            address: [site.streetLine, site.cityLine].filter(Boolean).join(", "),
-            proposal_count: site.proposalCount,
-            link: link(context, siteHref(site.siteId)),
-          })),
+        sites: customer.sites.map((site) => ({
+          site_id: site.siteId,
+          address: [site.streetLine, site.cityLine].filter(Boolean).join(", "),
+          proposal_count: site.proposalCount,
+          link: link(context, siteHref(site.siteId)),
+        })),
       })),
-      more_matches: Math.max(0, matches.length - limit),
-      ...(matches.length === 0
+      more_matches: more,
+      ...(customers.length === 0
         ? { message: `No customer matches "${query}". create_customer adds one.` }
         : {}),
     };

@@ -195,7 +195,11 @@ export default defineSchema({
   })
     // The New deal dialog's picker finds a customer by name here, so one
     // older than the newest thousand the Customers list reads can be picked.
-    .searchIndex("search_name", { searchField: "name" }),
+    .searchIndex("search_name", { searchField: "name" })
+    // The ChatGPT connector finds a customer from the start of their email or
+    // phone number here, past the newest thousand the Customers list reads.
+    .index("by_email", ["email"])
+    .index("by_phone", ["phone"]),
   // A **Lead** (CONTEXT.md): one Thumbtack request for work, under the
   // customer it made or matched. Thumbtack's negotiation ID is the dedupe key,
   // because its webhooks may arrive more than once.

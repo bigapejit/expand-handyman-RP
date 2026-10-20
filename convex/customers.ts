@@ -6,8 +6,8 @@ import { requireOwner } from "./auth";
 import { lookUpPlace } from "./places";
 import { decidedAt } from "./signingLinks";
 import { insertSite, place } from "./sites";
-import { parseCustomer } from "../lib/customer";
-import { parseSiteDetails } from "../lib/sites";
+import { parseCustomer, usDigits } from "../lib/customer";
+import { parseSiteDetails, siteCityLine, siteStreetLine } from "../lib/sites";
 import { proposalActivity, type ProposalOutcome } from "../lib/proposals";
 
 const contact = { name: v.string(), email: v.string(), phone: v.string() };
@@ -77,6 +77,77 @@ export const search = query({
         ).length,
       })),
     );
+  },
+});
+
+// The ChatGPT connector's find_customers: the customers whose name, email or
+// phone number matches what the owner said, each with their sites and how many
+// proposals each holds, read off indexes so that a customer older than the
+// newest thousand `list` reads is found too. A name is searched as the New
+// deal picker searches it; an email or a phone number is matched from its
+// start, a phone by its digits however they were spaced. Name matches come
+// first. Says how many more matched than it returns, counting up to a cap.
+const FoundCap = 100;
+export const find = query({
+  args: { text: v.string(), limit: v.number() },
+  handler: async (ctx, { text, limit }) => {
+    await requireOwner(ctx);
+    const typed = text.trim();
+    if (!typed) return { customers: [], more: 0 };
+    const startsWith = (index: "by_email" | "by_phone", field: "email" | "phone", start: string) =>
+      ctx.db
+        .query("customers")
+        .withIndex(index, (q) =>
+          // `\uffff` sorts after every character an email or phone holds.
+          q.gte(field, start).lt(field, `${start}\uffff`),
+        )
+        .take(FoundCap);
+    // Typing with no letter in it is a phone number, not a name.
+    const phoneShaped = /^[\d\s().+-]+$/.test(typed);
+    const email = typed.toLowerCase();
+    // A typed country code is dropped, even ahead of a number half typed.
+    const digits = usDigits(typed.replace(/^\+\s*1/, ""));
+    const found = [
+      ...(phoneShaped
+        ? []
+        : await ctx.db
+            .query("customers")
+            .withSearchIndex("search_name", (q) => q.search("name", typed))
+            .take(FoundCap)),
+      ...(email.length >= 3 ? await startsWith("by_email", "email", email) : []),
+      ...(phoneShaped && digits.length >= 3
+        ? await startsWith("by_phone", "phone", `+1${digits}`)
+        : []),
+    ];
+    const unique = [...new Map(found.map((c) => [c._id, c])).values()];
+    const customers = await Promise.all(
+      unique.slice(0, limit).map(async (c) => {
+        const sites = await ctx.db
+          .query("sites")
+          .withIndex("by_customer", (q) => q.eq("customerId", c._id))
+          .collect();
+        return {
+          _id: c._id,
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          sites: await Promise.all(
+            sites.map(async (site) => ({
+              siteId: site._id,
+              streetLine: siteStreetLine(site),
+              cityLine: siteCityLine(site),
+              proposalCount: (
+                await ctx.db
+                  .query("proposals")
+                  .withIndex("by_site", (q) => q.eq("siteId", site._id))
+                  .collect()
+              ).length,
+            })),
+          ),
+        };
+      }),
+    );
+    return { customers, more: Math.max(0, unique.length - limit) };
   },
 });
 

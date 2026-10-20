@@ -35,7 +35,7 @@ function fakeConvex(handlers: Record<string, Handler>) {
     newSessionToken: () => "session-token-1",
   };
   const writes = () =>
-    calls.filter((c) => !/:(list|get|forSite|suggest|idsForCode|openAtSite|paper)$/.test(c.name)).map((c) => c.name);
+    calls.filter((c) => !/:(list|find|get|forSite|suggest|idsForCode|openAtSite|paper)$/.test(c.name)).map((c) => c.name);
   return { context, calls, writes };
 }
 
@@ -429,27 +429,24 @@ describe("create_site", () => {
 });
 
 describe("find_customers", () => {
-  test("finds by name, phone or email, each with their sites and links", async () => {
-    const customers = [
-      { _id: "cust1", name: "Maria Delgado", email: "maria@example.com", phone: "+13605551234" },
-      { _id: "cust2", name: "Sam Ortiz", email: "sam@delgado-law.com", phone: "" },
-      { _id: "cust3", name: "Lee Park", email: "", phone: "+15035550000" },
-    ];
-    const sites = [
-      {
-        siteId: "site1",
-        customerId: "cust1",
-        customerName: "Maria Delgado",
-        streetLine: "1215 Main St",
-        cityLine: "Vancouver, WA 98660",
-        proposalCount: 2,
-        lastActivity: 0,
-      },
-    ];
-    const { context } = fakeConvex({ "customers:list": () => customers, "sites:list": () => sites });
+  test("asks the server for the matches and returns each with their sites and links", async () => {
+    const maria = {
+      _id: "cust1",
+      name: "Maria Delgado",
+      email: "maria@example.com",
+      phone: "+13605551234",
+      sites: [
+        { siteId: "site1", streetLine: "1215 Main St", cityLine: "Vancouver, WA 98660", proposalCount: 2 },
+      ],
+    };
+    const sam = { _id: "cust2", name: "Sam Delgado", email: "", phone: "", sites: [] };
+    const { context, calls } = fakeConvex({
+      "customers:find": () => ({ customers: [maria, sam], more: 3 }),
+    });
 
-    const byName = await callTool(tool("find_customers"), { query: "delgado" }, context);
-    expect(byName.ok && byName.output).toEqual({
+    const found = await callTool(tool("find_customers"), { query: "delgado", limit: 2 }, context);
+    expect(calls).toEqual([{ name: "customers:find", args: { text: "delgado", limit: 2 } }]);
+    expect(found.ok && found.output).toEqual({
       customers: [
         {
           customer_id: "cust1",
@@ -466,17 +463,20 @@ describe("find_customers", () => {
             },
           ],
         },
-        expect.objectContaining({ customer_id: "cust2", email: "sam@delgado-law.com", phone: null, sites: [] }),
+        {
+          customer_id: "cust2",
+          name: "Sam Delgado",
+          email: null,
+          phone: null,
+          link: "https://staff.expandhandyman.com/customers/cust2",
+          sites: [],
+        },
       ],
-      more_matches: 0,
+      more_matches: 3,
     });
 
-    const byPhone = await callTool(tool("find_customers"), { query: "503 555" }, context);
-    expect(byPhone.ok && (byPhone.output.customers as { name: string }[]).map((c) => c.name)).toEqual([
-      "Lee Park",
-    ]);
-
-    const none = await callTool(tool("find_customers"), { query: "nobody" }, context);
+    const { context: empty } = fakeConvex({ "customers:find": () => ({ customers: [], more: 0 }) });
+    const none = await callTool(tool("find_customers"), { query: "nobody" }, empty);
     expect(none.ok && none.output.message).toMatch(/create_customer adds one/);
   });
 });

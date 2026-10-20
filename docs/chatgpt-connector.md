@@ -8,7 +8,7 @@ Money goes in and out of every tool in dollars. Inside, it is whole cents like t
 
 Read only:
 
-- `find_customers`: search by name, phone or email; each customer comes with their sites.
+- `find_customers`: search by name, or by the start of a phone number or email; each customer comes with their sites.
 - `get_site`: a site's address, customer, the customer's open deals a proposal here could be for, solutions (line items, prices, one-line Job math) and proposals.
 - `list_proposals`: every proposal, grouped as drafts, sent, approved and declined; or one state.
 - `get_proposal`: one proposal by id or Proposal ID (`1215MAIN-P2`): the deal it is for, its solutions, subtotal, tax, total, deposit, balance, what blocks sending, and links to the proposal page and its paper. A draft's solutions are read as they stand now, with costs and Job math. A sent or decided one's are what the customer was sent (scope, lines without costs, prices), since a sent proposal keeps no costs.
