@@ -346,12 +346,20 @@ export async function dealForLead(ctx: MutationCtx, lead: Doc<"leads">) {
   const now = Date.now();
   // The old board moved every lead of the customer on one send, so several
   // leads can match the same proposal. It was for one job: the first deal
-  // made claims it, the rest keep their stage and no offer.
+  // made claims it, the rest keep their stage and no offer. The proposal's own
+  // `dealId` is the lasting record of that claim: the deal that made it may
+  // have let go of the offer since (moved to another site, say), and a later
+  // lead must still not take it.
   const matched =
     (lead.stage === "quoted" || lead.stage === "won") && lead.stageChangedAt !== undefined
       ? await proposalThatMoved(ctx, lead.customerId, lead.stageChangedAt, lead.stage === "won")
       : null;
-  const moved = matched && !(await someDealHolds(ctx, lead.customerId, matched._id)) ? matched : null;
+  const moved =
+    matched &&
+    matched.dealId === undefined &&
+    !(await someDealHolds(ctx, lead.customerId, matched._id))
+      ? matched
+      : null;
   const dealId = await ctx.db.insert("deals", {
     customerId: lead.customerId,
     title: lead.category,
