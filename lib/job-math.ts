@@ -383,6 +383,9 @@ function priceForWageCents(costCents: number, settings: JobMathSettings): number
     percentOf(priceCents, hundredths(settings.profitPercent)) -
     percentOf(priceCents, hundredths(settings.marketingPercent)) -
     percentOf(priceCents, hundredths(settings.opsPercent));
+  // A price past what a number can count in cents has no next dollar to
+  // step to; say there is no price rather than step forever.
+  if (!Number.isSafeInteger(dollars * 100)) return null;
   while (kept(dollars * 100) < costCents) dollars += 1;
   return dollars * 100;
 }
@@ -427,6 +430,13 @@ export function solutionJobInputs(
 // ---------------------------------------------------------------------------
 // The calculator's fields and its link.
 
+// The largest figures the calculator takes: $10 million and 10,000 hours,
+// far past any job Expand will price. Inside them every product the math
+// takes (hours × wage × payroll, a price ÷ what the buckets leave) stays a
+// safe integer, so nothing downstream reads Infinity, NaN or a step that
+// doesn't move. A figure past them reads as no figure.
+export const JobMathLimits = { moneyCents: 1_000_000_000, hours: 10_000 } as const;
+
 // A dollar figure typed by hand, as whole cents, or null when it is not a
 // figure yet. "$1,250.50", "1250.5" and " 1250.50 " are the same money. A
 // figure too big to be money (1e308 is finite, but not in cents) is not one
@@ -435,7 +445,9 @@ export function readDollarsField(raw: string): number | null {
   const cleaned = raw.trim().replace(/[$,\s]/g, "");
   if (cleaned === "") return null;
   const cents = Math.round(Number(cleaned) * 100);
-  return Number.isSafeInteger(cents) ? cents : null;
+  return Number.isSafeInteger(cents) && Math.abs(cents) <= JobMathLimits.moneyCents
+    ? cents
+    : null;
 }
 
 // Hours typed by hand, or null when it is not a figure yet.
@@ -443,7 +455,7 @@ export function readHoursField(raw: string): number | null {
   const cleaned = raw.trim();
   if (cleaned === "") return null;
   const value = Number(cleaned);
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value) && Math.abs(value) <= JobMathLimits.hours ? value : null;
 }
 
 // Cents as the calculator's fields show them: plain dollars with no sign or
