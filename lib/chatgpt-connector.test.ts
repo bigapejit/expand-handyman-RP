@@ -763,3 +763,47 @@ describe("job_math", () => {
     });
   });
 });
+
+describe("create_customer", () => {
+  // From Codex: the duplicate check reads every customer by index, not the
+  // newest page of the list, so an older customer with the same phone is
+  // still named.
+  test("warns about an existing customer found by their email or phone", async () => {
+    const older = { _id: "old1", name: "Pat Older", email: "", phone: "+13605551234", sites: [] };
+    const { context, calls } = fakeConvex({
+      "customers:find": (args) =>
+        args.text === "(360) 555-1234" ? { customers: [older], more: 0 } : { customers: [], more: 0 },
+      "customers:add": () => ({ customerId: "new1" }),
+    });
+    const made = await callTool(
+      tool("create_customer"),
+      { name: "Pat Newer", email: "pat@example.com", phone: "(360) 555-1234" },
+      context,
+    );
+    expect(calls.filter((c) => c.name === "customers:find").map((c) => c.args.text)).toEqual([
+      "pat@example.com",
+      "(360) 555-1234",
+    ]);
+    expect(made.ok && made.output.warnings).toEqual([
+      "Another customer already uses this phone number: Pat Older",
+    ]);
+  });
+});
+
+describe("job_math limits", () => {
+  test("refuses figures past the calculator's own ceilings", async () => {
+    const { context } = fakeConvex({
+      "settings:get": () => ({ zelleTag: "expandhandyman", jobMath: DefaultJobMathSettings }),
+    });
+    const inside = await callTool(tool("job_math"), { price_dollars: 350, hours: 8 }, context);
+    expect(inside.ok).toBe(true);
+    for (const args of [
+      { price_dollars: 10_000_001, hours: 8 },
+      { price_dollars: 350, hours: 10_001 },
+      { price_dollars: 350, hours: 8, wage_dollars: 1e308 },
+    ]) {
+      const result = await callTool(tool("job_math"), args, context);
+      expect(result.ok).toBe(false);
+    }
+  });
+});

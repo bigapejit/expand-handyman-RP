@@ -29,6 +29,7 @@ import { contactWarnings, displayPhone } from "./customer";
 import {
   jobMath,
   jobMathHref,
+  JobMathLimits,
   solutionJobInputs,
   type JobMathSettings,
 } from "./job-math";
@@ -684,22 +685,36 @@ const getSiteTool = defineTool({
   },
 });
 
+const MaxJobDollars = JobMathLimits.moneyCents / 100;
+
 const jobMathTool = defineTool({
   name: "job_math",
   title: "Job math",
   description:
     "Work out what one job comes to for the owner, with his saved percentages: the buckets taken off the top of the price (profit, marketing, operations), what is left for labor, what he takes home doing it himself after his tax set-aside, the most an hour it could pay a W-2 worker, and what to charge to pay a chosen wage with every bucket intact. Money in and out is in dollars, before sales tax. It changes nothing.",
+  // The calculator's own ceilings ($10 million, 10,000 hours), inside which
+  // every product the math takes stays a safe integer (lib/job-math.ts).
   inputSchema: z.object({
-    price_dollars: z.number().min(0).describe("What the customer pays, before sales tax."),
-    hours: z.number().min(0).describe("Hours of work, by whoever does it. May have decimals."),
+    price_dollars: z
+      .number()
+      .min(0)
+      .max(MaxJobDollars)
+      .describe("What the customer pays, before sales tax. Up to $10 million."),
+    hours: z
+      .number()
+      .min(0)
+      .max(JobMathLimits.hours)
+      .describe("Hours of work, by whoever does it. May have decimals. Up to 10,000."),
     other_costs_dollars: z
       .number()
       .min(0)
+      .max(MaxJobDollars)
       .optional()
       .describe("Everything the price pays out that isn't labor: materials, dump fees, rentals. Default 0."),
     wage_dollars: z
       .number()
       .min(0)
+      .max(MaxJobDollars)
       .optional()
       .describe("Hourly W-2 wage to cost the job at. Default: the owner's saved wage."),
   }),
@@ -762,7 +777,20 @@ const createCustomerTool = defineTool({
   annotations: Adds,
   async run({ name, email = "", phone = "" }, context) {
     const typed = { name, email, phone };
-    const existing = await context.convex.query(api.customers.list);
+    // Who already has this email or phone, found by index across every
+    // customer rather than in the newest page of the list.
+    const lookups = [email, phone].filter((contact) => contact.trim() !== "");
+    const found = await Promise.all(
+      lookups.map((text) => context.convex.query(api.customers.find, { text, limit: 10 })),
+    );
+    const existing = found.flatMap((result) =>
+      result.customers.map((c) => ({
+        _id: c._id,
+        name: c.name,
+        email: c.email ?? "",
+        phone: c.phone ?? "",
+      })),
+    );
     const { customerId } = await context.convex.action(api.customers.add, typed);
     const warnings = Object.values(contactWarnings(typed, existing));
     return {
