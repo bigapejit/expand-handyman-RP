@@ -637,6 +637,17 @@ export default defineSchema({
     // Zelle reads it, in lower case; absent until the owner sets one, when
     // both print lib/expand-business.ts's default.
     zelleTag: v.optional(v.string()),
+    // **Job math**'s percentages and rates (lib/job-math.ts,
+    // `JobMathSettings`), each absent until the owner changes it, when the
+    // calculator uses that module's default. Percents may carry two decimals;
+    // money is whole cents.
+    profitPercent: v.optional(v.number()),
+    marketingPercent: v.optional(v.number()),
+    opsPercent: v.optional(v.number()),
+    ownerTaxPercent: v.optional(v.number()),
+    payrollTaxPercent: v.optional(v.number()),
+    workersCompCentsPerHour: v.optional(v.number()),
+    wageCents: v.optional(v.number()),
   }),
   // A **Render pass** (CONTEXT.md; ADR 0002): what the renderer opens the
   // paper with, at `/paper/<token>`. One per render, expiring within minutes

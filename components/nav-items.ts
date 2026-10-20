@@ -2,6 +2,7 @@
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
+  Calculator,
   FileSignature,
   FileText,
   LayoutDashboard,
@@ -25,15 +26,17 @@ export const navigation = [
   { title: "Pipeline", href: "/pipeline", icon: SquareKanban },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
+  // A calculator the owner reaches for now and then, not a list he works.
+  { title: "Job math", href: "/job-math", icon: Calculator },
   { title: "Documents", href: "/documents", icon: FileText },
   { title: "Staff", href: "/staff", icon: ShieldCheck },
 ] as const;
 
-// The phone's tab bar holds six; a seventh squeezes every label. Documents
-// and Staff, the pages visited least, sit behind the account menu there
-// instead.
-export const menuPages = navigation.slice(-2);
-export const phoneTabs = navigation.slice(0, -2);
+// The phone's tab bar holds six; a seventh squeezes every label. Job math,
+// Documents and Staff, the pages visited least, sit behind the account menu
+// there instead.
+export const menuPages = navigation.slice(-3);
+export const phoneTabs = navigation.slice(0, -3);
 
 /** Whether `href` is the page the owner is on, or a page under it. */
 export function isNavActive(pathname: string, href: string): boolean {

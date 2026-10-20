@@ -70,6 +70,18 @@ _Avoid_: Allowance line item, materials budget
 The memory of line items the owner has typed before, offered as suggestions while typing a new one. A convenience, not a price list: a suggestion taken becomes an ordinary line item with no tie back to the catalog.
 _Avoid_: Price book, price list, rate card
 
+**Job math**:
+What one job comes to for the owner: the buckets off the top of its price, what is left for labor, what he takes home doing the work himself after his tax set-aside, the max wage it could pay a W-2 worker, and what to charge to pay a chosen wage with every bucket intact. A calculator, plus one line under a solution's price. It reads a solution's price and never changes it; a solution's hours are its hour lines only.
+_Avoid_: Margin, profit calculator
+
+**Bucket**:
+A fixed percentage of every job's price, before sales tax, that comes off the top before anything pays for the work: profit, marketing and operations (gas, gear, insurance, B&O tax), 10% each unless the owner changes them. Sales tax is not a bucket: the customer pays it on top.
+_Avoid_: Overhead %, margin, markup (which is added to cost, not taken from price)
+
+**Max wage**:
+The most an hour a job could pay a W-2 worker, with every bucket intact and the employer's payroll taxes and L&I paid on top of the wage. Zero or less means the job can't pay anyone.
+_Avoid_: Burden, burdened rate, labor rate
+
 **Proposal**:
 An offer assembled from solutions and terms for one site. A site may have several proposals offering different sets of solutions, and the owner may mark at most one of them recommended. A proposal is draft, sent, approved or declined; approved and declined are final, and trying again means a new proposal. Approving one proposal leaves the others at the site as they are.
 _Avoid_: Document (an uploaded PDF, a different thing), quote, estimate
