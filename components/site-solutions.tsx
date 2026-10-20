@@ -512,15 +512,21 @@ function JobMathLine(solution: PriceableSolution) {
   const { owner, w2 } = jobMath(inputs, settings);
   // Whole dollars to keep the line short: take-home to the nearest, since it
   // says "~"; the most it can pay rounded down, so the line never promises a
-  // wage the job can't cover.
+  // wage the job can't cover. Whether it can pay anyone at all is read from
+  // the cents, though, and a wage under a dollar keeps them: flooring $0.94 to
+  // $0 would say "Can't pay a W-2" where the calculator says it can.
   const dollarsPerHour = (dollars: number) => `${formatCents(dollars * 100)}/hr`;
   const keep = Math.round((owner.takeHomePerHourCents ?? 0) / 100);
-  const maxWage = Math.floor((w2.maxWageCents ?? 0) / 100);
+  const maxWageCents = w2.maxWageCents ?? 0;
+  const maxWage =
+    maxWageCents >= 100
+      ? dollarsPerHour(Math.floor(maxWageCents / 100))
+      : `${formatCents(maxWageCents)}/hr`;
   return (
     <p className="text-right text-xs text-slate-500">
       You keep ~{dollarsPerHour(keep)}
       <span aria-hidden> · </span>
-      {maxWage > 0 ? `Can pay a W-2 up to ${dollarsPerHour(maxWage)}` : "Can't pay a W-2"}
+      {maxWageCents > 0 ? `Can pay a W-2 up to ${maxWage}` : "Can't pay a W-2"}
       <span aria-hidden> · </span>
       <Link href={jobMathHref(inputs)} className="font-medium text-primary hover:underline">
         Open in Job math
