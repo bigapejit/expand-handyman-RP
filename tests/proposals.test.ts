@@ -765,6 +765,30 @@ describe("proposals.get", () => {
   });
 });
 
+describe("proposals.idsForCode", () => {
+  test("finds a proposal by its Proposal ID, in any case, at every site of that name", async () => {
+    const { owner, customer, site, create } = fixture();
+    const maria = await site(await customer("Maria Delgado"), "1300FRANKLIN");
+    const sam = await site(await customer("Sam Ortiz"), "1300FRANKLIN");
+    const mariaP1 = await create(maria);
+    const mariaP2 = await create(maria);
+    const samP1 = await create(sam);
+    const ids = (code: string) => owner.query(api.proposals.idsForCode, { code });
+
+    expect(await ids(" 1300franklin-p2 ")).toEqual([mariaP2]);
+    expect((await ids("1300FRANKLIN-P1")).sort()).toEqual([mariaP1, samP1].sort());
+    for (const code of ["1300FRANKLIN-P3", "1215MAIN-P1", "1300FRANKLIN", "P1"])
+      expect(await ids(code)).toEqual([]);
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger } = fixture();
+    await expect(
+      stranger.query(api.proposals.idsForCode, { code: "1300FRANKLIN-P1" }),
+    ).rejects.toThrow("Owner access required");
+  });
+});
+
 describe("the Customers list", () => {
   test("says where each customer's proposals stand", async () => {
     const { owner, customer, site, create, setState } = fixture();

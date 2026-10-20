@@ -67,6 +67,7 @@ import {
   signingFaults,
   type SigningFault,
 } from "../lib/proposal-signing";
+import { proposalCode } from "../lib/proposals";
 import { priceStoredSolution } from "../lib/solution-pricing";
 import { isWashingtonRegion } from "../lib/wa-sales-tax";
 
@@ -207,6 +208,35 @@ export const get = query({
       ...row,
       deal: deal ? { dealId: deal._id, title: deal.title, stage: deal.stage } : null,
     };
+  },
+});
+
+// The proposals a **Proposal ID** (`1215MAIN-P2`) names, for the ChatGPT
+// connector, which hears one from the owner rather than an id. Read off the
+// site's name and the proposal's number there, never off `list`, which stops
+// at the newest 1,000. Every match, since two customers' sites may share a
+// name; an ID Send froze under a site name since corrected is not found here.
+export const idsForCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, a): Promise<Id<"proposals">[]> => {
+    await requireOwner(ctx);
+    const code = a.code.trim().toUpperCase();
+    const parts = /^(.+)-P(\d+)$/.exec(code);
+    if (!parts) return [];
+    const [, siteName, number] = parts;
+    const sites = await ctx.db
+      .query("sites")
+      .withIndex("by_name", (q) => q.eq("name", siteName))
+      .collect();
+    const found: Id<"proposals">[] = [];
+    for (const site of sites)
+      for (const proposal of await proposalsAtSite(ctx, site._id))
+        if (
+          proposal.number === Number(number) &&
+          (proposal.frozen?.code ?? proposalCode(site.name, proposal.number)).toUpperCase() === code
+        )
+          found.push(proposal._id);
+    return found;
   },
 });
 

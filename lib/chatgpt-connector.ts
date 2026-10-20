@@ -384,13 +384,20 @@ async function requireSolution(context: ToolContext, solutionId: string) {
 }
 
 // A proposal named by its Convex id or by its Proposal ID (`1215MAIN-P2`),
-// found on the Proposals list and read as its site's Proposals tab reads it.
+// each read by its own index, never by searching the Proposals list, which
+// stops at the newest 1,000; then read as its site's Proposals tab reads it.
 async function requireProposal(context: ToolContext, named: string) {
   const wanted = named.trim();
-  const rows = await context.convex.query(api.proposals.list);
-  const row = rows.find(
-    (r) => r.proposalId === wanted || r.code.toLowerCase() === wanted.toLowerCase(),
-  );
+  const byId = (proposalId: string) => context.convex.query(api.proposals.get, { proposalId });
+  let row = await byId(wanted);
+  if (!row) {
+    const ids = await context.convex.query(api.proposals.idsForCode, { code: wanted });
+    if (ids.length > 1)
+      throw new ToolRefusal(
+        `More than one proposal is ${named}, at sites that share a name. Name it by its proposal_id from list_proposals or get_site.`,
+      );
+    row = ids.length === 1 ? await byId(ids[0]) : null;
+  }
   if (!row)
     throw new ToolRefusal(
       `No proposal is ${named}. list_proposals lists them, with their ids and Proposal IDs.`,
@@ -579,6 +586,15 @@ const getProposalTool = defineTool({
     return {
       ...out,
       customer: { customer_id: row.customerId, name: row.customerName },
+      // The Pipeline deal it is for, or null when it was made for none.
+      deal: row.deal
+        ? {
+            deal_id: row.deal.dealId,
+            title: row.deal.title,
+            stage: STAGE_LABELS[row.deal.stage],
+            link: link(context, dealPanelHref(row.deal.dealId)),
+          }
+        : null,
       site: site
         ? {
             site_id: row.siteId,

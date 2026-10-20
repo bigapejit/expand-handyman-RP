@@ -327,7 +327,9 @@ export default defineSchema({
   })
     .index("by_customer", ["customerId"])
     .index("by_customer_place", ["customerId", "placeId"])
-    .index("by_place", ["placeId"]),
+    .index("by_place", ["placeId"])
+    // A **Proposal ID** names its site by name (convex/proposals.ts, `idsForCode`).
+    .index("by_name", ["name"]),
   // A **Photo** (CONTEXT.md): a picture the owner took at a site, shrunk in
   // the browser to two JPEGs and kept as two files (ADR 0003). The full image
   // is at most 2000px on its long edge and its size is kept here; the

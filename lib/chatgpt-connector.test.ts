@@ -35,7 +35,7 @@ function fakeConvex(handlers: Record<string, Handler>) {
     newSessionToken: () => "session-token-1",
   };
   const writes = () =>
-    calls.filter((c) => !/:(list|get|forSite|suggest)$/.test(c.name)).map((c) => c.name);
+    calls.filter((c) => !/:(list|get|forSite|suggest|idsForCode|openAtSite)$/.test(c.name)).map((c) => c.name);
   return { context, calls, writes };
 }
 
@@ -76,6 +76,24 @@ function storedSolution(overrides: Record<string, unknown> = {}) {
     deletable: true,
     ...overrides,
   };
+}
+
+// A proposal as `proposals.get` reads it, answering only to its own id.
+function proposalRow(overrides: Record<string, unknown> = {}) {
+  const row = {
+    proposalId: "prop1",
+    siteId: "site1",
+    customerId: "cust1",
+    customerName: "Maria Delgado",
+    code: "1215MAIN-P1",
+    title: "Replace gutters",
+    state: "draft",
+    totalCents: 90_387,
+    unpricedSolutions: 0,
+    deal: null,
+    ...overrides,
+  };
+  return (args: Record<string, unknown>) => (args.proposalId === row.proposalId ? row : null);
 }
 
 function draftProposal(overrides: Record<string, unknown> = {}) {
@@ -482,10 +500,11 @@ describe("list_proposals", () => {
 
 describe("get_proposal", () => {
   test("finds it by Proposal ID and reads its money in dollars, with each solution's line items", async () => {
-    const { context } = fakeConvex({
-      "proposals:list": () => [
-        { proposalId: "prop1", siteId: "site1", customerId: "cust1", customerName: "Maria Delgado", code: "1215MAIN-P1", title: "Replace gutters", state: "draft", totalCents: 90_387 },
-      ],
+    const { context, calls } = fakeConvex({
+      "proposals:get": proposalRow({
+        deal: { dealId: "deal1", title: "Gutters", stage: "estimating" },
+      }),
+      "proposals:idsForCode": () => ["prop1"],
       "proposals:forSite": () => ({
         customerEmail: null,
         solutions: [],
@@ -508,6 +527,12 @@ describe("get_proposal", () => {
       balance_dollars: 451.93,
       send_blockers: ["The customer has no email address to send it to."],
       customer: { customer_id: "cust1", name: "Maria Delgado" },
+      deal: {
+        deal_id: "deal1",
+        title: "Gutters",
+        stage: "Estimating",
+        link: "https://staff.expandhandyman.com/?deal=deal1",
+      },
       site: { site_id: "site1", address: "1215 Main St, Vancouver, WA 98660" },
       solutions: [
         expect.objectContaining({
@@ -521,10 +546,27 @@ describe("get_proposal", () => {
       link: "https://staff.expandhandyman.com/proposals/prop1",
       paper_link: "https://staff.expandhandyman.com/proposals/prop1/paper",
     });
+    // Found by its own index, never by searching the capped Proposals list.
+    expect(calls.find((c) => c.name === "proposals:idsForCode")?.args).toEqual({
+      code: "1215main-p1",
+    });
+    expect(calls.some((c) => c.name === "proposals:list")).toBe(false);
+  });
+
+  test("asks for the id when sites sharing a name both have that Proposal ID", async () => {
+    const { context } = fakeConvex({
+      "proposals:get": proposalRow(),
+      "proposals:idsForCode": () => ["prop1", "prop9"],
+    });
+    const result = await callTool(tool("get_proposal"), { proposal: "1215MAIN-P1" }, context);
+    expect(result.ok === false && result.message).toMatch(/More than one proposal is 1215MAIN-P1/);
   });
 
   test("says how to find one it doesn't know", async () => {
-    const { context } = fakeConvex({ "proposals:list": () => [] });
+    const { context } = fakeConvex({
+      "proposals:get": () => null,
+      "proposals:idsForCode": () => [],
+    });
     const result = await callTool(tool("get_proposal"), { proposal: "XYZ-P9" }, context);
     expect(result.ok === false && result.message).toMatch(/No proposal is XYZ-P9. list_proposals/);
   });
@@ -598,13 +640,10 @@ describe("create_proposal", () => {
 });
 
 describe("add_solutions_to_proposal", () => {
-  const list = () => [
-    { proposalId: "prop1", siteId: "site1", customerId: "cust1", customerName: "Maria", code: "1215MAIN-P1", title: "Gutters", state: "draft", totalCents: 0 },
-  ];
 
   test("adds to the end, keeping what it already offers in place", async () => {
     const { context, calls } = fakeConvex({
-      "proposals:list": list,
+      "proposals:get": proposalRow(),
       "proposals:forSite": () => ({ customerEmail: null, solutions: [], proposals: [draftProposal()] }),
       "solutions:forSite": () => [storedSolution(), storedSolution({ _id: "sol2" })],
       "proposals:update": () => null,
@@ -622,7 +661,8 @@ describe("add_solutions_to_proposal", () => {
 
   test("refuses a proposal past Draft", async () => {
     const { context, writes } = fakeConvex({
-      "proposals:list": list,
+      "proposals:get": proposalRow({ state: "sent" }),
+      "proposals:idsForCode": () => ["prop1"],
       "proposals:forSite": () => ({
         customerEmail: null,
         solutions: [],
