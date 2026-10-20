@@ -443,7 +443,10 @@ export default defineSchema({
     .index("by_site", ["siteId"])
     // The Dashboard reads Sent and decided proposals by state and never scans
     // the drafts; Sent ones come out oldest send first.
-    .index("by_state_sent", ["state", "sentAt"]),
+    .index("by_state_sent", ["state", "sentAt"])
+    // A sent proposal keeps the Proposal ID Send froze, which outlives a
+    // corrected site name; the ChatGPT connector finds it by that ID here.
+    .index("by_frozen_code", ["frozen.code"]),
   // One per Send or Re-send (CONTEXT.md, **Signing link**). A link is never
   // deleted: ending it keeps the row as the record of what went where and how
   // it finished, which is the panel's link history.
