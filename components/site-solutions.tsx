@@ -3,9 +3,11 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { HubEmpty, HubLoading, HubSection } from "@/components/hub-section";
+import { useJobMathSettings } from "@/components/job-math-page";
 import { FieldHeading, FieldLabel, SidePanel, useSidePanel } from "@/components/side-panel";
 import { SiteTag } from "@/components/site-tag";
 import {
@@ -29,7 +31,9 @@ import {
   lineItemUnitLabel,
   type LineItemUnit,
 } from "@/lib/line-item-units";
+import { jobMath, jobMathHref, solutionJobInputs } from "@/lib/job-math";
 import { formatCents } from "@/lib/money";
+import type { PriceableSolution } from "@/lib/solution-pricing";
 import {
   blankLineItemDraft,
   draftPrice,
@@ -486,7 +490,48 @@ function LineItemTable({
           )}
         </dl>
       </div>
+
+      <JobMathLine
+        lineItems={readLineItems(drafts)}
+        markupPercent={markupPercent}
+        materialAllowanceCents={allowanceCents}
+      />
     </div>
+  );
+}
+
+// **Job math** (CONTEXT.md) for the price above, in one quiet line: what the
+// owner keeps an hour doing it himself, and the most it could pay a W-2
+// worker. Only once the Solution has a price and some HR lines, since without
+// hours there is no per hour to speak of; it reads the live table, so it moves
+// with the readout above it. It never changes the price.
+function JobMathLine(solution: PriceableSolution) {
+  const settings = useJobMathSettings();
+  const inputs = solutionJobInputs(solution);
+  if (settings === undefined || inputs === null || inputs.laborHours <= 0) return null;
+  const { owner, w2 } = jobMath(inputs, settings);
+  // Whole dollars to keep the line short: take-home to the nearest, since it
+  // says "~"; the most it can pay rounded down, so the line never promises a
+  // wage the job can't cover. Whether it can pay anyone at all is read from
+  // the cents, though, and a wage under a dollar keeps them: flooring $0.94 to
+  // $0 would say "Can't pay a W-2" where the calculator says it can.
+  const dollarsPerHour = (dollars: number) => `${formatCents(dollars * 100)}/hr`;
+  const keep = Math.round((owner.takeHomePerHourCents ?? 0) / 100);
+  const maxWageCents = w2.maxWageCents ?? 0;
+  const maxWage =
+    maxWageCents >= 100
+      ? dollarsPerHour(Math.floor(maxWageCents / 100))
+      : `${formatCents(maxWageCents)}/hr`;
+  return (
+    <p className="text-right text-xs text-slate-500">
+      You keep ~{dollarsPerHour(keep)}
+      <span aria-hidden> · </span>
+      {maxWageCents > 0 ? `Can pay a W-2 up to ${maxWage}` : "Can't pay a W-2"}
+      <span aria-hidden> · </span>
+      <Link href={jobMathHref(inputs)} className="font-medium text-primary hover:underline">
+        Open in Job math
+      </Link>
+    </p>
   );
 }
 
