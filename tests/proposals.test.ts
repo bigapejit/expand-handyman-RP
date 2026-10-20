@@ -645,6 +645,7 @@ describe("proposals.list", () => {
         title: "Untitled proposal",
         state: "sent",
         totalCents: 0,
+        unpricedSolutions: 0,
       }),
       expect.objectContaining({
         proposalId: first,
@@ -656,13 +657,70 @@ describe("proposals.list", () => {
         state: "draft",
         // $1,100 plus 8.9% tax.
         totalCents: 119_790,
+        unpricedSolutions: 0,
       }),
     ]);
+  });
+
+  test("tells a solution with no price from one priced at $0", async () => {
+    const { owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const free = await solution(siteId, "Free estimate", 0);
+    const unpriced = await solution(siteId, "Gutters");
+    const freeDraft = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId: freeDraft, solutionIds: [free] });
+    const mixedDraft = await create(siteId);
+    await owner.mutation(api.proposals.update, {
+      proposalId: mixedDraft,
+      solutionIds: [free, unpriced],
+    });
+
+    const rows = await owner.query(api.proposals.list, {});
+    const row = (proposalId: Id<"proposals">) =>
+      rows.find((candidate) => candidate.proposalId === proposalId);
+    expect(row(freeDraft)).toMatchObject({ totalCents: 0, unpricedSolutions: 0 });
+    expect(row(mixedDraft)).toMatchObject({ totalCents: 0, unpricedSolutions: 1 });
   });
 
   test("turns away anyone who is not the owner", async () => {
     const { stranger } = fixture();
     await expect(stranger.query(api.proposals.list, {})).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});
+
+describe("proposals.get", () => {
+  test("reads one proposal as the list does, with the deal it is for", async () => {
+    const { owner, customer, site, solution, create } = fixture();
+    const siteId = await site(await customer("Maria Delgado"), "1300FRANKLIN");
+    const deck = await solution(siteId, "Deck", 100_000);
+    const proposalId = await create(siteId);
+    await owner.mutation(api.proposals.update, { proposalId, solutionIds: [deck] });
+
+    const row = await owner.query(api.proposals.get, { proposalId });
+    expect(row).toEqual({
+      ...(await owner.query(api.proposals.list, {})).find((p) => p.proposalId === proposalId),
+      // Made from the site's tab for no deal in particular.
+      deal: null,
+    });
+    expect(row).toMatchObject({ customerName: "Maria Delgado", title: "Deck" });
+  });
+
+  test("opens nothing for an id that names no proposal", async () => {
+    const { t, owner, customer, site, create } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const gone = await create(siteId);
+    await t.run((ctx) => ctx.db.delete(gone));
+    for (const proposalId of [gone, "not-an-id", customerId])
+      expect(await owner.query(api.proposals.get, { proposalId })).toBeNull();
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger, customer, site, create } = fixture();
+    const proposalId = await create(await site(await customer(), "1300FRANKLIN"));
+    await expect(stranger.query(api.proposals.get, { proposalId })).rejects.toThrow(
       "Owner access required",
     );
   });

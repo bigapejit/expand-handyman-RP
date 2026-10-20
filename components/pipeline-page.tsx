@@ -5,12 +5,12 @@ import { LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { DealDialog } from "@/components/deal-dialog";
-import { DealPanel, DealPanelParam } from "@/components/deal-panel";
+import { DealPanel } from "@/components/deal-panel";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { useSidePanel } from "@/components/side-panel";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { Stage } from "@/lib/pipeline";
+import { DealPanelParam, type Stage } from "@/lib/pipeline";
 import { errorMessage } from "@/lib/utils";
 
 // The **Pipeline** page's live half: the board from Convex, the open deal in

@@ -1,11 +1,21 @@
 "use client";
 
+import { ChevronDown, Ellipsis } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 import { AccountMenu } from "@/components/account-menu";
 import { Brand } from "@/components/brand";
-import { isNavActive, navigation, Quiet, useUnreadLeads } from "@/components/nav-items";
+import {
+  isNavActive,
+  isOnMorePage,
+  morePages,
+  navigation,
+  Quiet,
+  useUnreadLeads,
+} from "@/components/nav-items";
+import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -20,9 +30,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+// The two places, then More folded under them. More starts folded, so the
+// sidebar reads as three things, and stays open while the owner is on one of
+// its pages, so the page he is on is never hidden.
 export function AppSidebar() {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const showMore = moreOpen || isOnMorePage(pathname);
 
   return (
     <Sidebar>
@@ -37,7 +52,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     // The phone's sheet is tapped, not clicked.
-                    className="h-10 md:h-8"
+                    className="h-10 text-[15px] md:h-9"
                     isActive={isNavActive(pathname, item.href)}
                     render={
                       <Link
@@ -50,13 +65,52 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
-                  {item.href === "/pipeline" ? (
+                  {item.href === "/" ? (
                     <Quiet>
                       <UnreadBadge />
                     </Quiet>
                   ) : null}
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="mt-2">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="h-10 text-slate-500 md:h-9"
+                  aria-expanded={showMore}
+                  onClick={() => setMoreOpen((open) => !open)}
+                >
+                  <Ellipsis aria-hidden />
+                  <span>More</span>
+                  <ChevronDown
+                    aria-hidden
+                    className={cn("ml-auto transition-transform", showMore && "rotate-180")}
+                  />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {showMore
+                ? morePages.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        className="h-10 pl-4 text-slate-600 md:h-9"
+                        isActive={isNavActive(pathname, item.href)}
+                        render={
+                          <Link
+                            href={item.href}
+                            onClick={() => isMobile && setOpenMobile(false)}
+                          >
+                            <item.icon aria-hidden />
+                            <span>{item.title}</span>
+                          </Link>
+                        }
+                      />
+                    </SidebarMenuItem>
+                  ))
+                : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

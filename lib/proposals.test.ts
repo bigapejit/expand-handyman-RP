@@ -6,14 +6,12 @@ import {
   otherSentLabel,
   proposalActivity,
   proposalCode,
-  proposalDecidedLine,
-  proposalPanelHref,
+  proposalPageHref,
   proposalStateLabel,
   readDollarsField,
   readPercentField,
   readTaxRateField,
   reorder,
-  sentLine,
   solutionPickLabel,
   taxRateField,
   taxSourceLine,
@@ -36,25 +34,8 @@ describe("The Proposal ID", () => {
 });
 
 describe("Where a Proposal row points", () => {
-  it("opens the panel on its site's Proposals tab", () => {
-    expect(proposalPanelHref("s1", "p1")).toBe("/sites/s1/proposals?proposal=p1");
-  });
-});
-
-describe("How a Proposal reads on the Dashboard", () => {
-  const at = Date.parse("2026-09-02T17:05:00Z");
-
-  it("says when a waiting one was sent, to the minute", () => {
-    expect(sentLine(at, "en-US", "America/Los_Angeles")).toBe("Sent Sep 2, 2026, 10:05 AM");
-  });
-
-  it("says how and on what day a decided one was answered", () => {
-    expect(
-      proposalDecidedLine({ state: "approved", decidedAt: at }, "en-US", "America/Los_Angeles"),
-    ).toBe("Approved Sep 2, 2026");
-    expect(
-      proposalDecidedLine({ state: "declined", decidedAt: at }, "en-US", "America/Los_Angeles"),
-    ).toBe("Declined Sep 2, 2026");
+  it("opens the proposal's own page", () => {
+    expect(proposalPageHref("p1")).toBe("/proposals/p1");
   });
 });
 

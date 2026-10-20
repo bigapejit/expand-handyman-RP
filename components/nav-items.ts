@@ -3,44 +3,49 @@
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
   Calculator,
-  FileSignature,
   FileText,
-  LayoutDashboard,
   MapPin,
-  ReceiptText,
   ShieldCheck,
   SquareKanban,
   Users,
+  Wallet,
 } from "lucide-react";
 import { Component, useEffect, type ReactNode } from "react";
 
 import { api } from "@/convex/_generated/api";
 
-// The staff console's pages, in the order both the desktop sidebar and the
-// phone's bottom tab bar list them.
+// The two places the owner works from, in the order both the desktop sidebar
+// and the phone's bottom tab bar list them. The **Pipeline** is home: every
+// job he is chasing, Thumbtack leads included, and each deal's proposal one
+// tap away. Money is the Invoices page, where the work gets paid.
 export const navigation = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  // Straight after the Dashboard: the Site is the page the owner works from.
-  { title: "Sites", href: "/sites", icon: MapPin },
-  { title: "Customers", href: "/customers", icon: Users },
-  { title: "Pipeline", href: "/pipeline", icon: SquareKanban },
-  { title: "Proposals", href: "/proposals", icon: FileSignature },
-  { title: "Invoices", href: "/invoices", icon: ReceiptText },
-  // A calculator the owner reaches for now and then, not a list he works.
-  { title: "Job math", href: "/job-math", icon: Calculator },
-  { title: "Documents", href: "/documents", icon: FileText },
-  { title: "Staff", href: "/staff", icon: ShieldCheck },
+  { title: "Pipeline", href: "/", icon: SquareKanban },
+  { title: "Money", href: "/invoices", icon: Wallet },
 ] as const;
 
-// The phone's tab bar holds six; a seventh squeezes every label. Job math,
-// Documents and Staff, the pages visited least, sit behind the account menu
-// there instead.
-export const menuPages = navigation.slice(-3);
-export const phoneTabs = navigation.slice(0, -3);
+// Everything else, one tap further away under More: a fold in the sidebar,
+// a sheet from the phone's third tab. A deal and a proposal's page link to
+// their customer and site, so these are seldom the way in.
+export const morePages = [
+  { title: "Customers", href: "/customers", icon: Users },
+  { title: "Sites", href: "/sites", icon: MapPin },
+  { title: "Documents", href: "/documents", icon: FileText },
+  { title: "Staff", href: "/staff", icon: ShieldCheck },
+  // A calculator the owner reaches for now and then, not a list he works.
+  { title: "Job math", href: "/job-math", icon: Calculator },
+] as const;
 
 /** Whether `href` is the page the owner is on, or a page under it. */
 export function isNavActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  // A proposal's own page is reached from a deal, so it sits under the
+  // Pipeline, the home page.
+  if (href === "/") return pathname === "/" || pathname.startsWith("/proposals");
+  return pathname.startsWith(href);
+}
+
+/** Whether the page the owner is on is one of More's, so More reads as current. */
+export function isOnMorePage(pathname: string): boolean {
+  return morePages.some((page) => isNavActive(pathname, page.href));
 }
 
 // Unread Thumbtack leads on open deals, for the badge on the **Pipeline** nav

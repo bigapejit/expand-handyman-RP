@@ -9,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   FilePlus,
+  FileText,
   LoaderCircle,
   Mail,
   MapPin,
@@ -43,12 +44,9 @@ import {
   type Stage,
 } from "@/lib/pipeline";
 import { telHref } from "@/lib/proposal-paper";
-import { proposalPanelHref, proposalStateLabel } from "@/lib/proposals";
+import { proposalPageHref, proposalStateLabel } from "@/lib/proposals";
 import { conversationUrl } from "@/lib/thumbtack";
 import { cn, errorMessage } from "@/lib/utils";
-
-/** The search parameter naming the open deal, as `?deal=<id>`. */
-export const DealPanelParam = "deal";
 
 // The Quick panel the **Pipeline** opens over itself: what the owner reaches
 // for on the way to a job. One tap out to the Thumbtack conversation, the
@@ -231,12 +229,10 @@ export function DealPanel({
   );
 }
 
-// The deal's one figure under the contact: the proposal out on it once there
-// is one, else the owner's ballpark, else nothing.
 // **New proposal** for this deal: the draft is made for the deal, at the
 // deal's site, so Send moves this deal and no other job at the site, and the
-// owner lands in the draft on the site's Proposals tab. Only a deal with a
-// site can have one; a proposal is for a site.
+// owner lands in the draft on its own proposal page. Only a deal with a site
+// can have one; a proposal is for a site.
 function NewProposalButton({ dealId, siteId }: { dealId: Id<"deals">; siteId: Id<"sites"> }) {
   const create = useAction(api.proposals.create);
   const router = useRouter();
@@ -253,7 +249,7 @@ function NewProposalButton({ dealId, siteId }: { dealId: Id<"deals">; siteId: Id
           setError("");
           try {
             const proposalId = await create({ siteId, dealId });
-            router.push(proposalPanelHref(siteId, proposalId));
+            router.push(proposalPageHref(proposalId));
           } catch (err) {
             setError(errorMessage(err));
             setBusy(false);
@@ -276,13 +272,36 @@ function NewProposalButton({ dealId, siteId }: { dealId: Id<"deals">; siteId: Id
   );
 }
 
+// The deal's figure under the contact: the proposal out on it once there is
+// one, else the owner's ballpark, else nothing; and under it a draft still
+// being written for it. Each proposal opens on its own page, where it is
+// worked.
 function Figure({ deal }: { deal: DealRow }) {
-  const text = deal.proposal
-    ? `${deal.proposal.code} · ${money(deal.proposal.totalCents)} · ${proposalStateLabel(deal.proposal.state)}`
-    : deal.ballparkCents
-      ? `Ballpark ${money(deal.ballparkCents)}`
-      : null;
-  return text ? <p className="text-xs text-slate-500">{text}</p> : null;
+  return (
+    <div className="space-y-1 text-xs text-slate-500">
+      {deal.proposal ? (
+        <ProposalLink proposalId={deal.proposal.proposalId}>
+          {`${deal.proposal.code} · ${money(deal.proposal.totalCents)} · ${proposalStateLabel(deal.proposal.state)}`}
+        </ProposalLink>
+      ) : deal.ballparkCents ? (
+        <p>Ballpark {money(deal.ballparkCents)}</p>
+      ) : null}
+      {deal.draft ? (
+        <ProposalLink proposalId={deal.draft.proposalId}>{`${deal.draft.code} · Draft`}</ProposalLink>
+      ) : null}
+    </div>
+  );
+}
+
+function ProposalLink({ proposalId, children }: { proposalId: string; children: string }) {
+  return (
+    <Link
+      href={proposalPageHref(proposalId)}
+      className="flex w-fit items-center gap-1 font-medium text-slate-700 hover:text-slate-900 hover:underline max-md:py-1.5"
+    >
+      <FileText aria-hidden className="size-3.5" /> {children}
+    </Link>
+  );
 }
 
 // One line of the contact card: the value, a link where one makes sense, with

@@ -157,8 +157,10 @@ export const forSite = query({
   },
 });
 
-// The global Proposals page: every proposal across every customer, newest
-// first. Read-only; each row carries its site, where it opens.
+// Every proposal across every customer, newest first, each as one row with
+// its site and customer. Bounded at the newest 1,000: years of work for one
+// owner, and what falls off the end is old and long done. A proposal page
+// never relies on this list; it reads its own row by id with `get` below.
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -176,23 +178,63 @@ export const list = query({
         customers.set(site.customerId, await ctx.db.get(site.customerId));
       const customer = customers.get(site.customerId);
       if (!customer) continue;
-
-      const offer = await offerOf(ctx, proposal);
-      if (!offer) continue;
-      rows.push({
-        proposalId: proposal._id,
-        siteId: site._id,
-        customerId: customer._id,
-        customerName: customer.name,
-        code: offer.code,
-        title: offerTitle(proposal, offer),
-        state: proposal.state,
-        totalCents: offer.totalCents,
-      });
+      const row = await listRow(ctx, proposal, site, customer);
+      if (row) rows.push(row);
     }
     return rows;
   },
 });
+
+// One proposal as `list` reads it, for the proposal page, with the **Deal**
+// it is for, so the page can lead back to it on the Pipeline. Read by the id
+// the page address carries, which may be anything a link was typed as, so an
+// id naming no proposal opens nothing rather than failing.
+export const get = query({
+  args: { proposalId: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposalId = ctx.db.normalizeId("proposals", a.proposalId);
+    const proposal = proposalId ? await ctx.db.get(proposalId) : null;
+    const site = proposal ? await ctx.db.get(proposal.siteId) : null;
+    const customer = site ? await ctx.db.get(site.customerId) : null;
+    if (!proposal || !site || !customer) return null;
+    const row = await listRow(ctx, proposal, site, customer);
+    if (!row) return null;
+    // The deal it was drafted for, or the one Send gave it to. A deal since
+    // deleted reads as none.
+    const deal = proposal.dealId ? await ctx.db.get(proposal.dealId) : null;
+    return {
+      ...row,
+      deal: deal ? { dealId: deal._id, title: deal.title, stage: deal.stage } : null,
+    };
+  },
+});
+
+// A proposal's row: who, where, what and for how much. Null when its offer
+// cannot be read, which only a site gone missing does.
+async function listRow(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  site: Doc<"sites">,
+  customer: Doc<"customers">,
+) {
+  const offer = await offerOf(ctx, proposal);
+  if (!offer) return null;
+  return {
+    proposalId: proposal._id,
+    siteId: site._id,
+    customerId: customer._id,
+    customerName: customer.name,
+    code: offer.code,
+    title: offerTitle(proposal, offer),
+    state: proposal.state,
+    totalCents: offer.totalCents,
+    // Solutions nobody has priced, which the total leaves out. Said apart
+    // from the total, because a solution priced at $0 is a price and can be
+    // sent.
+    unpricedSolutions: offer.solutions.filter(({ priceCents }) => priceCents === null).length,
+  };
+}
 
 // How many decided proposals the Dashboard shows, FRSG's figure.
 const DashboardDecidedLimit = 8;

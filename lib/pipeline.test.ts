@@ -5,6 +5,7 @@ import {
   STAGE_LABELS,
   attention,
   calendarUrl,
+  dealPanelHref,
   dealValueCents,
   firstLine,
   money,
@@ -204,5 +205,11 @@ describe("firstLine", () => {
   it("is the first line with something on it", () => {
     expect(firstLine("\n  Gate code 1234\nDog")).toBe("Gate code 1234");
     expect(firstLine("  \n ")).toBe("");
+  });
+});
+
+describe("where a deal opens", () => {
+  it("is its Quick panel over the Pipeline, the home page", () => {
+    expect(dealPanelHref("k57abc")).toBe("/?deal=k57abc");
   });
 });
