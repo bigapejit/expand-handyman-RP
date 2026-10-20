@@ -1,18 +1,18 @@
 "use client";
 
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
   Calculator,
   FileSignature,
   FileText,
-  Inbox,
   LayoutDashboard,
   MapPin,
   ReceiptText,
   ShieldCheck,
+  SquareKanban,
   Users,
 } from "lucide-react";
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 
 import { api } from "@/convex/_generated/api";
 
@@ -23,7 +23,7 @@ export const navigation = [
   // Straight after the Dashboard: the Site is the page the owner works from.
   { title: "Sites", href: "/sites", icon: MapPin },
   { title: "Customers", href: "/customers", icon: Users },
-  { title: "Thumbtack", href: "/thumbtack", icon: Inbox },
+  { title: "Pipeline", href: "/pipeline", icon: SquareKanban },
   { title: "Proposals", href: "/proposals", icon: FileSignature },
   { title: "Invoices", href: "/invoices", icon: ReceiptText },
   // A calculator the owner reaches for now and then, not a list he works.
@@ -43,15 +43,26 @@ export function isNavActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-// Unread Thumbtack leads, for the badge on the Thumbtack nav item. The nav
-// renders outside the owner gate and `unreadCount` throws for anyone but the
-// owner, so it asks only once Convex knows the owner is signed in (the gate's
-// own query, shared). Undefined until it hears back; 0 when there are none.
-// Call it inside <Quiet>.
+// Unread Thumbtack leads on open deals, for the badge on the **Pipeline** nav
+// item. The nav renders outside the owner gate and `unreadCount` throws for
+// anyone but the owner, so it asks only once Convex knows the owner is signed
+// in (the gate's own query, shared). Undefined until it hears back; 0 when
+// there are none. Call it inside <Quiet>.
 export function useUnreadLeads(): number | undefined {
   const auth = useConvexAuth();
   const access = useQuery(api.auth.access, auth.isAuthenticated ? {} : "skip");
-  return useQuery(api.leads.unreadCount, access?.owner ? {} : "skip");
+  const owner = access?.owner === true;
+  // Leads from before deals get theirs the first time the owner opens any
+  // page after the deploy, so the count, and the board, miss none of them
+  // while the CLI migration waits to be run. Nothing to do on every visit
+  // after; the badge is on every page (the phone's tab bar is mounted even
+  // where the sidebar is not), so this is the place to ask. A second ask from
+  // the other badge finds nothing left to do.
+  const backfill = useMutation(api.deals.backfillLeads);
+  useEffect(() => {
+    if (owner) backfill({}).catch(() => {});
+  }, [owner, backfill]);
+  return useQuery(api.leads.unreadCount, owner ? {} : "skip");
 }
 
 // A badge is never worth the page: if its query fails (a deployment behind

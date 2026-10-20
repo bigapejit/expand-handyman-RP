@@ -32,7 +32,7 @@ export function BottomNav() {
                     aria-hidden
                     className={cn("size-5", active ? "text-primary" : "text-slate-500")}
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/pipeline" ? (
                     <Quiet>
                       <UnreadDot />
                     </Quiet>
@@ -57,7 +57,7 @@ export function BottomNav() {
   );
 }
 
-// The sidebar's unread count, pinned to the corner of the Thumbtack icon.
+// The sidebar's unread count, pinned to the corner of the Pipeline icon.
 function UnreadDot() {
   const unread = useUnreadLeads();
   if (!unread) return null;

@@ -49,6 +49,37 @@ export const list = query({
   },
 });
 
+// The New deal dialog's customer picker: the few customers whose name matches
+// what the owner typed, searched on the server so that a customer older than
+// the newest thousand `list` reads can still be picked. With nothing typed,
+// the newest few, the ones a fresh deal is most likely for.
+const PickerSize = 6;
+export const search = query({
+  args: { text: v.string() },
+  handler: async (ctx, { text }) => {
+    await requireOwner(ctx);
+    const typed = text.trim();
+    const found = typed
+      ? await ctx.db
+          .query("customers")
+          .withSearchIndex("search_name", (q) => q.search("name", typed))
+          .take(PickerSize)
+      : await ctx.db.query("customers").order("desc").take(PickerSize);
+    return Promise.all(
+      found.map(async (c) => ({
+        _id: c._id,
+        name: c.name,
+        siteCount: (
+          await ctx.db
+            .query("sites")
+            .withIndex("by_customer", (q) => q.eq("customerId", c._id))
+            .collect()
+        ).length,
+      })),
+    );
+  },
+});
+
 // Name, email and phone, and optionally the first site with its unit and
 // access notes. An action, because the picked address is looked up with Google
 // before anything is written. Says which site it made, so a customer added
@@ -121,7 +152,7 @@ export const update = mutation({
     await requireOwner(ctx);
     const stored = await ctx.db.get(customerId);
     if (!stored) throw new Error("Customer not found.");
-    const customer = parseCustomer(a);
+    const customer = parseCustomer(a, stored);
     await ctx.db.patch(customerId, {
       ...customer,
       ...(customer.phone === stored.phone ? {} : { phoneFrom: undefined }),

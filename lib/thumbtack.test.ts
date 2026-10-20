@@ -1,22 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  OPEN_STAGES,
-  STAGE_LABELS,
-  addressLine,
   conversationUrl,
-  duration,
-  estimateLine,
   eventKind,
   isUnread,
   parseLeadEvent,
   parseMessageEvent,
-  placeOf,
-  stageOnCustomerReply,
-  stageOnProposalApproved,
-  stageOnProposalSent,
   timeAgo,
-  waitingOnThem,
+  estimateLine,
+  leadAddressLine,
   webhookAuthorized,
 } from "./thumbtack";
 
@@ -172,6 +164,35 @@ describe("parseMessageEvent", () => {
   });
 });
 
+describe("leadAddressLine", () => {
+  it("joins what Thumbtack sent and skips what it did not", () => {
+    expect(
+      leadAddressLine({ address1: "12611 SE 7th St", city: "Vancouver", state: "WA", zipCode: "98684" }),
+    ).toBe("12611 SE 7th St, Vancouver, WA 98684");
+    expect(leadAddressLine({ city: "Vancouver", state: "WA", zipCode: "98684" })).toBe(
+      "Vancouver, WA 98684",
+    );
+    expect(leadAddressLine({ city: "", state: "", zipCode: "" })).toBe("");
+  });
+});
+
+describe("estimateLine", () => {
+  it("words each of Thumbtack's estimate types", () => {
+    expect(estimateLine({ type: "Fixed", total: "$225.00" })).toBe("Estimate: $225 fixed");
+    expect(estimateLine({ type: "Hourly", pricePerUnit: "$85.50" })).toBe("Estimate: $85.50/hr");
+    expect(estimateLine({ type: "Hourly", total: "$85.00" })).toBe("Estimate: $85/hr");
+    expect(
+      estimateLine({ type: "PerUnit", pricePerUnit: "$4.00", unitName: "sq ft", total: "$800.00" }),
+    ).toBe("Estimate: $4 per sq ft, $800 total");
+    expect(estimateLine({ type: "OnSite" })).toBe("Estimate: after a site visit");
+    expect(estimateLine({ type: "MoreInfo" })).toBe("Estimate: needs more info");
+  });
+
+  it("is nothing when the lead has no estimate", () => {
+    expect(estimateLine(undefined)).toBeNull();
+  });
+});
+
 describe("eventKind", () => {
   it("sorts deliveries by event type", () => {
     expect(eventKind(leadBody())).toBe("lead");
@@ -188,50 +209,6 @@ describe("isUnread", () => {
     expect(isUnread({ lastCustomerMessageAt: 5 })).toBe(true);
     expect(isUnread({ lastCustomerMessageAt: 5, openedAt: 5 })).toBe(false);
     expect(isUnread({ lastCustomerMessageAt: 6, openedAt: 5 })).toBe(true);
-  });
-});
-
-describe("stages", () => {
-  it("moves to Talking when the customer answers the owner, and only from New", () => {
-    expect(stageOnCustomerReply("new", true)).toBe("talking");
-    expect(stageOnCustomerReply("new", false)).toBe("new");
-    for (const stage of ["talking", "booked", "estimating", "quoted", "won", "lost"] as const)
-      expect(stageOnCustomerReply(stage, true)).toBe(stage);
-  });
-
-  it("moves to Quoted on a sent proposal, never back", () => {
-    for (const stage of ["new", "talking", "booked", "estimating"] as const)
-      expect(stageOnProposalSent(stage)).toBe("quoted");
-    for (const stage of ["quoted", "won", "lost"] as const)
-      expect(stageOnProposalSent(stage)).toBe(stage);
-  });
-
-  it("moves to Won on an approved proposal, but not out of Lost", () => {
-    for (const stage of ["new", "talking", "booked", "estimating", "quoted"] as const)
-      expect(stageOnProposalApproved(stage)).toBe("won");
-    expect(stageOnProposalApproved("won")).toBe("won");
-    expect(stageOnProposalApproved("lost")).toBe("lost");
-  });
-
-  it("labels every stage and leaves Won and Lost off the open ones", () => {
-    expect(Object.values(STAGE_LABELS)).toEqual([
-      "New",
-      "Talking",
-      "Booked",
-      "Estimating",
-      "Sent out",
-      "Won",
-      "Lost",
-    ]);
-    expect(OPEN_STAGES).toEqual(["new", "talking", "booked", "estimating", "quoted"]);
-  });
-});
-
-describe("waitingOnThem", () => {
-  it("is on when the owner wrote last", () => {
-    expect(waitingOnThem({ lastMessage: { from: "business" } })).toBe(true);
-    expect(waitingOnThem({ lastMessage: { from: "customer" } })).toBe(false);
-    expect(waitingOnThem({ lastMessage: null })).toBe(false);
   });
 });
 
@@ -292,52 +269,5 @@ describe("timeAgo", () => {
     expect(timeAgo(minutes(23 * 60 + 59), now)).toBe("23h ago");
     expect(timeAgo(minutes(24 * 60), now)).toBe("1d ago");
     expect(timeAgo(minutes(40 * 24 * 60), now)).toBe("40d ago");
-  });
-});
-
-describe("duration", () => {
-  it("counts whole minutes, hours, then days, without the ago", () => {
-    expect(duration(30_000)).toBe("under a minute");
-    expect(duration(5 * 60_000)).toBe("5m");
-    expect(duration(3 * 60 * 60_000)).toBe("3h");
-    expect(duration(2 * 24 * 60 * 60_000)).toBe("2d");
-  });
-});
-
-describe("placeOf and addressLine", () => {
-  it("reads a full address as one line", () => {
-    const location = {
-      address1: "1408 NE 139th St",
-      address2: "Unit 2",
-      city: "Vancouver",
-      state: "WA",
-      zipCode: "98685",
-    };
-    expect(placeOf(location)).toBe("Vancouver, WA");
-    expect(addressLine(location)).toBe("1408 NE 139th St, Unit 2, Vancouver, WA 98685");
-  });
-
-  it("leaves out whatever Thumbtack did not send", () => {
-    expect(addressLine({ city: "Portland", state: "OR", zipCode: "97217" })).toBe("Portland, OR 97217");
-    expect(placeOf({ city: "", state: "", zipCode: "98607" })).toBe("");
-    expect(addressLine({ city: "", state: "", zipCode: "98607" })).toBe("98607");
-    expect(addressLine({ city: "", state: "", zipCode: "" })).toBe("");
-  });
-});
-
-describe("estimateLine", () => {
-  it("words each of Thumbtack's estimate types", () => {
-    expect(estimateLine({ type: "Fixed", total: "$225.00" })).toBe("Estimate: $225 fixed");
-    expect(estimateLine({ type: "Hourly", pricePerUnit: "$85.50" })).toBe("Estimate: $85.50/hr");
-    expect(estimateLine({ type: "Hourly", total: "$85.00" })).toBe("Estimate: $85/hr");
-    expect(
-      estimateLine({ type: "PerUnit", pricePerUnit: "$4.00", unitName: "sq ft", total: "$800.00" }),
-    ).toBe("Estimate: $4 per sq ft, $800 total");
-    expect(estimateLine({ type: "OnSite" })).toBe("Estimate: after a site visit");
-    expect(estimateLine({ type: "MoreInfo" })).toBe("Estimate: needs more info");
-  });
-
-  it("is nothing when the lead has no estimate", () => {
-    expect(estimateLine(undefined)).toBeNull();
   });
 });

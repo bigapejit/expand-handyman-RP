@@ -1,18 +1,7 @@
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
-import { PageHeader } from "@/components/page-header";
-import { ThumbtackBoardPage } from "@/components/thumbtack-page";
-
+// The Thumbtack board grew into the **Pipeline**. An old link, bookmarked or
+// copied, lands there; a `?lead=` it names has no deal id to open.
 export default function ThumbtackPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Thumbtack"
-        description="Leads from Thumbtack, newest first. Chat is read-only here; reply on Thumbtack."
-      />
-      <Suspense>
-        <ThumbtackBoardPage />
-      </Suspense>
-    </div>
-  );
+  redirect("/pipeline");
 }

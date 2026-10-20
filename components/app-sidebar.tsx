@@ -50,7 +50,7 @@ export function AppSidebar() {
                       </Link>
                     }
                   />
-                  {item.href === "/thumbtack" ? (
+                  {item.href === "/pipeline" ? (
                     <Quiet>
                       <UnreadBadge />
                     </Quiet>
@@ -68,8 +68,8 @@ export function AppSidebar() {
   );
 }
 
-// Unread Thumbtack leads on the nav item, nothing until they are known or
-// while there are none.
+// Unread Thumbtack leads on the **Pipeline**'s nav item, nothing until they
+// are known or while there are none.
 function UnreadBadge() {
   const unread = useUnreadLeads();
   if (!unread) return null;
