@@ -2,24 +2,24 @@
 
 The owner can estimate by chatting with ChatGPT, with the staff app as its backend. ChatGPT finds customers, sites and proposals, adds a customer and a site, writes Solutions, assembles a draft Proposal and runs Job math. Sending, withdrawing, deleting, payments and invoices stay in the app: no tool does any of them, so nothing ChatGPT does reaches a customer or moves money.
 
-Money goes in and out of every tool in dollars. Inside, it is whole cents like the rest of the app. Every write answers with a link to the thing in the app.
+Money goes in and out of every tool in dollars. Inside, it is whole cents like the rest of the app. Every write answers with a link to the thing in the app: a proposal opens its own page (`/proposals/<id>`), a deal its Quick panel on the Pipeline.
 
 ## Tools
 
 Read only:
 
 - `find_customers`: search by name, phone or email; each customer comes with their sites.
-- `get_site`: a site's address, customer, solutions (line items, prices, one-line Job math) and proposals.
+- `get_site`: a site's address, customer, the customer's open deals a proposal here could be for, solutions (line items, prices, one-line Job math) and proposals.
 - `list_proposals`: every proposal, grouped as drafts, sent, approved and declined; or one state.
-- `get_proposal`: one proposal by id or Proposal ID (`1215MAIN-P2`): solutions with line items and costs, subtotal, tax, total, deposit, balance, what blocks sending, and links to the proposal and its paper.
+- `get_proposal`: one proposal by id or Proposal ID (`1215MAIN-P2`): the deal it is for, its solutions, subtotal, tax, total, deposit, balance, what blocks sending, and links to the proposal page and its paper. A draft's solutions are read as they stand now, with costs and Job math. A sent or decided one's are what the customer was sent (scope, lines without costs, prices), since a sent proposal keeps no costs.
 - `job_math`: price, hours, other costs and an optional wage, with the owner's saved percentages: buckets, take-home doing it yourself, max W-2 wage, what to charge.
 
 Writes:
 
 - `create_customer`: name and an email or phone. Warns when another customer has the same email or phone.
-- `create_site`: looks the typed address up with Google. One clear match is saved and read back for the owner to confirm. Several possible matches save nothing and come back as candidates; ChatGPT asks the owner and calls again with the chosen `place_id`.
+- `create_site`: looks the typed address up with Google. One clear match is saved and read back for the owner to confirm. Several possible matches save nothing and come back as candidates with a `session_token`; ChatGPT asks the owner and calls again with the chosen `place_id` and that `session_token`, so Google bills the lookup as one session.
 - `create_solution` and `update_solution`: title, Scope of Work, line items (name, quantity, unit, unit cost), markup, material allowance. Answer with the app's price and a one-line Job math. `update_solution` replaces the whole list of line items when given one, so ChatGPT marks it as able to overwrite and asks first.
-- `create_proposal`: a draft at a site from some of its solutions, with an optional deposit percent, name and notes.
+- `create_proposal`: a draft at a site from some of its solutions, with an optional deal (`deal_id` from `get_site`), deposit percent, name and notes.
 - `add_solutions_to_proposal`: adds solutions to the end of a draft.
 
 ## How it works
@@ -32,6 +32,8 @@ Writes:
 
 ## Owner checklist
 
+Steps 1 and 2 are done: the keys are set on Vercel and Convex, and Clerk has CIMD on, Include Audience on and Dynamic client registration off. They stay here for a new key or a new Clerk instance.
+
 1. **Make the key.** In the repo, run `node scripts/make-mcp-key.mjs`. It prints three things to do:
    - In Vercel (project `expand-handyman-rp`, Settings, Environment Variables), add `MCP_JWT_PRIVATE_KEY` for Production and Preview, marked sensitive, with the whole private key block.
    - Run the two `npx convex env set ... MCP_JWKS ...` lines it prints (production, then dev).
@@ -42,7 +44,7 @@ Writes:
    - Set the **default scopes for dynamic clients** to `profile` and `email`.
    - Leave access tokens as **JWTs** (the default).
    - Optional, extra lock: create a custom scope (for example `staff_app`), add it to the scopes ChatGPT's client gets, and set `MCP_REQUIRED_SCOPE` to it in Vercel. Then a token without it gets 403. Skip this if Clerk won't give the scope to ChatGPT's client.
-3. **Deploy.** Merge the pull request. The Vercel build runs `convex deploy`, which picks up `MCP_JWKS`. If you set `MCP_JWKS` after merging, redeploy.
+3. **Deploy.** Merge the pull request. The Vercel build runs `convex deploy`, which picks up `MCP_JWKS` and builds the sites index a Proposal ID is looked up by. If you set `MCP_JWKS` after merging, redeploy.
 4. **Connect ChatGPT.** Settings, Apps & Connectors (some plans call it Connectors or Plugins), Advanced settings: turn on developer mode if asked. Then Create (Add custom MCP server):
    - URL: `https://staff.expandhandyman.com/mcp`
    - Authentication: OAuth
