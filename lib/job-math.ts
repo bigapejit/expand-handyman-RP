@@ -327,7 +327,7 @@ function maxWageCents(
   laborHours: number,
   laborPoolCents: number,
   settings: JobMathSettings,
-): number {
+): number | null {
   const payroll = hundredths(settings.payrollTaxPercent);
   const fits = (wage: number) =>
     w2Cost(laborHours, wage, laborPoolCents, settings).leftOverCents >= 0;
@@ -337,6 +337,10 @@ function maxWageCents(
       Hundredths) /
       (laborHours * (Hundredths + payroll)),
   );
+  // Hours so small, or a pool so large, that the division leaves no whole
+  // cent to search from: there is no wage to name, and stepping from
+  // Infinity or NaN would never end.
+  if (!Number.isSafeInteger(wage)) return null;
   // Float error in the division above is the only way the start can miss, and
   // it misses by a cent at most; this cannot run on.
   while (!fits(wage)) wage -= 1;
@@ -424,12 +428,14 @@ export function solutionJobInputs(
 // The calculator's fields and its link.
 
 // A dollar figure typed by hand, as whole cents, or null when it is not a
-// figure yet. "$1,250.50", "1250.5" and " 1250.50 " are the same money.
+// figure yet. "$1,250.50", "1250.5" and " 1250.50 " are the same money. A
+// figure too big to be money (1e308 is finite, but not in cents) is not one
+// either: every sum after it would be Infinity or NaN.
 export function readDollarsField(raw: string): number | null {
   const cleaned = raw.trim().replace(/[$,\s]/g, "");
   if (cleaned === "") return null;
-  const value = Number(cleaned);
-  return Number.isFinite(value) ? Math.round(value * 100) : null;
+  const cents = Math.round(Number(cleaned) * 100);
+  return Number.isSafeInteger(cents) ? cents : null;
 }
 
 // Hours typed by hand, or null when it is not a figure yet.

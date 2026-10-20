@@ -358,3 +358,18 @@ describe("The calculator's fields", () => {
     );
   });
 });
+
+describe("Figures too big or too small to be real", () => {
+  // From Codex: 1e308 dollars is finite but overflows in cents, and the most-
+  // you-can-pay search once spun forever on it.
+  it("refuses a dollar figure that overflows in cents", () => {
+    expect(readDollarsField("1e308")).toBeNull();
+    expect(readDollarsField("90071992547409.92")).toBeNull();
+    expect(readDollarsField("1250.50")).toBe(125_050);
+  });
+
+  it("names no wage when the hours leave no cent to search from", () => {
+    const math = jobMath({ priceCents: 35_000, laborHours: 1e-320, otherCostCents: 0 }, defaults);
+    expect(math.w2.maxWageCents).toBeNull();
+  });
+});

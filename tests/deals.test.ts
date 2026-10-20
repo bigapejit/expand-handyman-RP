@@ -1077,6 +1077,50 @@ describe("dealsFromLeads", () => {
     expect(rows.filter((r) => r.proposal?.proposalId === proposalId)).toHaveLength(1);
   });
 
+  // From Codex: the first deal claims the send, then lets go of it (moved to
+  // another site, say) before a later page of the backfill reaches the second
+  // lead. The proposal still names its first deal, so the second can't take it.
+  test("a send already claimed is not taken by a later lead after its deal let go of it", async () => {
+    const { t, customer, site, send } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const proposalId = await send(siteId);
+    const movedAt = Date.now();
+    const legacyLead = (negotiationId: string) =>
+      t.run((ctx) =>
+        ctx.db.insert("leads", {
+          customerId,
+          negotiationId,
+          thumbtackCustomerId: "c-1",
+          arrivedAt: Date.UTC(2026, 8, 20),
+          category: "Fence Repair",
+          description: "Gate sags.",
+          details: [],
+          location: { city: "Vancouver", state: "WA", zipCode: "98660" },
+          attachments: [],
+          stage: "quoted",
+          stageChangedAt: movedAt,
+        }),
+      );
+    await legacyLead("907");
+    expect(await t.mutation(internal.migrations.dealsFromLeads, {})).toEqual({ made: 1 });
+    const first = await t.run((ctx) => ctx.db.get(proposalId));
+    const firstDealId = first?.dealId;
+    expect(firstDealId).toBeDefined();
+    await t.run((ctx) => ctx.db.patch(firstDealId!, { proposalId: undefined }));
+
+    await legacyLead("908");
+    expect(await t.mutation(internal.migrations.dealsFromLeads, {})).toEqual({ made: 1 });
+    expect((await t.run((ctx) => ctx.db.get(proposalId)))?.dealId).toBe(firstDealId);
+    const second = await t.run((ctx) =>
+      ctx.db
+        .query("deals")
+        .collect()
+        .then((deals) => deals.find((d) => d._id !== firstDealId)),
+    );
+    expect(second?.proposalId).toBeUndefined();
+  });
+
   test("a lead the old board had moved to Sent out takes the proposal that moved it", async () => {
     const { t, owner, customer, site, send } = fixture();
     const customerId = await customer();
