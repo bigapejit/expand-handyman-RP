@@ -192,7 +192,10 @@ export default defineSchema({
     // The **Thumbtack number** mark: the phone came with a lead and may be a
     // relay that stops working. Dropped when the owner saves another number.
     phoneFrom: v.optional(v.literal("thumbtack")),
-  }),
+  })
+    // The New deal dialog's picker finds a customer by name here, so one
+    // older than the newest thousand the Customers list reads can be picked.
+    .searchIndex("search_name", { searchField: "name" }),
   // A **Lead** (CONTEXT.md): one Thumbtack request for work, under the
   // customer it made or matched. Thumbtack's negotiation ID is the dedupe key,
   // because its webhooks may arrive more than once.

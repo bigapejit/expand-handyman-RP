@@ -565,6 +565,7 @@ export const duplicate = mutation({
     if (!site) throw new Error("Site not found.");
     const offer = await offerOf(ctx, proposal);
     if (!offer) throw new Error("Site not found.");
+    const dealId = await dealIdOfProposal(ctx, proposal, site);
     const now = Date.now();
     return ctx.db.insert("proposals", {
       siteId: site._id,
@@ -573,11 +574,32 @@ export const duplicate = mutation({
       state: "draft",
       recommended: false,
       ...draftFieldsOf(offer),
+      // A copy is another try at the same job, so it is for the same **Deal**.
+      // Left unbound, Send would hand it to whichever other open deal at the
+      // site was free, and its approval could win a job the owner never
+      // quoted. If that deal has since moved or closed, Send treats the copy
+      // as it would the original.
+      ...(dealId ? { dealId } : {}),
       createdAt: now,
       updatedAt: now,
     });
   },
 });
+
+// The deal a proposal is for: the one it records, or, for an offer sent
+// before proposals recorded theirs, the deal still reading it as its own.
+async function dealIdOfProposal(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  site: Doc<"sites">,
+): Promise<Id<"deals"> | undefined> {
+  if (proposal.dealId) return proposal.dealId;
+  const deals = await ctx.db
+    .query("deals")
+    .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+    .collect();
+  return deals.find((deal) => deal.proposalId === proposal._id)?._id;
+}
 
 // A draft is disposable: nobody has seen it, and the solutions it offered are
 // the site's, not its own. Its number is not given back.
