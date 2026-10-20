@@ -569,22 +569,16 @@ const getProposalTool = defineTool({
   name: "get_proposal",
   title: "Get a proposal",
   description:
-    "Read one proposal in full: its state, its solutions with their line items, costs, markup and prices, the subtotal, sales tax and total, the deposit and balance, its notes, what would stop it being sent, and links to open it and its paper in the app. All money is in dollars. Name it by proposal_id or by its Proposal ID, such as 1215MAIN-P2. Line items are each solution as it stands now; a sent or decided proposal's prices are the ones it was sent with.",
+    "Read one proposal in full: its state, the deal it is for, its solutions, the subtotal, sales tax and total, the deposit and balance, its notes, what would stop it being sent, and links to open it and its paper in the app. All money is in dollars. Name it by proposal_id or by its Proposal ID, such as 1215MAIN-P2. A draft's solutions are read as they stand now, with line item costs, markup and a one-line Job math. A sent or decided proposal's are exactly what the customer was sent: scope, line items without costs, and prices; costs and Job math are not kept on a sent proposal.",
   inputSchema: z.object({
     proposal: z.string().min(1).describe("The proposal_id, or the Proposal ID such as 1215MAIN-P2."),
   }),
   annotations: Reads,
   async run({ proposal: named }, context) {
     const { row, proposal } = await requireProposal(context, named);
-    const [site, settings] = await Promise.all([
-      context.convex.query(api.sites.get, { siteId: row.siteId }),
-      jobMathSettings(context),
-    ]);
-    const solutions = await context.convex.query(api.solutions.forSite, { siteId: row.siteId });
-    const byId = new Map(solutions.map((s) => [s._id as string, s]));
-    const out = proposalOut(proposal, context);
+    const site = await context.convex.query(api.sites.get, { siteId: row.siteId });
     return {
-      ...out,
+      ...proposalOut(proposal, context),
       customer: { customer_id: row.customerId, name: row.customerName },
       // The Pipeline deal it is for, or null when it was made for none.
       deal: row.deal
@@ -601,18 +595,53 @@ const getProposalTool = defineTool({
             address: [site.streetLine, site.cityLine].filter(Boolean).join(", "),
           }
         : { site_id: row.siteId },
-      solutions: proposal.solutions.map((offered) => {
-        const live = byId.get(offered.solutionId);
-        return {
-          ...(live ? solutionOut(live, context, settings) : { solution_id: offered.solutionId }),
-          title: offered.title,
-          // The price this proposal offers it at.
-          price_dollars: dollarsOrNull(offered.priceCents),
-        };
-      }),
+      ...(proposal.state === "draft"
+        ? { solutions: await draftSolutions(context, row.siteId, proposal) }
+        : await sentSolutions(context, proposal)),
     };
   },
 });
+
+// A draft's solutions as they stand now, which is what Send would offer: each
+// with what it costs the owner and its Job math, at the price it would go out at.
+async function draftSolutions(context: ToolContext, siteId: Id<"sites">, proposal: OwnerProposal) {
+  const [solutions, settings] = await Promise.all([
+    context.convex.query(api.solutions.forSite, { siteId }),
+    jobMathSettings(context),
+  ]);
+  const byId = new Map(solutions.map((s) => [s._id as string, s]));
+  return proposal.solutions.map((offered) => {
+    const live = byId.get(offered.solutionId);
+    return {
+      ...(live ? solutionOut(live, context, settings) : { solution_id: offered.solutionId }),
+      title: offered.title,
+      price_dollars: dollarsOrNull(offered.priceCents),
+    };
+  });
+}
+
+// A sent or decided proposal's solutions as Send froze them, from its paper:
+// the scope, the customer's half of each line and the price. Whatever the
+// solution has become since is not this proposal, and a frozen offer keeps no
+// costs, markup or Job math to report.
+async function sentSolutions(context: ToolContext, proposal: OwnerProposal) {
+  const paper = await context.convex.query(api.proposals.paper, {
+    proposalId: proposal.proposalId,
+  });
+  if (!paper) throw new ToolRefusal(`Proposal ${proposal.code} could not be read.`);
+  const prices = new Map(proposal.solutions.map((s) => [s.solutionId as string, s.priceCents]));
+  return {
+    solutions: paper.solutions.map((sent) => ({
+      solution_id: sent.solutionId,
+      title: sent.title,
+      scope_of_work: sent.scopeOfWork,
+      line_items: sent.lineItems.map(({ name, quantity, unit }) => ({ name, quantity, unit })),
+      material_allowance_dollars: dollarsOrNull(sent.materialAllowanceCents),
+      price_dollars: dollarsOrNull(prices.get(sent.solutionId)),
+    })),
+    as_sent: `These are the scope, line items and prices ${proposal.code} was sent with. Costs, markup and Job math are not kept on a sent proposal; get_site shows each solution as it stands now.`,
+  };
+}
 
 const getSiteTool = defineTool({
   name: "get_site",

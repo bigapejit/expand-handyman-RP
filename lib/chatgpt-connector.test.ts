@@ -35,7 +35,7 @@ function fakeConvex(handlers: Record<string, Handler>) {
     newSessionToken: () => "session-token-1",
   };
   const writes = () =>
-    calls.filter((c) => !/:(list|get|forSite|suggest|idsForCode|openAtSite)$/.test(c.name)).map((c) => c.name);
+    calls.filter((c) => !/:(list|get|forSite|suggest|idsForCode|openAtSite|paper)$/.test(c.name)).map((c) => c.name);
   return { context, calls, writes };
 }
 
@@ -551,6 +551,44 @@ describe("get_proposal", () => {
       code: "1215main-p1",
     });
     expect(calls.some((c) => c.name === "proposals:list")).toBe(false);
+  });
+
+  test("reads a sent proposal as it was sent, never the solution as it stands now", async () => {
+    const { context, calls } = fakeConvex({
+      "proposals:get": proposalRow({ state: "sent" }),
+      "proposals:forSite": () => ({
+        customerEmail: "maria@example.com",
+        solutions: [],
+        proposals: [draftProposal({ state: "sent" })],
+      }),
+      "proposals:paper": () => ({
+        solutions: [
+          {
+            solutionId: "sol1",
+            title: "Replace gutters",
+            scopeOfWork: "Hang new gutters.",
+            lineItems: [{ name: "Gutter", quantity: 120, unit: "LF" }],
+          },
+        ],
+      }),
+      "sites:get": () => site,
+    });
+    const result = await callTool(tool("get_proposal"), { proposal: "prop1" }, context);
+    const output = result.ok ? result.output : {};
+    expect(output.solutions).toEqual([
+      {
+        solution_id: "sol1",
+        title: "Replace gutters",
+        scope_of_work: "Hang new gutters.",
+        line_items: [{ name: "Gutter", quantity: 120, unit: "LF" }],
+        material_allowance_dollars: null,
+        price_dollars: 830,
+      },
+    ]);
+    expect(output.as_sent).toMatch(/Costs, markup and Job math are not kept on a sent proposal/);
+    // The live solution and the owner's percentages are never read for it.
+    expect(calls.map((c) => c.name)).not.toContain("solutions:forSite");
+    expect(calls.map((c) => c.name)).not.toContain("settings:get");
   });
 
   test("asks for the id when sites sharing a name both have that Proposal ID", async () => {
