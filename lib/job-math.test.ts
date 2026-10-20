@@ -368,6 +368,24 @@ describe("Figures too big or too small to be real", () => {
     expect(readDollarsField("1250.50")).toBe(125_050);
   });
 
+  it("refuses figures past the calculator's limits", () => {
+    expect(readHoursField("1e308")).toBeNull();
+    expect(readHoursField("10001")).toBeNull();
+    expect(readHoursField("8")).toBe(8);
+    expect(readDollarsField("84682770993563.30")).toBeNull();
+    expect(readDollarsField("10000000")).toBe(1_000_000_000);
+  });
+
+  // From Codex: a cost so large, over buckets so near 100%, that the price
+  // has no next dollar to step to.
+  it("names no price when the price would pass what a number can count", () => {
+    const math = jobMath(
+      { priceCents: 0, laborHours: 0, otherCostCents: 8_468_277_099_356_330 },
+      settings({ profitPercent: 99.99, marketingPercent: 0, opsPercent: 0 }),
+    );
+    expect(math.priceForWageCents).toBeNull();
+  });
+
   it("names no wage when the hours leave no cent to search from", () => {
     const math = jobMath({ priceCents: 35_000, laborHours: 1e-320, otherCostCents: 0 }, defaults);
     expect(math.w2.maxWageCents).toBeNull();
