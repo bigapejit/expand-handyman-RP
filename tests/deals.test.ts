@@ -896,6 +896,61 @@ describe("board", () => {
     expect(await row(second)).toMatchObject({ stage: "won", proposal: { proposalId: p2, state: "approved" } });
   });
 
+  test("a copy of a deal's offer stays that deal's, and leaves a free job at the site alone", async () => {
+    const { t, owner, customer, site, send, approve, row } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId);
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId,
+    });
+    const p1 = await send(siteId, a);
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId,
+    });
+    // B is the only deal here with no offer out, so a copy left unbound
+    // would go to it.
+    const p2 = await owner.mutation(api.proposals.duplicate, { proposalId: p1 });
+    await owner.action(api.proposals.send, { proposalId: p2 });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await row(a)).toMatchObject({ stage: "quoted", proposal: { proposalId: p2 } });
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+    await approve(siteId, p2);
+    expect(await row(a)).toMatchObject({ stage: "won", proposal: { proposalId: p2, state: "approved" } });
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+  });
+
+  test("a copy of an offer whose deal has moved is refused as the original would be", async () => {
+    const { owner, customer, site, send, row } = fixture();
+    const customerId = await customer();
+    const here = await site(customerId);
+    const there = await site(customerId, "88 Main St");
+    const a = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Fence repair",
+      source: "referral",
+      siteId: here,
+    });
+    const p1 = await send(here, a);
+    vi.advanceTimersByTime(60_000);
+    const b = await owner.mutation(api.deals.create, {
+      customer: { customerId },
+      title: "Deck boards",
+      source: "repeat",
+      siteId: here,
+    });
+    await owner.mutation(api.deals.setSite, { dealId: a, siteId: there });
+    const p2 = await owner.mutation(api.proposals.duplicate, { proposalId: p1 });
+    await expect(owner.action(api.proposals.send, { proposalId: p2 })).rejects.toThrow(/deal_moved/);
+    expect(await row(b)).toMatchObject({ stage: "new", proposal: null });
+  });
+
   test("a fresh offer on the only open deal replaces the one still out", async () => {
     const { owner, customer, site, send, row } = fixture();
     const customerId = await customer();
