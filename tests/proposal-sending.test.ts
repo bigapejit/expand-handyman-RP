@@ -410,6 +410,25 @@ describe("What Send freezes", () => {
   });
 });
 
+describe("proposals.idsForCode", () => {
+  test("finds a sent proposal by the ID it went out under after its site is renamed, and by the new one", async () => {
+    const { t, owner, sendable } = fixture();
+    const { siteId, proposalId } = await sendable();
+    await owner.action(api.proposals.send, { proposalId });
+    await t.run((ctx) =>
+      ctx.db.patch(siteId, { name: "1302FRANKLIN", addressLine1: "1302 Franklin St" }),
+    );
+
+    expect(await owner.query(api.proposals.idsForCode, { code: " 1300franklin-p1 " })).toEqual([
+      proposalId,
+    ]);
+    expect(await owner.query(api.proposals.idsForCode, { code: "1302FRANKLIN-P1" })).toEqual([
+      proposalId,
+    ]);
+    expect(await owner.query(api.proposals.idsForCode, { code: "1300FRANKLIN-P2" })).toEqual([]);
+  });
+});
+
 describe("Withdraw", () => {
   test("ends the link as withdrawn and returns a draft reading its live solutions", async () => {
     const { t, owner, read, liveToken, sendable, deliver } = fixture();

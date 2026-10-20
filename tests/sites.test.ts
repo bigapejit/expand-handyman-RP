@@ -698,6 +698,64 @@ describe("customers.search", () => {
   });
 });
 
+describe("customers.find", () => {
+  test("finds by name, or by the start of an email or phone, each with their sites", async () => {
+    const { t, owner, customer, addSite, proposal } = fixture();
+    const maria = await customer();
+    const sam = await t.run((ctx) =>
+      ctx.db.insert("customers", { name: "Sam Ortiz", email: "sam@ortiz.com", phone: "+13605551234" }),
+    );
+    const siteId = await addSite(maria, "place-94th");
+    await proposal(siteId);
+
+    expect(await owner.query(api.customers.find, { text: "delg", limit: 10 })).toMatchObject({
+      customers: [
+        {
+          _id: maria,
+          name: "Maria Delgado",
+          email: "maria@example.com",
+          phone: "",
+          sites: [{ siteId, streetLine: expect.any(String), proposalCount: 1 }],
+        },
+      ],
+      more: 0,
+    });
+    const ids = async (text: string) =>
+      (await owner.query(api.customers.find, { text, limit: 10 })).customers.map((c) => c._id);
+    expect(await ids("Sam@Ort")).toEqual([sam]);
+    expect(await ids("(360) 555-12")).toEqual([sam]);
+    expect(await ids("+1 360 555")).toEqual([sam]);
+    expect(await ids("555 1234")).toEqual([]);
+    expect(await ids("nobody")).toEqual([]);
+  });
+
+  test("finds a customer older than the newest thousand the list reads, and counts what it leaves out", async () => {
+    const { t, owner } = fixture();
+    const oldest = await t.run((ctx) =>
+      ctx.db.insert("customers", { name: "Zelda Oldfield", email: "zelda@old.com", phone: "+15035550000" }),
+    );
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 1000; i++)
+        await ctx.db.insert("customers", { name: `Customer ${i}`, email: `c${i}@example.com`, phone: "" });
+    });
+    expect((await owner.query(api.customers.list, {})).some((c) => c._id === oldest)).toBe(false);
+    for (const text of ["zelda", "zelda@", "503 555"])
+      expect((await owner.query(api.customers.find, { text, limit: 10 })).customers).toMatchObject([
+        { _id: oldest },
+      ]);
+    const page = await owner.query(api.customers.find, { text: "c10", limit: 5 });
+    expect(page.customers).toHaveLength(5);
+    expect(page.more).toBeGreaterThan(0);
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger } = fixture();
+    await expect(stranger.query(api.customers.find, { text: "maria", limit: 10 })).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});
+
 describe("customers.update", () => {
   test("normalizes what the dialog sends, legacy raw values included", async () => {
     const { t, owner, customer } = fixture();

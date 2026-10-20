@@ -91,6 +91,57 @@ describe("solutions.create", () => {
     ]);
   });
 
+  test("writes a whole solution in one go, and the catalog learns its lines", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, {
+      siteId,
+      title: "Gutters",
+      description: " Hang new gutters. ",
+      lineItems: [{ name: " Gutter ", quantity: 10, unit: "LF", unitCostCents: 1_000 }],
+      markupPercent: 0,
+      materialAllowanceCents: 5_000,
+    });
+    expect(await list(siteId)).toEqual([
+      expect.objectContaining({
+        _id: solutionId,
+        title: "Gutters",
+        description: "Hang new gutters.",
+        lineItems: [{ name: "Gutter", quantity: 10, unit: "LF", unitCostCents: 1_000 }],
+        markupPercent: 0,
+        materialAllowanceCents: 5_000,
+      }),
+    ]);
+    expect(await owner.query(api.catalog.suggestions, { prefix: "Gut" })).toEqual([
+      expect.objectContaining({ name: "Gutter" }),
+    ]);
+  });
+
+  test("a null allowance is none", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    await owner.mutation(api.solutions.create, { siteId, materialAllowanceCents: null });
+    expect((await list(siteId))[0].materialAllowanceCents).toBeNull();
+  });
+
+  // The ChatGPT connector writes a solution in this one call, so a refused
+  // figure must leave no titled, half-written solution to retry over.
+  test("refuses a line, a markup or an allowance the same way update does, and writes nothing", async () => {
+    const { owner, customer, site, list } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const line = { name: "Paint", quantity: 1, unitCostCents: 4_000 };
+    for (const [bad, message] of [
+      [{ lineItems: [{ ...line, quantity: -1 }] }, "Line Item"],
+      [{ lineItems: [line], markupPercent: 12.5 }, "whole percent"],
+      [{ lineItems: [line], materialAllowanceCents: 50 }, "Material Allowance"],
+    ] as [object, string][])
+      await expect(
+        owner.mutation(api.solutions.create, { siteId, title: "Paint", ...bad }),
+      ).rejects.toThrow(message);
+    expect(await list(siteId)).toEqual([]);
+    expect(await owner.query(api.catalog.suggestions, { prefix: "Pai" })).toEqual([]);
+  });
+
   test("refuses a site that no longer exists", async () => {
     const { t, owner, customer, site } = fixture();
     const siteId = await site(await customer(), "1215MAIN");
@@ -126,6 +177,40 @@ describe("solutions.forSite", () => {
     const siteId = await site(await customer(), "1215MAIN");
     await t.run((ctx) => ctx.db.delete(siteId));
     expect(await owner.query(api.solutions.forSite, { siteId })).toEqual([]);
+  });
+});
+
+describe("solutions.get", () => {
+  test("reads one solution as the tab does, priced, with its site's name", async () => {
+    const { owner, customer, site, proposal } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, { siteId, title: "Gutters" });
+    await owner.mutation(api.solutions.update, {
+      solutionId,
+      lineItems: [{ name: "Labor", quantity: 2, unitCostCents: 5_000, unit: "HR" }],
+    });
+    expect(await owner.query(api.solutions.get, { solutionId })).toEqual(
+      expect.objectContaining({
+        _id: solutionId,
+        siteId,
+        siteName: "1215MAIN",
+        title: "Gutters",
+        lineItems: [{ name: "Labor", quantity: 2, unitCostCents: 5_000, unit: "HR" }],
+        price: { costCents: 10_000, priceCents: 11_000 },
+        deletable: true,
+      }),
+    );
+    await proposal(siteId, "sent", [solutionId]);
+    expect((await owner.query(api.solutions.get, { solutionId }))?.deletable).toBe(false);
+  });
+
+  test("reads null for an id that names no solution, typed or deleted", async () => {
+    const { owner, customer, site } = fixture();
+    const siteId = await site(await customer(), "1215MAIN");
+    const solutionId = await owner.mutation(api.solutions.create, { siteId });
+    await owner.mutation(api.solutions.remove, { solutionId });
+    expect(await owner.query(api.solutions.get, { solutionId })).toBeNull();
+    expect(await owner.query(api.solutions.get, { solutionId: "not-an-id" })).toBeNull();
   });
 });
 
@@ -422,6 +507,7 @@ describe("owner only", () => {
     for (const caller of [t, stranger]) {
       for (const call of [
         () => caller.query(api.solutions.forSite, { siteId }),
+        () => caller.query(api.solutions.get, { solutionId }),
         () => caller.query(api.catalog.suggestions, { prefix: "pa" }),
         () => caller.mutation(api.solutions.create, { siteId }),
         () => caller.mutation(api.solutions.update, { solutionId, title: "Mine" }),

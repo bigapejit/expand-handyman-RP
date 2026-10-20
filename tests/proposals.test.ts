@@ -157,6 +157,45 @@ describe("proposals.create", () => {
     });
   });
 
+  test("starts a draft with its solutions, deposit, name and notes in one go", async () => {
+    const { owner, customer, site, solution, read } = fixture();
+    const siteId = await site(await customer(), "1300FRANKLIN");
+    const gutters = await solution(siteId, "Gutters", 10_000);
+    const proposalId = await owner.action(api.proposals.create, {
+      siteId,
+      solutionIds: [gutters, gutters],
+      depositPercent: 30,
+      name: " Gutters ",
+      notes: " No permits. ",
+    });
+    expect(await read(proposalId)).toMatchObject({
+      code: "1300FRANKLIN-P1",
+      name: "Gutters",
+      notes: "No permits.",
+      depositPercent: 30,
+      solutions: [expect.objectContaining({ solutionId: gutters })],
+    });
+  });
+
+  // The ChatGPT connector assembles a draft in this one call, so a refused
+  // field must leave no empty draft behind, and use up no Proposal ID.
+  test("refuses a solution or a deposit the same way update does, and writes nothing", async () => {
+    const { owner, customer, site, solution, create, tab, read } = fixture();
+    const customerId = await customer();
+    const siteId = await site(customerId, "1300FRANKLIN");
+    const own = await solution(siteId, "Gutters");
+    const elsewhere = await solution(await site(customerId, "441094TH"), "Fence");
+    for (const [bad, message] of [
+      [{ solutionIds: [own, elsewhere] }, "own site"],
+      [{ solutionIds: [own], depositPercent: 12.5 }, "whole percent"],
+    ] as [object, string][])
+      await expect(
+        owner.action(api.proposals.create, { siteId, name: "Gutters", ...bad }),
+      ).rejects.toThrow(message);
+    expect((await tab(siteId)).proposals).toEqual([]);
+    expect((await read(await create(siteId))).code).toBe("1300FRANKLIN-P1");
+  });
+
   test("numbers per site, never reusing a deleted draft's number", async () => {
     const { owner, customer, site, create, read } = fixture();
     const customerId = await customer();
@@ -723,6 +762,30 @@ describe("proposals.get", () => {
     await expect(stranger.query(api.proposals.get, { proposalId })).rejects.toThrow(
       "Owner access required",
     );
+  });
+});
+
+describe("proposals.idsForCode", () => {
+  test("finds a proposal by its Proposal ID, in any case, at every site of that name", async () => {
+    const { owner, customer, site, create } = fixture();
+    const maria = await site(await customer("Maria Delgado"), "1300FRANKLIN");
+    const sam = await site(await customer("Sam Ortiz"), "1300FRANKLIN");
+    const mariaP1 = await create(maria);
+    const mariaP2 = await create(maria);
+    const samP1 = await create(sam);
+    const ids = (code: string) => owner.query(api.proposals.idsForCode, { code });
+
+    expect(await ids(" 1300franklin-p2 ")).toEqual([mariaP2]);
+    expect((await ids("1300FRANKLIN-P1")).sort()).toEqual([mariaP1, samP1].sort());
+    for (const code of ["1300FRANKLIN-P3", "1215MAIN-P1", "1300FRANKLIN", "P1"])
+      expect(await ids(code)).toEqual([]);
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger } = fixture();
+    await expect(
+      stranger.query(api.proposals.idsForCode, { code: "1300FRANKLIN-P1" }),
+    ).rejects.toThrow("Owner access required");
   });
 });
 

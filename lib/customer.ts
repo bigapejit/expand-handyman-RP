@@ -6,7 +6,7 @@ import { z } from "zod";
 export const MAX_CUSTOMER_FIELD = 500;
 
 /** The US digits in `input`, dropping a country code of 1 once one is implied. */
-function usDigits(input: string) {
+export function usDigits(input: string) {
   const digits = input.replace(/\D/g, "");
   return digits.length > 10 && digits.startsWith("1")
     ? digits.slice(1)

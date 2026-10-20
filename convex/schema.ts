@@ -195,7 +195,11 @@ export default defineSchema({
   })
     // The New deal dialog's picker finds a customer by name here, so one
     // older than the newest thousand the Customers list reads can be picked.
-    .searchIndex("search_name", { searchField: "name" }),
+    .searchIndex("search_name", { searchField: "name" })
+    // The ChatGPT connector finds a customer from the start of their email or
+    // phone number here, past the newest thousand the Customers list reads.
+    .index("by_email", ["email"])
+    .index("by_phone", ["phone"]),
   // A **Lead** (CONTEXT.md): one Thumbtack request for work, under the
   // customer it made or matched. Thumbtack's negotiation ID is the dedupe key,
   // because its webhooks may arrive more than once.
@@ -327,7 +331,9 @@ export default defineSchema({
   })
     .index("by_customer", ["customerId"])
     .index("by_customer_place", ["customerId", "placeId"])
-    .index("by_place", ["placeId"]),
+    .index("by_place", ["placeId"])
+    // A **Proposal ID** names its site by name (convex/proposals.ts, `idsForCode`).
+    .index("by_name", ["name"]),
   // A **Photo** (CONTEXT.md): a picture the owner took at a site, shrunk in
   // the browser to two JPEGs and kept as two files (ADR 0003). The full image
   // is at most 2000px on its long edge and its size is kept here; the
@@ -441,7 +447,10 @@ export default defineSchema({
     .index("by_site", ["siteId"])
     // The Dashboard reads Sent and decided proposals by state and never scans
     // the drafts; Sent ones come out oldest send first.
-    .index("by_state_sent", ["state", "sentAt"]),
+    .index("by_state_sent", ["state", "sentAt"])
+    // A sent proposal keeps the Proposal ID Send froze, which outlives a
+    // corrected site name; the ChatGPT connector finds it by that ID here.
+    .index("by_frozen_code", ["frozen.code"]),
   // One per Send or Re-send (CONTEXT.md, **Signing link**). A link is never
   // deleted: ending it keeps the row as the record of what went where and how
   // it finished, which is the panel's link history.
