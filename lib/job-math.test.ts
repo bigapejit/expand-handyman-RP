@@ -210,9 +210,11 @@ describe("Rounding", () => {
 });
 
 describe("The most you can pay, on a short job", () => {
-  // A quarter of an hour: every cent of wage moves the rounded cost by less
-  // than a cent, so the answer must still leave nothing negative.
-  it.each([0.25, 0.1, 1.5, 7.75])("leaves nothing negative at %s hours", (hours) => {
+  // A short job: every cent of wage moves the rounded cost by less than a
+  // cent, so the answer is many cents above where the search starts, and
+  // must still be the highest that leaves nothing negative. 0.01 hours is
+  // Codex's case, where the search once stopped about 96 cents short.
+  it.each([0.01, 0.25, 0.1, 1.5, 7.75])("finds the highest wage that leaves nothing negative at %s hours", (hours) => {
     const math = jobMath({ priceCents: 5_000, laborHours: hours, otherCostCents: 0 }, defaults);
     const wage = math.w2.maxWageCents!;
     const at = jobMath(
