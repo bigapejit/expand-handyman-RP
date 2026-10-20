@@ -192,6 +192,12 @@ describe("money and value", () => {
     expect(dealValueCents({ ballparkCents: 50_000, proposal: null })).toBe(50_000);
     expect(dealValueCents({ proposal: null })).toBeNull();
   });
+
+  it("keeps a $0 value, which the board shows rather than hides", () => {
+    expect(dealValueCents({ ballparkCents: 50_000, proposal: { totalCents: 0 } })).toBe(0);
+    expect(dealValueCents({ ballparkCents: 0, proposal: null })).toBe(0);
+    expect(money(0)).toBe("$0");
+  });
 });
 
 describe("firstLine", () => {

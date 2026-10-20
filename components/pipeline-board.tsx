@@ -191,7 +191,9 @@ export function PipelineBoard({
                     <p className="truncate text-sm text-slate-500">{deal.title}</p>
                   </div>
                   <SourceBadge source={deal.source} compact />
-                  {value ? <span className="text-sm text-slate-500 tabular-nums">{money(value)}</span> : null}
+                  {value !== null ? (
+                    <span className="text-sm text-slate-500 tabular-nums">{money(value)}</span>
+                  ) : null}
                   <span className="hidden text-sm text-slate-500 sm:inline">
                     {dayFormat.format(new Date(deal.stageChangedAt))}
                   </span>
