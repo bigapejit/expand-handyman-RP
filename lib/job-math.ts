@@ -317,10 +317,12 @@ export function jobMath(inputs: JobInputs, settings: JobMathSettings): JobMath {
 // carried through payroll tax, plus half a cent each on payroll tax and L&I.
 // So the floor is taken against the pool less that much, which the rounded
 // total can never overrun at any number of hours. That start can sit a cent
-// or so under the true answer, so the wage then climbs while the next cent up
-// still leaves nothing negative. The climb is capped because a short job (a
-// fraction of an hour) can have many wages that round to the same total;
-// stopping early only ever leaves the answer low, never one the job can't pay.
+// or so under the true answer, and on a very short job (a fraction of an
+// hour) many dollars under, since a cent of wage there moves the cost by far
+// less than a cent. So the wage then climbs to the highest cent that still
+// fits: in doubling strides until one overshoots, then halving back. That is
+// right because the rounded cost never falls as the wage rises, so every wage
+// below one that fits also fits, and it takes a few dozen checks at most.
 function maxWageCents(
   laborHours: number,
   laborPoolCents: number,
@@ -338,7 +340,13 @@ function maxWageCents(
   // Float error in the division above is the only way the start can miss, and
   // it misses by a cent at most; this cannot run on.
   while (!fits(wage)) wage -= 1;
-  for (let step = 0; step < 100 && fits(wage + 1); step++) wage += 1;
+  let stride = 1;
+  while (fits(wage + stride)) {
+    wage += stride;
+    stride *= 2;
+  }
+  for (; stride >= 1; stride = Math.floor(stride / 2))
+    if (fits(wage + stride)) wage += stride;
   return wage;
 }
 
