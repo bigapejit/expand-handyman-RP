@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { dealsForOldLeads } from "./deals";
 import { findSite, insertSite, place } from "./sites";
 import {
   MAX_LOOKUP,
@@ -120,4 +121,15 @@ export const moveOntoSites = internalMutation({
     }
     return report;
   },
+});
+
+// One-off. Leads from before the **Pipeline** held their own stage; each
+// becomes a **Deal** carrying that stage, its category as the job and its
+// arrival as when the deal began (convex/deals.ts, `dealForLead`). A lead that
+// already has its deal is skipped, so the run can simply be repeated. Every
+// lead fits one transaction: there are dozens, not thousands. Run from the CLI:
+//   npx convex run --prod migrations:dealsFromLeads
+export const dealsFromLeads = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  handler: (ctx, { cursor }) => dealsForOldLeads(ctx, cursor ?? null),
 });

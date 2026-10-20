@@ -1,6 +1,5 @@
 import { formatCents } from "./money";
 import type { ProposalTax } from "./proposal-pricing";
-import { panelHref } from "./side-panel";
 
 // How a Proposal reads in the staff app: its state chip, its Proposal ID, where
 // its tax rate came from, and the two kinds of typed figure the panel takes.
@@ -31,50 +30,20 @@ export function proposalCode(siteName: string, number: number): string {
   return `${siteName}-P${number}`;
 }
 
-// The search parameter the open Proposal rides in on a Proposals tab
-// (side-panel.ts). Named here so the Proposals page and the Dashboard can
-// point straight at a panel without knowing how the tab spells it.
+// The search parameter the open Proposal rides in on a Site's Proposals tab
+// (side-panel.ts).
 export const ProposalPanelParam = "proposal";
 
-// Where a row off the hub opens a proposal: its panel on its Site's Proposals
-// tab, the page the owner works from.
-export function proposalPanelHref(siteId: string, proposalId: string): string {
-  return panelHref(`/sites/${siteId}/proposals`, "", ProposalPanelParam, proposalId);
+// Where a proposal opens from anywhere else in the app: its own page, which
+// holds the whole job, so the owner never has to go to the Site to work it.
+export function proposalPageHref(proposalId: string): string {
+  return `/proposals/${proposalId}`;
 }
 
 // The staff paper: the proposal as its customer will read it, opened from the
 // panel in a tab of its own.
 export function proposalPaperHref(proposalId: string): string {
   return `/proposals/${proposalId}/paper`;
-}
-
-// How a proposal reads on a Dashboard row, as FRSG words it: when a waiting one
-// was sent, and how and when a decided one was answered. The locale and time
-// zone are for tests to pin; the app passes neither and gets the owner's own.
-export function sentLine(sentAt: number, locale?: string, timeZone?: string): string {
-  const when = new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone,
-  }).format(sentAt);
-  return `Sent ${when}`;
-}
-
-export function proposalDecidedLine(
-  decided: { state: "approved" | "declined"; decidedAt: number },
-  locale?: string,
-  timeZone?: string,
-): string {
-  const day = new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone,
-  }).format(decided.decidedAt);
-  return `${proposalStateLabel(decided.state)} ${day}`;
 }
 
 // What a customer's row on the Customers list says about their proposals: the

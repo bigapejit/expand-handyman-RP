@@ -1,20 +1,21 @@
-import { DashboardDocuments } from "@/components/dashboard-documents";
-import { DashboardInvoices } from "@/components/dashboard-invoices";
-import { DashboardProposals } from "@/components/dashboard-proposals";
-import { PageHeader } from "@/components/page-header";
+import { Suspense } from "react";
 
-export default function DashboardPage() {
+import { PageHeader } from "@/components/page-header";
+import { PipelinePage } from "@/components/pipeline-page";
+
+// Home is the **Pipeline**: every job the owner is chasing, Thumbtack leads
+// included, from first contact to won. A deal's proposal opens on its own
+// page from the deal's panel.
+export default function HomePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Dashboard"
-        description="What is waiting on a customer, what they decided, and what they owe."
+        title="Pipeline"
+        description="Every job you are chasing, from first contact to won. Thumbtack leads arrive in New on their own."
       />
-      <div className="space-y-8">
-        <DashboardProposals />
-        <DashboardInvoices />
-        <DashboardDocuments />
-      </div>
+      <Suspense>
+        <PipelinePage />
+      </Suspense>
     </div>
   );
 }

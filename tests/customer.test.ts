@@ -9,6 +9,7 @@ import {
   formatPhone,
   normalizeEmail,
   parseCustomer,
+  parseDealCustomer,
 } from "../lib/customer";
 
 const valid = {
@@ -80,6 +81,18 @@ describe("parseCustomer", () => {
       /customer name/i,
     );
   });
+  test("lets a customer who started with a name alone keep only the name", () => {
+    const stored = { email: "", phone: "" };
+    expect(parseCustomer({ name: "Jane Doe ", email: "", phone: "" }, stored)).toEqual({
+      name: "Jane Doe",
+      email: "",
+      phone: "",
+    });
+    // A customer with a way to reach them keeps one.
+    expect(() =>
+      parseCustomer({ name: "Jane Doe", email: "", phone: "" }, { email: "", phone: "+15551234567" }),
+    ).toThrow("Add an email or phone number.");
+  });
   test("requires an email or a phone", () => {
     expect(() => parseCustomer({ ...valid, phone: "", email: "" })).toThrow(
       "Add an email or phone number.",
@@ -98,6 +111,29 @@ describe("parseCustomer", () => {
   });
   test("rejects fields over the 500 character cap", () => {
     expect(() => parseCustomer({ ...valid, name: "x".repeat(501) })).toThrow();
+  });
+});
+
+describe("parseDealCustomer", () => {
+  test("takes a name alone, as the New deal dialog may", () => {
+    expect(parseDealCustomer({ name: " Tom Brandt ", email: "", phone: "" })).toEqual({
+      name: "Tom Brandt",
+      email: "",
+      phone: "",
+    });
+  });
+  test("still refuses a bad phone or email when one is typed", () => {
+    expect(() => parseDealCustomer({ name: "Tom", email: "", phone: "555-12" })).toThrow(
+      "Enter a valid US phone number.",
+    );
+    expect(() => parseDealCustomer({ name: "Tom", email: "tom@", phone: "" })).toThrow(
+      "Enter a valid email address.",
+    );
+  });
+  test("requires a name", () => {
+    expect(() => parseDealCustomer({ name: "  ", email: "", phone: "" })).toThrow(
+      /customer name/i,
+    );
   });
 });
 
@@ -146,6 +182,36 @@ describe("customers.add", () => {
         email: "",
         phone: "",
       }),
+    ).rejects.toThrow("Add an email or phone number.");
+  });
+});
+
+describe("customers.update", () => {
+  const owner = () => {
+    vi.stubEnv("OWNER_EMAIL", "andrew@cogtex.ai");
+    vi.stubEnv("OWNER_CLERK_ID", "");
+    return convexTest(schema, import.meta.glob("../convex/**/*.ts")).withIdentity(
+      { subject: "owner", email: "andrew@cogtex.ai", emailVerified: true },
+    );
+  };
+  test("fixes the name of a customer made from a name alone, with no contact yet", async () => {
+    const t = owner();
+    const dealId = await t.mutation(api.deals.create, {
+      customer: { name: "Jane Do", email: "", phone: "" },
+      title: "Fence repair",
+      source: "phone",
+    });
+    const deal = await t.run((ctx) => ctx.db.get(dealId));
+    if (!deal) throw new Error("No deal.");
+    const { customerId } = deal;
+    await t.mutation(api.customers.update, { customerId, name: "Jane Doe", email: "", phone: "" });
+    expect(await t.run((ctx) => ctx.db.get(customerId))).toMatchObject({ name: "Jane Doe" });
+  });
+  test("keeps a way to reach a customer who had one", async () => {
+    const t = owner();
+    const { customerId } = await t.action(api.customers.add, valid);
+    await expect(
+      t.mutation(api.customers.update, { customerId, name: "Jane Doe", email: "", phone: "" }),
     ).rejects.toThrow("Add an email or phone number.");
   });
 });

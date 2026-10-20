@@ -27,7 +27,7 @@ import {
   type StaffPaper,
 } from "./offers";
 import { lookUpSiteTax } from "./salesTax";
-import { advanceForCustomer } from "./leads";
+import { advanceForSite, dealsSendWouldPickFrom } from "./deals";
 import { emailOutcome } from "./schema";
 import {
   customerViewedLink,
@@ -51,6 +51,8 @@ import {
   proposalFaultMessage,
   recipientBlockers,
   sendBlockerMessage,
+  ambiguityBlockers,
+  dealBlockers,
   splitPayment,
   storedDeposit,
   taxRateFault,
@@ -94,6 +96,9 @@ export const forSite = query({
     const customer = await ctx.db.get(site.customerId);
     // Where Send would go, or null when the customer has no address to send to.
     const customerEmail = customer ? sendableEmail(customer.email) : null;
+    // For a draft made for no deal in particular: how many deals here Send
+    // would have to pick from, more than one being too many to send.
+    const pickFrom = (await dealsSendWouldPickFrom(ctx, site)).length;
     const [solutions, proposals] = await Promise.all([
       ctx.db
         .query("solutions")
@@ -127,7 +132,12 @@ export const forSite = query({
                   // `sendWithLink` asks it, so the button names the same
                   // reasons.
                   sendBlockers:
-                    proposal.state === "draft" ? sendBlockersFor(offer, customerEmail) : [],
+                    proposal.state === "draft"
+                      ? [
+                          ...sendBlockersFor(offer, customerEmail),
+                          ...(await dealSendBlockers(ctx, proposal, site._id, pickFrom)),
+                        ]
+                      : [],
                   sentAt: proposal.sentAt ?? null,
                   sentTo: proposal.frozen?.sentTo ?? null,
                   ...(await linkHistory(ctx, proposal._id)),
@@ -147,8 +157,10 @@ export const forSite = query({
   },
 });
 
-// The global Proposals page: every proposal across every customer, newest
-// first. Read-only; each row carries its site, where it opens.
+// Every proposal across every customer, newest first, each as one row with
+// its site and customer. Bounded at the newest 1,000: years of work for one
+// owner, and what falls off the end is old and long done. A proposal page
+// never relies on this list; it reads its own row by id with `get` below.
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -166,23 +178,63 @@ export const list = query({
         customers.set(site.customerId, await ctx.db.get(site.customerId));
       const customer = customers.get(site.customerId);
       if (!customer) continue;
-
-      const offer = await offerOf(ctx, proposal);
-      if (!offer) continue;
-      rows.push({
-        proposalId: proposal._id,
-        siteId: site._id,
-        customerId: customer._id,
-        customerName: customer.name,
-        code: offer.code,
-        title: offerTitle(proposal, offer),
-        state: proposal.state,
-        totalCents: offer.totalCents,
-      });
+      const row = await listRow(ctx, proposal, site, customer);
+      if (row) rows.push(row);
     }
     return rows;
   },
 });
+
+// One proposal as `list` reads it, for the proposal page, with the **Deal**
+// it is for, so the page can lead back to it on the Pipeline. Read by the id
+// the page address carries, which may be anything a link was typed as, so an
+// id naming no proposal opens nothing rather than failing.
+export const get = query({
+  args: { proposalId: v.string() },
+  handler: async (ctx, a) => {
+    await requireOwner(ctx);
+    const proposalId = ctx.db.normalizeId("proposals", a.proposalId);
+    const proposal = proposalId ? await ctx.db.get(proposalId) : null;
+    const site = proposal ? await ctx.db.get(proposal.siteId) : null;
+    const customer = site ? await ctx.db.get(site.customerId) : null;
+    if (!proposal || !site || !customer) return null;
+    const row = await listRow(ctx, proposal, site, customer);
+    if (!row) return null;
+    // The deal it was drafted for, or the one Send gave it to. A deal since
+    // deleted reads as none.
+    const deal = proposal.dealId ? await ctx.db.get(proposal.dealId) : null;
+    return {
+      ...row,
+      deal: deal ? { dealId: deal._id, title: deal.title, stage: deal.stage } : null,
+    };
+  },
+});
+
+// A proposal's row: who, where, what and for how much. Null when its offer
+// cannot be read, which only a site gone missing does.
+async function listRow(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  site: Doc<"sites">,
+  customer: Doc<"customers">,
+) {
+  const offer = await offerOf(ctx, proposal);
+  if (!offer) return null;
+  return {
+    proposalId: proposal._id,
+    siteId: site._id,
+    customerId: customer._id,
+    customerName: customer.name,
+    code: offer.code,
+    title: offerTitle(proposal, offer),
+    state: proposal.state,
+    totalCents: offer.totalCents,
+    // Solutions nobody has priced, which the total leaves out. Said apart
+    // from the total, because a solution priced at $0 is a price and can be
+    // sent.
+    unpricedSolutions: offer.solutions.filter(({ priceCents }) => priceCents === null).length,
+  };
+}
 
 // How many decided proposals the Dashboard shows, FRSG's figure.
 const DashboardDecidedLimit = 8;
@@ -309,7 +361,9 @@ const draftEditArgs = {
 // are checked as `update` checks them and written in the one mutation that
 // inserts the draft, so a refused one leaves no draft behind.
 export const create = action({
-  args: { siteId: v.id("sites"), ...draftEditArgs },
+  // `dealId`: the **Deal** this offer is for, when it is made from the deal's
+  // Quick panel; Send then moves that deal and no other at the site.
+  args: { siteId: v.id("sites"), dealId: v.optional(v.id("deals")), ...draftEditArgs },
   handler: async (ctx, a): Promise<Id<"proposals">> => {
     await requireOwner(ctx);
     const { proposalId, taxed } = await ctx.runMutation(internal.proposals.insertDraft, a);
@@ -362,12 +416,23 @@ export async function lookUpDraftTax(
 }
 
 export const insertDraft = internalMutation({
-  args: { siteId: v.id("sites"), ...draftEditArgs },
-  handler: async (ctx, { siteId, ...edits }) => {
+  args: { siteId: v.id("sites"), dealId: v.optional(v.id("deals")), ...draftEditArgs },
+  handler: async (ctx, { siteId, dealId, ...edits }) => {
     await requireOwner(ctx);
     const site = await ctx.db.get(siteId);
     if (!site) throw new Error("Site not found.");
     const fields = await verifiedDraftEdits(ctx, site._id, edits);
+    // The deal must be at this site now, not only when its panel was drawn:
+    // a draft made for a deal that has since moved would never move it. A
+    // deal with no site yet takes this one, as it would on Send.
+    if (dealId) {
+      const deal = await ctx.db.get(dealId);
+      if (!deal || deal.customerId !== site.customerId)
+        throw new Error("That deal is not this customer's.");
+      if (!deal.siteId) await ctx.db.patch(deal._id, { siteId: site._id, updatedAt: Date.now() });
+      else if (deal.siteId !== site._id)
+        throw new Error("That deal is not at this site any more.");
+    }
 
     // Washington or nothing: `none` is the whole of "this site charges no
     // sales tax", and a Washington site starts with a rate nobody has yet.
@@ -382,6 +447,7 @@ export const insertDraft = internalMutation({
       depositPercent: DefaultDepositPercent,
       tax: { source: taxed ? "lookup" : "none" },
       ...fields,
+      ...(dealId ? { dealId } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -499,6 +565,7 @@ export const duplicate = mutation({
     if (!site) throw new Error("Site not found.");
     const offer = await offerOf(ctx, proposal);
     if (!offer) throw new Error("Site not found.");
+    const dealId = await dealIdOfProposal(ctx, proposal, site);
     const now = Date.now();
     return ctx.db.insert("proposals", {
       siteId: site._id,
@@ -507,11 +574,32 @@ export const duplicate = mutation({
       state: "draft",
       recommended: false,
       ...draftFieldsOf(offer),
+      // A copy is another try at the same job, so it is for the same **Deal**.
+      // Left unbound, Send would hand it to whichever other open deal at the
+      // site was free, and its approval could win a job the owner never
+      // quoted. If that deal has since moved or closed, Send treats the copy
+      // as it would the original.
+      ...(dealId ? { dealId } : {}),
       createdAt: now,
       updatedAt: now,
     });
   },
 });
+
+// The deal a proposal is for: the one it records, or, for an offer sent
+// before proposals recorded theirs, the deal still reading it as its own.
+async function dealIdOfProposal(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  site: Doc<"sites">,
+): Promise<Id<"deals"> | undefined> {
+  if (proposal.dealId) return proposal.dealId;
+  const deals = await ctx.db
+    .query("deals")
+    .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+    .collect();
+  return deals.find((deal) => deal.proposalId === proposal._id)?._id;
+}
 
 // A draft is disposable: nobody has seen it, and the solutions it offered are
 // the site's, not its own. Its number is not given back.
@@ -618,6 +706,29 @@ export const send = action({
   },
 });
 
+// The deal a proposal was made for, for `dealBlockers`: null when it was made
+// for none, undefined when that deal is gone.
+async function dealOfProposal(ctx: QueryCtx, proposal: Doc<"proposals">) {
+  return proposal.dealId ? (await ctx.db.get(proposal.dealId)) ?? undefined : null;
+}
+
+// What Send would refuse about the **Deal** a draft is for, beside what
+// `sendBlockersFor` refuses about the offer itself. The panel's button and
+// Send both ask here too. `pickFrom` is how many deals at the site Send would
+// pick from (`dealsSendWouldPickFrom`), asked once by a caller reading many
+// drafts.
+async function dealSendBlockers(
+  ctx: QueryCtx,
+  proposal: Doc<"proposals">,
+  siteId: Id<"sites">,
+  pickFrom: number,
+): Promise<SendBlocker[]> {
+  return [
+    ...dealBlockers(await dealOfProposal(ctx, proposal), siteId),
+    ...ambiguityBlockers(proposal.dealId === undefined, pickFrom),
+  ];
+}
+
 // Freezes the offer the draft's paper already shows (convex/offers.ts: FRSG's
 // frozen block, plus the Proposal ID, the customer's name, the site's address
 // and the Estimator) with the email it goes to, mints the link and schedules
@@ -640,7 +751,15 @@ export const sendWithLink = internalMutation({
     // The same questions the button asks, asked again here, because a stale
     // panel is exactly how an unpriced solution would otherwise reach a
     // customer.
-    refuseSend(sendBlockersFor(offer, sentTo));
+    refuseSend([
+      ...sendBlockersFor(offer, sentTo),
+      ...(await dealSendBlockers(
+        ctx,
+        proposal,
+        site._id,
+        (await dealsSendWouldPickFrom(ctx, site)).length,
+      )),
+    ]);
     // Refused above; this only tells the type checker so.
     if (sentTo === null) return;
 
@@ -654,8 +773,9 @@ export const sendWithLink = internalMutation({
       sentAt: now,
       updatedAt: now,
     });
-    // A proposal sent is a Thumbtack lead quoted (CONTEXT.md, **Stage**).
-    await advanceForCustomer(ctx, customer._id, "sent");
+    // A proposal sent moves the site's open **Deal**s to Sent out
+    // (CONTEXT.md, **Stage**).
+    await advanceForSite(ctx, site, "sent", proposal, now);
     await emailNewLink(ctx, { proposal, frozen, token: a.token, ownerName: identity?.name, now });
   },
 });
@@ -858,8 +978,8 @@ export const approveWithLink = internalMutation({
       updatedAt: now,
     });
     await endSigningLinks(ctx, proposal._id, "approved", now);
-    // And an approved one is the customer's Thumbtack leads won.
-    await advanceForCustomer(ctx, site.customerId, "approved");
+    // And an approved one is the site's open **Deal**s won.
+    await advanceForSite(ctx, site, "approved", proposal, proposal.sentAt ?? now);
     // The offer's PDF copy is not the signed copy, and goes with the state it
     // printed. The signed copy is made on its first download.
     await discardPdfCopy(ctx, proposal);

@@ -650,6 +650,54 @@ describe("customers.list", () => {
   });
 });
 
+describe("customers.search", () => {
+  test("finds a customer by any word of their name, with their sites counted", async () => {
+    const { owner, customer, addSite } = fixture();
+    const maria = await customer();
+    await customer("Ben Okafor", "ben@example.com");
+    await addSite(maria, "place-94th");
+    expect(await owner.query(api.customers.search, { text: " delg " })).toEqual([
+      { _id: maria, name: "Maria Delgado", siteCount: 1 },
+    ]);
+    expect(await owner.query(api.customers.search, { text: "nobody" })).toEqual([]);
+  });
+
+  test("finds a customer older than the newest thousand the list reads", async () => {
+    const { t, owner } = fixture();
+    const oldest = await t.run((ctx) =>
+      ctx.db.insert("customers", { name: "Zelda Oldfield", email: "", phone: "" }),
+    );
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 1000; i++)
+        await ctx.db.insert("customers", { name: `Customer ${i}`, email: "", phone: "" });
+    });
+    expect((await owner.query(api.customers.list, {})).some((c) => c._id === oldest)).toBe(false);
+    expect(await owner.query(api.customers.search, { text: "zelda" })).toMatchObject([
+      { _id: oldest },
+    ]);
+  });
+
+  test("offers the newest few when nothing is typed", async () => {
+    const { t, owner } = fixture();
+    const ids = await t.run(async (ctx) => {
+      const made = [];
+      for (let i = 0; i < 8; i++)
+        made.push(await ctx.db.insert("customers", { name: `Customer ${i}`, email: "", phone: "" }));
+      return made;
+    });
+    expect((await owner.query(api.customers.search, { text: "  " })).map((c) => c._id)).toEqual(
+      ids.slice(2).reverse(),
+    );
+  });
+
+  test("turns away anyone who is not the owner", async () => {
+    const { stranger } = fixture();
+    await expect(stranger.query(api.customers.search, { text: "maria" })).rejects.toThrow(
+      "Owner access required",
+    );
+  });
+});
+
 describe("customers.update", () => {
   test("normalizes what the dialog sends, legacy raw values included", async () => {
     const { t, owner, customer } = fixture();
@@ -862,9 +910,10 @@ describe("sites.list", () => {
 });
 
 describe("sites.get", () => {
-  test("reads the header: the address over two lines, whose it is, access notes and each tab's count", async () => {
+  test("reads the header: the address over two lines, whose it is and their phone, access notes and each tab's count", async () => {
     const { t, owner, customer, addSite, proposal, photo } = fixture();
     const customerId = await customer();
+    await t.run((ctx) => ctx.db.patch(customerId, { phone: "360-555-0100" }));
     const siteId = await addSite(customerId, "place-94th", "Apt 2");
     await owner.action(api.sites.update, {
       siteId,
@@ -901,6 +950,7 @@ describe("sites.get", () => {
       cityLine: "Vancouver, WA 98665",
       customerId,
       customerName: "Maria Delgado",
+      customerPhone: "360-555-0100",
       accessNotes: "Gate code 1234",
       counts: { proposals: 2, solutions: 2, photos: 3, invoices: 1 },
     });

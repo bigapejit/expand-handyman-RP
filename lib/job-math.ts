@@ -317,15 +317,17 @@ export function jobMath(inputs: JobInputs, settings: JobMathSettings): JobMath {
 // carried through payroll tax, plus half a cent each on payroll tax and L&I.
 // So the floor is taken against the pool less that much, which the rounded
 // total can never overrun at any number of hours. That start can sit a cent
-// or so under the true answer, so the wage then climbs while the next cent up
-// still leaves nothing negative. The climb is capped because a short job (a
-// fraction of an hour) can have many wages that round to the same total;
-// stopping early only ever leaves the answer low, never one the job can't pay.
+// or so under the true answer, and on a very short job (a fraction of an
+// hour) many dollars under, since a cent of wage there moves the cost by far
+// less than a cent. So the wage then climbs to the highest cent that still
+// fits: in doubling strides until one overshoots, then halving back. That is
+// right because the rounded cost never falls as the wage rises, so every wage
+// below one that fits also fits, and it takes a few dozen checks at most.
 function maxWageCents(
   laborHours: number,
   laborPoolCents: number,
   settings: JobMathSettings,
-): number {
+): number | null {
   const payroll = hundredths(settings.payrollTaxPercent);
   const fits = (wage: number) =>
     w2Cost(laborHours, wage, laborPoolCents, settings).leftOverCents >= 0;
@@ -335,10 +337,20 @@ function maxWageCents(
       Hundredths) /
       (laborHours * (Hundredths + payroll)),
   );
+  // Hours so small, or a pool so large, that the division leaves no whole
+  // cent to search from: there is no wage to name, and stepping from
+  // Infinity or NaN would never end.
+  if (!Number.isSafeInteger(wage)) return null;
   // Float error in the division above is the only way the start can miss, and
   // it misses by a cent at most; this cannot run on.
   while (!fits(wage)) wage -= 1;
-  for (let step = 0; step < 100 && fits(wage + 1); step++) wage += 1;
+  let stride = 1;
+  while (fits(wage + stride)) {
+    wage += stride;
+    stride *= 2;
+  }
+  for (; stride >= 1; stride = Math.floor(stride / 2))
+    if (fits(wage + stride)) wage += stride;
   return wage;
 }
 
@@ -371,6 +383,9 @@ function priceForWageCents(costCents: number, settings: JobMathSettings): number
     percentOf(priceCents, hundredths(settings.profitPercent)) -
     percentOf(priceCents, hundredths(settings.marketingPercent)) -
     percentOf(priceCents, hundredths(settings.opsPercent));
+  // A price past what a number can count in cents has no next dollar to
+  // step to; say there is no price rather than step forever.
+  if (!Number.isSafeInteger(dollars * 100)) return null;
   while (kept(dollars * 100) < costCents) dollars += 1;
   return dollars * 100;
 }
@@ -415,13 +430,24 @@ export function solutionJobInputs(
 // ---------------------------------------------------------------------------
 // The calculator's fields and its link.
 
+// The largest figures the calculator takes: $10 million and 10,000 hours,
+// far past any job Expand will price. Inside them every product the math
+// takes (hours × wage × payroll, a price ÷ what the buckets leave) stays a
+// safe integer, so nothing downstream reads Infinity, NaN or a step that
+// doesn't move. A figure past them reads as no figure.
+export const JobMathLimits = { moneyCents: 1_000_000_000, hours: 10_000 } as const;
+
 // A dollar figure typed by hand, as whole cents, or null when it is not a
-// figure yet. "$1,250.50", "1250.5" and " 1250.50 " are the same money.
+// figure yet. "$1,250.50", "1250.5" and " 1250.50 " are the same money. A
+// figure too big to be money (1e308 is finite, but not in cents) is not one
+// either: every sum after it would be Infinity or NaN.
 export function readDollarsField(raw: string): number | null {
   const cleaned = raw.trim().replace(/[$,\s]/g, "");
   if (cleaned === "") return null;
-  const value = Number(cleaned);
-  return Number.isFinite(value) ? Math.round(value * 100) : null;
+  const cents = Math.round(Number(cleaned) * 100);
+  return Number.isSafeInteger(cents) && Math.abs(cents) <= JobMathLimits.moneyCents
+    ? cents
+    : null;
 }
 
 // Hours typed by hand, or null when it is not a figure yet.
@@ -429,7 +455,7 @@ export function readHoursField(raw: string): number | null {
   const cleaned = raw.trim();
   if (cleaned === "") return null;
   const value = Number(cleaned);
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value) && Math.abs(value) <= JobMathLimits.hours ? value : null;
 }
 
 // Cents as the calculator's fields show them: plain dollars with no sign or

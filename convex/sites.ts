@@ -118,8 +118,8 @@ export const list = query({
   },
 });
 
-// The site page's header: the site, its address over two lines, whose it is,
-// its access notes, and the count beside each tab. Read by the id the page
+// The site page's header: the site, its address over two lines, whose it is
+// and their phone, its access notes, and the count beside each tab. Read by the id the page
 // address carries, which may be anything a link was typed as, so an id naming
 // no site opens nothing rather than failing.
 export const get = query({
@@ -147,6 +147,8 @@ export const get = query({
       cityLine: siteCityLine(site),
       customerId: site.customerId,
       customerName: customer?.name ?? Unknown,
+      // For the proposal page's Call and Text; empty when there is none.
+      customerPhone: customer?.phone ?? "",
       accessNotes: site.accessNotes,
       counts: {
         proposals: proposals.length,
@@ -261,7 +263,7 @@ export const patch = internalMutation({
 // Delete site, from Edit site on the site page. Refused while the site holds a
 // proposal or an invoice, whatever the dialog showed; otherwise its solutions
 // go with it, and its photos with both files each, so nothing of it is left in
-// storage.
+// storage, and any deal at it is left with no site.
 export const remove = mutation({
   args: { siteId: v.id("sites") },
   handler: async (ctx, a) => {
@@ -283,6 +285,13 @@ export const remove = mutation({
     if (refusal) throw new Error(refusal);
     await deleteSiteSolutions(ctx, site._id);
     await deleteSitePhotos(ctx, site._id);
+    // A **Deal** at the site goes on without one, as it began.
+    const deals = await ctx.db
+      .query("deals")
+      .withIndex("by_customer", (q) => q.eq("customerId", site.customerId))
+      .collect();
+    for (const deal of deals)
+      if (deal.siteId === site._id) await ctx.db.patch(deal._id, { siteId: undefined });
     await ctx.db.delete(site._id);
   },
 });

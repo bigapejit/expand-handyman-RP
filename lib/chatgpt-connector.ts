@@ -39,7 +39,7 @@ import {
   proposalFaultMessage,
   sendBlockerMessage,
 } from "./proposal-pricing";
-import { proposalPanelHref, proposalPaperHref, type ProposalState } from "./proposals";
+import { proposalPageHref, proposalPaperHref, type ProposalState } from "./proposals";
 import { panelHref } from "./side-panel";
 import {
   lineCostCents,
@@ -286,7 +286,7 @@ function proposalOut(proposal: OwnerProposal, context: ToolContext) {
     notes: proposal.notes,
     // What the owner must fix before sending it from the app.
     send_blockers: proposal.sendBlockers.map(sendBlockerMessage),
-    link: link(context, proposalPanelHref(proposal.siteId, proposal.proposalId)),
+    link: link(context, proposalPageHref(proposal.proposalId)),
     paper_link: link(context, proposalPaperHref(proposal.proposalId)),
   };
 }
@@ -549,7 +549,7 @@ const listProposalsTool = defineTool({
           customer: row.customerName,
           site_id: row.siteId,
           total_dollars: dollarsOf(row.totalCents),
-          link: link(context, proposalPanelHref(row.siteId, row.proposalId)),
+          link: link(context, proposalPageHref(row.proposalId)),
         })),
       };
     }

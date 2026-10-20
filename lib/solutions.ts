@@ -13,6 +13,7 @@ import {
 } from "./solution-pricing";
 
 import { formatCents } from "./money";
+import { panelHref } from "./side-panel";
 
 // How a Solution reads on the site's Solutions tab: the row in the list,
 // and the Line Item table inside the panel. Ported from FRSG's
@@ -303,4 +304,13 @@ export function moveDraft(
   const reordered = [...drafts];
   [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
   return reordered;
+}
+
+// The search parameter the open Solution rides in on a Site's Solutions tab
+// (side-panel.ts), and where a Solution opens from elsewhere: the proposal
+// page sends the owner there to write one or change its price.
+export const SolutionPanelParam = "solution";
+
+export function solutionPanelHref(siteId: string, solutionId: string): string {
+  return panelHref(`/sites/${siteId}/solutions`, "", SolutionPanelParam, solutionId);
 }

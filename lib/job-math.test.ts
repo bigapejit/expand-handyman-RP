@@ -210,9 +210,11 @@ describe("Rounding", () => {
 });
 
 describe("The most you can pay, on a short job", () => {
-  // A quarter of an hour: every cent of wage moves the rounded cost by less
-  // than a cent, so the answer must still leave nothing negative.
-  it.each([0.25, 0.1, 1.5, 7.75])("leaves nothing negative at %s hours", (hours) => {
+  // A short job: every cent of wage moves the rounded cost by less than a
+  // cent, so the answer is many cents above where the search starts, and
+  // must still be the highest that leaves nothing negative. 0.01 hours is
+  // Codex's case, where the search once stopped about 96 cents short.
+  it.each([0.01, 0.25, 0.1, 1.5, 7.75])("finds the highest wage that leaves nothing negative at %s hours", (hours) => {
     const math = jobMath({ priceCents: 5_000, laborHours: hours, otherCostCents: 0 }, defaults);
     const wage = math.w2.maxWageCents!;
     const at = jobMath(
@@ -354,5 +356,38 @@ describe("The calculator's fields", () => {
     expect(jobMathHref({ priceCents: 35_000, laborHours: 8, otherCostCents: 1_250 })).toBe(
       "/job-math?price=350&hours=8&other=12.50",
     );
+  });
+});
+
+describe("Figures too big or too small to be real", () => {
+  // From Codex: 1e308 dollars is finite but overflows in cents, and the most-
+  // you-can-pay search once spun forever on it.
+  it("refuses a dollar figure that overflows in cents", () => {
+    expect(readDollarsField("1e308")).toBeNull();
+    expect(readDollarsField("90071992547409.92")).toBeNull();
+    expect(readDollarsField("1250.50")).toBe(125_050);
+  });
+
+  it("refuses figures past the calculator's limits", () => {
+    expect(readHoursField("1e308")).toBeNull();
+    expect(readHoursField("10001")).toBeNull();
+    expect(readHoursField("8")).toBe(8);
+    expect(readDollarsField("84682770993563.30")).toBeNull();
+    expect(readDollarsField("10000000")).toBe(1_000_000_000);
+  });
+
+  // From Codex: a cost so large, over buckets so near 100%, that the price
+  // has no next dollar to step to.
+  it("names no price when the price would pass what a number can count", () => {
+    const math = jobMath(
+      { priceCents: 0, laborHours: 0, otherCostCents: 8_468_277_099_356_330 },
+      settings({ profitPercent: 99.99, marketingPercent: 0, opsPercent: 0 }),
+    );
+    expect(math.priceForWageCents).toBeNull();
+  });
+
+  it("names no wage when the hours leave no cent to search from", () => {
+    const math = jobMath({ priceCents: 35_000, laborHours: 1e-320, otherCostCents: 0 }, defaults);
+    expect(math.w2.maxWageCents).toBeNull();
   });
 });

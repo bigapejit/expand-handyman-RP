@@ -58,24 +58,29 @@ const capped = z.string().max(MAX_CUSTOMER_FIELD, "Keep entries under 500 charac
 const required = (label: string) =>
   capped.transform((value) => value.trim()).refine(Boolean, `Enter the ${label}.`);
 
-export const customerSchema = z
-  .object({
-    name: required("customer name"),
-    email: capped
-      .transform(normalizeEmail)
-      .refine(
-        (email) => !email || z.email().safeParse(email).success,
-        "Enter a valid email address.",
-      ),
-    phone: capped
-      .transform(normalizePhone)
-      .refine((phone) => phone !== null, "Enter a valid US phone number.")
-      .transform((phone) => phone as string),
-  })
-  .refine((customer) => Boolean(customer.email || customer.phone), {
-    error: "Add an email or phone number.",
-    path: ["contact"],
-  });
+/**
+ * Each field's own rules, without the one tying them together: a customer made
+ * with a **Deal** in the New deal dialog needs only a name, because the owner
+ * may not have a number yet, but whatever else is typed must still be valid.
+ */
+export const dealCustomerSchema = z.object({
+  name: required("customer name"),
+  email: capped
+    .transform(normalizeEmail)
+    .refine(
+      (email) => !email || z.email().safeParse(email).success,
+      "Enter a valid email address.",
+    ),
+  phone: capped
+    .transform(normalizePhone)
+    .refine((phone) => phone !== null, "Enter a valid US phone number.")
+    .transform((phone) => phone as string),
+});
+
+export const customerSchema = dealCustomerSchema.refine(
+  (customer) => Boolean(customer.email || customer.phone),
+  { error: "Add an email or phone number.", path: ["contact"] },
+);
 
 export type Customer = z.output<typeof customerSchema>;
 export type CustomerInput = z.input<typeof customerSchema>;
@@ -91,9 +96,32 @@ export function customerErrors(error: z.ZodError): CustomerErrors {
   return errors;
 }
 
-/** Throws the first field-naming message, for callers with no field to blame. */
-export function parseCustomer(input: CustomerInput): Customer {
-  const result = customerSchema.safeParse(input);
+/**
+ * The rules for saving a customer: a new one, or one with a way to reach them,
+ * needs an email or a phone; one made with a deal from a name alone may be
+ * saved again with only the name until the owner learns more, so a slip in the
+ * name can be fixed without inventing a number.
+ */
+export function customerSchemaFor(stored?: { email: string; phone: string }) {
+  return stored && !stored.email && !stored.phone ? dealCustomerSchema : customerSchema;
+}
+
+/**
+ * Throws the first field-naming message, for callers with no field to blame.
+ * `stored` is the customer being saved again, when there is one.
+ */
+export function parseCustomer(
+  input: CustomerInput,
+  stored?: { email: string; phone: string },
+): Customer {
+  const result = customerSchemaFor(stored).safeParse(input);
+  if (!result.success) throw new Error(result.error.issues[0].message);
+  return result.data;
+}
+
+/** The same, for `dealCustomerSchema`. */
+export function parseDealCustomer(input: CustomerInput): Customer {
+  const result = dealCustomerSchema.safeParse(input);
   if (!result.success) throw new Error(result.error.issues[0].message);
   return result.data;
 }

@@ -1,11 +1,7 @@
-import { PageHeader } from "@/components/page-header";
-import { ProposalsIndex } from "@/components/proposals-index";
+import { redirect } from "next/navigation";
 
-export default function ProposalsPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Proposals" description="Every proposal across every customer." />
-      <ProposalsIndex />
-    </div>
-  );
+// A proposal is reached from its deal on the Pipeline, the home page, so the
+// old Proposals table is gone; a bookmark or an old link to it lands there.
+export default function OldProposalsPage() {
+  redirect("/");
 }

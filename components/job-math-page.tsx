@@ -89,6 +89,25 @@ function Readout({
   settings: JobMathSettings;
   onUsePrice: (cents: number) => void;
 }) {
+  // An empty field is an ordinary state: no hours, no other costs, the
+  // saved wage. A field with something in it the math can't read (a typo, or
+  // past the limits) is not: working on as if it were empty would show a
+  // price that quietly leaves out the very cost typed, so the readout waits
+  // and names the field instead.
+  const typed = (raw: string) => raw.trim() !== "";
+  const unreadable = [
+    typed(fields.price) && readDollarsField(fields.price) === null && "Price",
+    typed(fields.hours) && readHoursField(fields.hours) === null && "Labor hours",
+    typed(fields.other) && readDollarsField(fields.other) === null && "Materials & other costs",
+    typed(fields.wage) && readDollarsField(fields.wage) === null && "Wage you'd pay",
+  ].filter((label): label is string => Boolean(label));
+  if (unreadable.length > 0) {
+    return (
+      <p className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900">
+        Check {unreadable.join(", ")}: use a plain number, up to $10 million or 10,000 hours.
+      </p>
+    );
+  }
   const priceCents = readDollarsField(fields.price);
   if (priceCents === null) {
     return (

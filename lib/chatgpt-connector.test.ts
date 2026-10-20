@@ -467,7 +467,7 @@ describe("list_proposals", () => {
           customer: "Maria",
           site_id: "s1",
           total_dollars: 1_200.5,
-          link: "https://staff.expandhandyman.com/sites/s1/proposals?proposal=p3",
+          link: "https://staff.expandhandyman.com/proposals/p3",
         },
       ],
     });
@@ -518,7 +518,7 @@ describe("get_proposal", () => {
           ]),
         }),
       ],
-      link: "https://staff.expandhandyman.com/sites/site1/proposals?proposal=prop1",
+      link: "https://staff.expandhandyman.com/proposals/prop1",
       paper_link: "https://staff.expandhandyman.com/proposals/prop1/paper",
     });
   });
